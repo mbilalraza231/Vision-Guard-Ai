@@ -23,7 +23,7 @@
         {
             "id": "cam_inn_ch1",
             "name": "IP Camera - Inn Detection (Channel 1)",
-            "source": "rtsp://admin:12345abc@192.168.2.253:554/cam/realmonitor?channel=1&subtype=0",
+            "source": "rtsp://YOUR_USERNAME:YOUR_PASSWORD@192.168.X.X:554/cam/realmonitor?channel=1&subtype=0",
             "fps": 5,
             "motion_threshold": 0.02,
             "priority": "high",
@@ -33,7 +33,7 @@
         {
             "id": "cam_out_ch2",
             "name": "IP Camera - Out Detection (Channel 2)",
-            "source": "rtsp://admin:12345abc@192.168.2.253:554/cam/realmonitor?channel=2&subtype=0",
+            "source": "rtsp://YOUR_USERNAME:YOUR_PASSWORD@192.168.X.X:554/cam/realmonitor?channel=2&subtype=0",
             "fps": 5,
             "motion_threshold": 0.02,
             "priority": "high",
@@ -47,9 +47,9 @@
         "reconnect_delay_sec": 5
     },
     "ip_camera": {
-        "username": "admin",
-        "password": "12345abc",
-        "ip_address": "192.168.2.253",
+        "username": "YOUR_USERNAME",
+        "password": "YOUR_PASSWORD",
+        "ip_address": "192.168.X.X",
         "port": 554
     }
 }
