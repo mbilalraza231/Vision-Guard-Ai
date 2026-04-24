@@ -1,0 +1,47 @@
+# ============================================================
+# VisionGuard AI - Fire Worker Dockerfile (OpenVINO)
+# ============================================================
+# Uses existing visionguardaiantigravity-worker-fall as base to avoid
+# pulling python:3.11-slim from Docker Hub (DNS issues on this machine).
+# The base image already has: Python 3.11, supervisor, libgl, onnxruntime,
+# opencv-python-headless, numpy, redis, pydantic.
+# We add only: openvino>=2023.3.0
+# ============================================================
+
+FROM visionguardaiantigravity-worker-fall:latest
+
+LABEL description="Fire Detection Worker (OpenVINO INT8)"
+LABEL version="2.0.0"
+LABEL model="YOLOv11n-Fire-OpenVINO"
+
+# Switch to root to install openvino (base image runs as vguser)
+USER root
+
+# Install OpenVINO Runtime on top of the cached base
+RUN pip install --no-cache-dir --timeout 300 --retries 5 \
+    "openvino>=2023.3.0"
+
+# ── Environment overrides for fire worker ────────────────────
+ENV WORKER_MODEL_TYPE="fire" \
+    WORKER_MODEL_PATH="/app/models/fire_openvino_model" \
+    WORKER_CONFIDENCE_THRESHOLD="0.40" \
+    WORKER_IOU_THRESHOLD="0.45" \
+    WORKER_INPUT_WIDTH="416" \
+    WORKER_INPUT_HEIGHT="416" \
+    WORKER_AGNOSTIC_NMS="true"
+
+# ── Application code (overwrite with latest version) ─────────
+COPY ai_worker/ /app/ai_worker/
+COPY camera_capture/ /app/camera_capture/
+
+# ── Models (export fire_openvino_model first via export_fire_model.py) ──
+COPY models/ /app/models/
+
+RUN chown -R vguser:vguser /app
+
+# Return to non-root user
+USER vguser
+
+STOPSIGNAL SIGTERM
+
+CMD ["supervisord", "-n", "-c", "/etc/supervisor/conf.d/worker.conf"]

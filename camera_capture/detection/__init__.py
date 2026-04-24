@@ -1,0 +1,5 @@
+"""Motion detection components."""
+
+from .motion_detector import MotionDetector
+
+__all__ = ["MotionDetector"]

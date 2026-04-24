@@ -1,0 +1,38 @@
+# ============================================================
+# VisionGuard AI - Clip Recorder Dockerfile
+# ============================================================
+# Uses existing visionguardaiantigravity-ecs as base to avoid
+# pulling python:3.11-slim from Docker Hub (already cached locally).
+# ECS image already contains: python 3.11, redis, opencv, numpy.
+# We only need to add cloudinary on top.
+# ============================================================
+
+FROM visionguardaiantigravity-ecs:latest
+
+# Switch to root to install additional deps and create dirs
+USER root
+
+# Install only the additional package needed (cloudinary)
+# opencv-python-headless, redis, numpy already in base image
+# ffmpeg needed for VideoWriter mp4v codec
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir --timeout 300 --retries 5 \
+    cloudinary>=1.36.0
+
+# Copy clip_recorder module into /app
+COPY clip_recorder/ /app/clip_recorder/
+
+# Copy shared db module (needed for schema / path helpers)
+COPY db/ /app/db/
+
+# Create required data directories
+RUN mkdir -p /data/visionguard/clips /data/visionguard/detections
+
+# Python path so module imports work
+ENV PYTHONPATH=/app
+
+STOPSIGNAL SIGTERM
+
+CMD ["python", "-m", "clip_recorder.main"]

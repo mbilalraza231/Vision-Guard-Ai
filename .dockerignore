@@ -1,0 +1,72 @@
+# VisionGuard AI - Docker Ignore
+# Prevents unnecessary files from being copied to containers
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+ENV/
+env/
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.docker/
+
+# Tests
+tests/
+*_test.py
+test_*.py
+pytest.ini
+.pytest_cache/
+
+# Documentation build
+docs/_build/
+
+# Logs (will be mounted as volume)
+*.log
+logs/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Data (will be mounted as volume)
+*.db
+*.sqlite
+data/
+
+# Models (copy explicitly, not all)
+# models/
+
+# Load testing (not for production)
+load_testing/
+
+# Misc
+README.md
+LICENSE
+*.md
+!docs/*.md
+.DS_Store
+Thumbs.db

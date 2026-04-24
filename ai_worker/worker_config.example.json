@@ -1,0 +1,28 @@
+{
+    "model_type": "weapon",
+    "redis_input_queue": "vg:critical",
+    "onnx_model_path": "/models/yolov8n_weapon.onnx",
+    "confidence_threshold": 0.85,
+    "redis_host": "localhost",
+    "redis_port": 6379,
+    "redis_db": 0,
+    "redis_password": null,
+    "redis_timeout": 1,
+    "intra_op_num_threads": 4,
+    "inter_op_num_threads": 2,
+    "input_width": 640,
+    "input_height": 640,
+    "normalize_mean": [
+        0.485,
+        0.456,
+        0.406
+    ],
+    "normalize_std": [
+        0.229,
+        0.224,
+        0.225
+    ],
+    "log_level": "INFO",
+    "log_format": "json",
+    "shared_memory_max_size_mb": 10
+}

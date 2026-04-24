@@ -1,0 +1,538 @@
+# ============================================================
+# VisionGuard AI - Docker Compose (Edge Deployment)
+# ============================================================
+# Production orchestration for VisionGuard AI system.
+#
+# Services:
+# - redis: Message broker (mandatory)
+# - backend: FastAPI control plane
+# - ecs: Event Classification Service (SINGLETON)
+# - camera: Camera capture service
+# - worker: AI inference workers (scalable)
+#
+# Usage:
+#   docker-compose up -d              # Start all services
+#   docker-compose up -d --scale worker=3  # Scale workers
+#   docker-compose down               # Stop all services
+#
+# ============================================================
+
+version: "3.9"
+
+networks:
+  visionguard:
+    driver: bridge
+    name: visionguard-network
+
+volumes:
+  redis-data:
+    name: vg-redis-data
+  vg-data:
+    name: vg-app-data
+  vg-logs:
+    name: vg-logs
+  vg-frames:
+    name: vg-shared-frames
+
+services:
+  # ============================================================
+  # Redis - Message Broker (MANDATORY)
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: vg-redis
+    restart: unless-stopped
+    networks:
+      - visionguard
+    # Expose on port 6380 to avoid conflict with local Redis (6379)
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # ============================================================
+  # Backend Supervisor - Control Plane
+  # ============================================================
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: vg-backend
+    restart: unless-stopped
+    stop_grace_period: 15s
+    networks:
+      - visionguard
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - vg-data:/data
+      - vg-logs:/var/log/visionguard
+      - ./cameras.json:/app/cameras.json:ro
+    environment:
+      - VG_HOST=0.0.0.0
+      - VG_PORT=8000
+      - VG_REDIS_HOST=redis
+      - VG_REDIS_PORT=6379
+      - VG_ENVIRONMENT=${VG_ENVIRONMENT:-production}
+      - VG_RUNTIME_MODE=docker
+      - VG_LOG_LEVEL=${VG_LOG_LEVEL:-INFO}
+      - VG_DB_PATH=/data/visionguard/events.db
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ============================================================
+  # Event Classification Service - SINGLETON (DO NOT SCALE)
+  # ============================================================
+  ecs:
+    image: visionguardaiantigravity-ecs:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.ecs
+    container_name: vg-ecs
+    restart: unless-stopped
+    stop_grace_period: 20s
+    # SHM access via shared vg-shm volume + chmod 666 (no ipc:host - breaks semaphores for vguser)
+    networks:
+      - visionguard
+    volumes:
+      - vg-data:/data
+      - vg-logs:/var/log/visionguard
+      - vg-frames:/shared-frames
+    environment:
+      - ECS_REDIS_HOST=redis
+      - ECS_REDIS_PORT=6379
+      - ECS_LOG_LEVEL=${ECS_LOG_LEVEL:-INFO}
+      - ECS_RESUME_FROM_LATEST=true
+      - ECS_MAX_SOURCE_LAG_SEC=20
+      # Entry thresholds (Noise filters)
+      - ECS_WEAPON_THRESHOLD=0.30
+      - ECS_FIRE_THRESHOLD=0.30
+      - ECS_FALL_THRESHOLD=0.30
+      # Required detections to FIRE an event
+      - ECS_WEAPON_MIN_DETECTIONS=4
+      - ECS_FIRE_MIN_DETECTIONS=4
+      - ECS_FALL_MIN_DETECTIONS=4
+      # Time windows to accumulate the hits (Seconds)
+      - ECS_WEAPON_PERSISTENCE_WINDOW=5.0
+      - ECS_FIRE_PERSISTENCE_WINDOW=8.0
+      - ECS_FALL_PERSISTENCE_WINDOW=6.0
+      # Dead-zones after firing (Seconds)
+      - ECS_WEAPON_COOLDOWN_SECONDS=30.0
+      - ECS_FIRE_COOLDOWN_SECONDS=60.0
+      - ECS_FALL_COOLDOWN_SECONDS=30.0
+      
+      - VG_DB_PATH=/data/visionguard/events.db
+      - SHARED_FRAMES_DIR=/shared-frames
+      - ECS_HARD_TTL_SECONDS=15.0
+      - ECS_CORRELATION_WINDOW_MS=2000
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import os, sys, redis; r=redis.Redis(host=os.getenv('ECS_REDIS_HOST','redis'), port=int(os.getenv('ECS_REDIS_PORT','6379'))); r.ping(); ok=False;
+
+            for pid in [p for p in os.listdir('/proc') if p.isdigit()]:
+
+            \    try:
+
+            \        cmd=open(f'/proc/{pid}/cmdline','rb').read().decode('utf-8','ignore')
+
+            \        if 'event_classification.main' in cmd:
+
+            \            ok=True
+
+            \            break
+
+            \    except Exception:
+
+            \        pass
+
+            sys.exit(0 if ok else 1)"
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    # CRITICAL: ECS is SINGLETON - enforce single replica
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 512M
+
+  # ============================================================
+  # Camera Capture Service
+  # ============================================================
+
+  # ============================================================
+  # Clip Recorder - Post-event clip recording + Cloudinary upload
+  # ============================================================
+  clip-recorder:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.clip
+    container_name: vg-clip-recorder
+    restart: unless-stopped
+    networks:
+      - visionguard
+    volumes:
+      - vg-data:/data
+      - vg-logs:/var/log/visionguard
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}
+      - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
+      - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
+      - CLIP_PRE_SECONDS=10
+      - CLIP_POST_SECONDS=10
+      - CLIP_ENABLE_BACKGROUND_BUFFER=false
+      - CAMERA_FPS=5
+      - VG_DB_PATH=/data/visionguard/events.db
+      - LOG_LEVEL=INFO
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+
+  camera:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.camera
+    container_name: vg-camera
+    restart: unless-stopped
+    stop_grace_period: 15s
+    shm_size: 256m
+    ipc: host
+    networks:
+      - visionguard
+    volumes:
+      - vg-logs:/var/log/visionguard
+      - vg-frames:/shared-frames
+      - ./test-video.mp4:/app/test-video.mp4:ro
+      - ./cameras.json:/app/cameras.json:ro
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - CAMERA_CONFIG_PATH=/app/cameras.json
+      - CAMERA_RECONNECT_RETRIES=${CAMERA_RECONNECT_RETRIES:-5}
+      - CAMERA_RECONNECT_DELAY_SEC=${CAMERA_RECONNECT_DELAY_SEC:-5}
+      - CAMERA_RECONNECT_MAX_DELAY_SEC=${CAMERA_RECONNECT_MAX_DELAY_SEC:-60}
+      - CAMERA_RECONNECT_BACKOFF_MULTIPLIER=${CAMERA_RECONNECT_BACKOFF_MULTIPLIER:-2.0}
+      - LOG_LEVEL=${CAMERA_LOG_LEVEL:-INFO}
+      - SHARED_FRAMES_DIR=/shared-frames
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import os, sys, redis; r=redis.Redis(host=os.getenv('REDIS_HOST','redis'), port=int(os.getenv('REDIS_PORT','6379'))); r.ping(); ok=False;
+
+            for pid in [p for p in os.listdir('/proc') if p.isdigit()]:
+
+            \    try:
+
+            \        cmd=open(f'/proc/{pid}/cmdline','rb').read().decode('utf-8','ignore')
+
+            \        if 'camera_capture.main' in cmd:
+
+            \            ok=True
+
+            \            break
+
+            \    except Exception:
+
+            \        pass
+
+            sys.exit(0 if ok else 1)"
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+
+  # ============================================================
+  # AI Workers - Multi-Model Inference
+  # ============================================================
+  # Three specialized workers for comprehensive event detection
+
+  worker-weapon:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    container_name: vg-worker-weapon
+    restart: unless-stopped
+    stop_grace_period: 35s
+    # SHM access via shared vg-shm volume + chmod 666 (no ipc:host - breaks semaphores for vguser)
+    networks:
+      - visionguard
+    volumes:
+      - vg-data:/data
+      - vg-logs:/var/log/visionguard
+      - vg-frames:/shared-frames
+    tmpfs:
+      - /tmp:size=100M
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - WORKER_MODEL_TYPE=weapon
+      - WORKER_CONFIDENCE_THRESHOLD=0.70
+      - ONNX_EXECUTION_PROVIDER=CPUExecutionProvider
+      - LOG_LEVEL=${WORKER_LOG_LEVEL:-INFO}
+      - SHARED_FRAMES_DIR=/shared-frames
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import os, sys, redis; r=redis.Redis(host=os.getenv('REDIS_HOST','redis'), port=int(os.getenv('REDIS_PORT','6379'))); r.ping(); ok=False;
+
+            for pid in [p for p in os.listdir('/proc') if p.isdigit()]:
+
+            \    try:
+
+            \        cmd=open(f'/proc/{pid}/cmdline','rb').read().decode('utf-8','ignore')
+
+            \        if 'ai_worker.main' in cmd:
+
+            \            ok=True
+
+            \            break
+
+            \    except Exception:
+
+            \        pass
+
+            sys.exit(0 if ok else 1)"
+        ]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  worker-fire:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker-fire
+    container_name: vg-worker-fire
+    restart: unless-stopped
+    stop_grace_period: 35s
+    # SHM access via shared vg-shm volume + chmod 666 (no ipc:host - breaks semaphores for vguser)
+    networks:
+      - visionguard
+    volumes:
+      - vg-data:/data
+      - vg-logs:/var/log/visionguard
+      - vg-frames:/shared-frames
+    tmpfs:
+      - /tmp:size=100M
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - WORKER_MODEL_TYPE=fire
+      # OpenVINO model directory (replaces fire_detection.onnx)
+      - WORKER_MODEL_PATH=/app/models/fire_openvino_model
+      # Tuned thresholds for workplace fire/smoke detection (i5-7th Gen optimized)
+      - WORKER_CONFIDENCE_THRESHOLD=0.40
+      - WORKER_IOU_THRESHOLD=0.45
+      - WORKER_INPUT_WIDTH=416
+      - WORKER_INPUT_HEIGHT=416
+      - WORKER_AGNOSTIC_NMS=true
+      - WORKER_ALLOWED_CLASS_IDS=0
+      - LOG_LEVEL=${WORKER_LOG_LEVEL:-INFO}
+      - SHARED_FRAMES_DIR=/shared-frames
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import os, sys, redis; r=redis.Redis(host=os.getenv('REDIS_HOST','redis'), port=int(os.getenv('REDIS_PORT','6379'))); r.ping(); ok=False;
+
+            for pid in [p for p in os.listdir('/proc') if p.isdigit()]:
+
+            \    try:
+
+            \        cmd=open(f'/proc/{pid}/cmdline','rb').read().decode('utf-8','ignore')
+
+            \        if 'ai_worker.main' in cmd:
+
+            \            ok=True
+
+            \            break
+
+            \    except Exception:
+
+            \        pass
+
+            sys.exit(0 if ok else 1)"
+        ]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      # OpenVINO startup is slower — allow 60s for INT8 model load
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  worker-fall:
+    image: visionguardaiantigravity-worker-fall:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    container_name: vg-worker-fall
+    restart: unless-stopped
+    stop_grace_period: 35s
+    # SHM access via shared vg-shm volume + chmod 666 (no ipc:host - breaks semaphores for vguser)
+    networks:
+      - visionguard
+    volumes:
+      - vg-data:/data
+      - vg-logs:/var/log/visionguard
+      - vg-frames:/shared-frames
+    tmpfs:
+      - /tmp:size=100M
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - WORKER_MODEL_TYPE=fall
+      - WORKER_CONFIDENCE_THRESHOLD=0.80
+      - ONNX_EXECUTION_PROVIDER=CPUExecutionProvider
+      - LOG_LEVEL=${WORKER_LOG_LEVEL:-INFO}
+      - SHARED_FRAMES_DIR=/shared-frames
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import os, sys, redis; r=redis.Redis(host=os.getenv('REDIS_HOST','redis'), port=int(os.getenv('REDIS_PORT','6379'))); r.ping(); ok=False;
+
+            for pid in [p for p in os.listdir('/proc') if p.isdigit()]:
+
+            \    try:
+
+            \        cmd=open(f'/proc/{pid}/cmdline','rb').read().decode('utf-8','ignore')
+
+            \        if 'ai_worker.main' in cmd:
+
+            \            ok=True
+
+            \            break
+
+            \    except Exception:
+
+            \        pass
+
+            sys.exit(0 if ok else 1)"
+        ]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # ============================================================
+  # AI Worker - GPU (OPTIONAL)
+  # ============================================================
+  # Uncomment to use GPU workers instead of CPU workers
+  # Requires: nvidia-docker runtime
+  #
+  # worker-gpu:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/Dockerfile.worker-gpu
+  #   restart: unless-stopped
+  #   networks:
+  #     - visionguard
+  #   volumes:
+  #     - vg-logs:/var/log/visionguard
+  #     - vg-shm:/dev/shm:ro
+  #   environment:
+  #     - REDIS_HOST=redis
+  #     - REDIS_PORT=6379
+  #     - WORKER_MODEL_TYPE=${WORKER_MODEL_TYPE:-weapon}
+  #     - ONNX_EXECUTION_PROVIDER=CUDAExecutionProvider
+  #   depends_on:
+  #     redis:
+  #       condition: service_healthy
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: 1
+  #             capabilities: [gpu]
+
+  # ============================================================
+  # Debug UI - Streamlit (TEMPORARY/DEBUG ONLY)
+  # ============================================================
+  debug-ui:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.ui
+    container_name: vg-debug-ui
+    restart: unless-stopped
+    networks:
+      - visionguard
+    ports:
+      - "${DEBUG_UI_PORT:-8501}:8501"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - VG_STREAM_NAME=vg:ai:results
+      - VG_REFRESH_SEC=1.5
+    depends_on:
+      redis:
+        condition: service_healthy
+    profiles:
+      - debug

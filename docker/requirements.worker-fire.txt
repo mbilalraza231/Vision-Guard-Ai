@@ -1,0 +1,17 @@
+# Fire Worker Python Dependencies
+# Uses OpenVINO Runtime for INT8 inference (replaces onnxruntime for this worker)
+
+# OpenVINO Runtime — required for fire_openvino_model/
+openvino>=2023.3.0
+
+# Redis client
+redis>=5.0.0
+
+# Numerical compute
+numpy>=1.24.0
+
+# Frame decoding from shared memory
+opencv-python-headless>=4.8.0
+
+# Config validation
+pydantic>=2.0.0

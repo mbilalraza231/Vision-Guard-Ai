@@ -1,0 +1,310 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* VisionGuard AI - Dark Surveillance Dashboard Design System */
+
+@layer base {
+  :root {
+    /* Core backgrounds - Deep navy surveillance theme */
+    --background: 220 26% 14%;
+    --foreground: 210 40% 98%;
+
+    /* Card surfaces - Lighter navy with subtle transparency feel */
+    --card: 220 26% 18%;
+    --card-foreground: 210 40% 98%;
+
+    /* Elevated surfaces */
+    --popover: 220 26% 16%;
+    --popover-foreground: 210 40% 98%;
+
+    /* Primary - Teal/Cyan accent for active states */
+    --primary: 199 89% 48%;
+    --primary-foreground: 220 26% 14%;
+
+    /* Secondary - Muted slate */
+    --secondary: 220 20% 25%;
+    --secondary-foreground: 210 40% 98%;
+
+    /* Muted elements */
+    --muted: 220 20% 22%;
+    --muted-foreground: 217 20% 60%;
+
+    /* Accent - Subtle highlight */
+    --accent: 220 20% 28%;
+    --accent-foreground: 210 40% 98%;
+
+    /* Destructive - Alert red */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+
+    /* Borders and inputs */
+    --border: 220 20% 25%;
+    --input: 220 20% 22%;
+    --ring: 199 89% 48%;
+
+    --radius: 0.75rem;
+
+    /* Sidebar - Matches main theme */
+    --sidebar-background: 220 26% 12%;
+    --sidebar-foreground: 217 20% 70%;
+    --sidebar-primary: 199 89% 48%;
+    --sidebar-primary-foreground: 220 26% 14%;
+    --sidebar-accent: 220 26% 18%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 220 20% 20%;
+    --sidebar-ring: 199 89% 48%;
+
+    /* Severity colors - Critical system */
+    --severity-critical: 0 84% 60%;
+    --severity-high: 38 92% 50%;
+    --severity-medium: 199 89% 48%;
+    --severity-low: 142 76% 36%;
+
+    /* Status colors */
+    --status-active: 0 84% 60%;
+    --status-resolved: 142 76% 36%;
+    --status-acknowledged: 38 92% 50%;
+    --status-online: 142 76% 36%;
+    --status-offline: 0 84% 60%;
+
+    /* Chart colors */
+    --chart-1: 199 89% 48%;
+    --chart-2: 142 76% 36%;
+    --chart-3: 38 92% 50%;
+    --chart-4: 0 84% 60%;
+    --chart-5: 280 65% 60%;
+
+    /* Gauge colors */
+    --gauge-fill: 199 89% 48%;
+    --gauge-background: 220 20% 22%;
+  }
+
+  /* Light mode - Keeping same dark theme for consistency */
+  .light {
+    --background: 220 26% 14%;
+    --foreground: 210 40% 98%;
+    --card: 220 26% 18%;
+    --card-foreground: 210 40% 98%;
+    --popover: 220 26% 16%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 199 89% 48%;
+    --primary-foreground: 220 26% 14%;
+    --secondary: 220 20% 25%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 220 20% 22%;
+    --muted-foreground: 217 20% 60%;
+    --accent: 220 20% 28%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 220 20% 25%;
+    --input: 220 20% 22%;
+    --ring: 199 89% 48%;
+    --sidebar-background: 220 26% 12%;
+    --sidebar-foreground: 217 20% 70%;
+    --sidebar-primary: 199 89% 48%;
+    --sidebar-primary-foreground: 220 26% 14%;
+    --sidebar-accent: 220 26% 18%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 220 20% 20%;
+    --sidebar-ring: 199 89% 48%;
+  }
+
+  .dark {
+    --background: 220 26% 14%;
+    --foreground: 210 40% 98%;
+    --card: 220 26% 18%;
+    --card-foreground: 210 40% 98%;
+    --popover: 220 26% 16%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 199 89% 48%;
+    --primary-foreground: 220 26% 14%;
+    --secondary: 220 20% 25%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 220 20% 22%;
+    --muted-foreground: 217 20% 60%;
+    --accent: 220 20% 28%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 220 20% 25%;
+    --input: 220 20% 22%;
+    --ring: 199 89% 48%;
+    --sidebar-background: 220 26% 12%;
+    --sidebar-foreground: 217 20% 70%;
+    --sidebar-primary: 199 89% 48%;
+    --sidebar-primary-foreground: 220 26% 14%;
+    --sidebar-accent: 220 26% 18%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 220 20% 20%;
+    --sidebar-ring: 199 89% 48%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Custom scrollbar for the dark theme */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-background;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-secondary rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/50;
+  }
+}
+
+@layer components {
+  /* Stat card component */
+  .stat-card {
+    @apply bg-card rounded-xl p-5 border border-border;
+  }
+
+  /* Dashboard card with glassmorphism effect */
+  .dashboard-card {
+    @apply bg-card/80 backdrop-blur-sm rounded-xl border border-border;
+  }
+
+  /* Severity badge styles */
+  .severity-critical {
+    @apply text-severity-critical font-medium;
+  }
+
+  .severity-high {
+    @apply text-severity-high font-medium;
+  }
+
+  .severity-medium {
+    @apply text-severity-medium font-medium;
+  }
+
+  .severity-low {
+    @apply text-severity-low font-medium;
+  }
+
+  /* Status indicator */
+  .status-indicator {
+    @apply w-2 h-2 rounded-full;
+  }
+
+  .status-indicator.online {
+    @apply bg-status-online;
+  }
+
+  .status-indicator.offline {
+    @apply bg-status-offline;
+  }
+
+  /* Navigation link active state */
+  .nav-link-active {
+    @apply bg-sidebar-accent text-sidebar-accent-foreground;
+  }
+
+  /* Table styles */
+  .data-table {
+    @apply w-full;
+  }
+
+  .data-table th {
+    @apply text-left text-muted-foreground text-sm font-medium py-3 px-4;
+  }
+
+  .data-table td {
+    @apply py-4 px-4 border-b border-border;
+  }
+
+  /* Gauge chart base */
+  .gauge-arc {
+    fill: none;
+    stroke-linecap: round;
+  }
+
+  /* Camera feed placeholder */
+  .camera-feed {
+    @apply bg-muted rounded-lg aspect-video relative overflow-hidden border border-border;
+  }
+
+  .camera-feed::before {
+    content: '';
+    @apply absolute inset-0 bg-gradient-to-br from-muted to-background;
+  }
+}
+
+@layer utilities {
+  /* Text gradient for headings */
+  .text-gradient-primary {
+    @apply bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent;
+  }
+
+  /* Glow effects */
+  .glow-primary {
+    box-shadow: 0 0 20px hsl(var(--primary) / 0.3);
+  }
+
+  .glow-critical {
+    box-shadow: 0 0 20px hsl(var(--severity-critical) / 0.3);
+  }
+
+  /* Animated pulse for live indicators */
+  .pulse-live {
+    animation: pulse-live 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes pulse-live {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
+  }
+
+  /* Fade in animation */
+  .animate-fade-in {
+    animation: fade-in 0.3s ease-out;
+  }
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Slide in from left */
+  .animate-slide-in-left {
+    animation: slide-in-left 0.3s ease-out;
+  }
+
+  @keyframes slide-in-left {
+    from {
+      opacity: 0;
+      transform: translateX(-20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+}

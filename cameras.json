@@ -1,0 +1,55 @@
+{
+    "cameras": [
+        {
+            "id": "ip_webcam",
+            "name": "IP Webcam Stream",
+            "source": "http://192.168.0.103:8080/video",
+            "fps": 5,
+            "motion_threshold": 0.02,
+            "priority": "critical",
+            "enabled": true,
+            "_comment": "Mobile IP Webcam - main stream (disabled: phone unreachable)"
+        },
+        {
+            "id": "local_video_test",
+            "name": "Local Test Video",
+            "source": "/app/test-video.mp4",
+            "fps": 5,
+            "motion_threshold": 0.02,
+            "priority": "medium",
+            "enabled": false,
+            "_comment": "Enable this for local video testing"
+        },
+        {
+            "id": "cam_inn_ch1",
+            "name": "IP Camera - Inn Detection (Channel 1)",
+            "source": "rtsp://admin:12345abc@192.168.2.253:554/cam/realmonitor?channel=1&subtype=0",
+            "fps": 5,
+            "motion_threshold": 0.02,
+            "priority": "high",
+            "enabled": false,
+            "_comment": "RTSP camera channel 1"
+        },
+        {
+            "id": "cam_out_ch2",
+            "name": "IP Camera - Out Detection (Channel 2)",
+            "source": "rtsp://admin:12345abc@192.168.2.253:554/cam/realmonitor?channel=2&subtype=0",
+            "fps": 5,
+            "motion_threshold": 0.02,
+            "priority": "high",
+            "enabled": false,
+            "_comment": "RTSP camera channel 2"
+        }
+    ],
+    "global": {
+        "motion_detection": true,
+        "default_fps": 5,
+        "reconnect_delay_sec": 5
+    },
+    "ip_camera": {
+        "username": "admin",
+        "password": "12345abc",
+        "ip_address": "192.168.2.253",
+        "port": 554
+    }
+}

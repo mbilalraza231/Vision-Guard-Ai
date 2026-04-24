@@ -1,0 +1,70 @@
+# ============================================================
+# VisionGuard AI - AI Worker Dockerfile (GPU OPTIONAL)
+# ============================================================
+# GPU-enabled worker using ONNX Runtime with CUDA.
+# OPTIONAL - Only use if NVIDIA GPU is available.
+# Requires nvidia-docker runtime.
+# ============================================================
+
+FROM python:3.11-slim
+
+LABEL maintainer="VisionGuard AI"
+LABEL description="AI Worker (GPU)"
+LABEL version="1.0.0"
+LABEL scalable="true"
+LABEL gpu="optional"
+
+# Build arguments
+ARG USER_ID=1000
+ARG GROUP_ID=1000
+ARG MODEL_TYPE="weapon"
+ARG CUDA_VERSION="11.8"
+
+# Environment
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH="/app" \
+    REDIS_HOST="redis" \
+    REDIS_PORT="6379" \
+    WORKER_MODEL_TYPE="${MODEL_TYPE}" \
+    ONNX_EXECUTION_PROVIDER="CUDAExecutionProvider"
+
+# Install system dependencies + CUDA libs
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    supervisor \
+    libgl1 \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN groupadd -g ${GROUP_ID} vguser && \
+    useradd -m -u ${USER_ID} -g vguser vguser
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements and install with GPU support
+COPY ai_worker/requirements.txt /app/ai_worker/requirements.txt
+RUN pip install --no-cache-dir onnxruntime-gpu opencv-python-headless numpy redis pydantic
+
+# Copy application code
+COPY ai_worker/ /app/ai_worker/
+
+# Copy models
+COPY models/ /app/models/
+
+# Copy supervisor config
+COPY docker/supervisord/worker.conf /etc/supervisor/conf.d/worker.conf
+
+# Create directories
+RUN mkdir -p /var/log/visionguard /data && \
+    chown -R vguser:vguser /var/log/visionguard /data /app
+
+# Switch to non-root user
+USER vguser
+
+# Signal handling
+STOPSIGNAL SIGTERM
+
+# Start supervisord
+CMD ["supervisord", "-n", "-c", "/etc/supervisor/conf.d/worker.conf"]

@@ -1,0 +1,64 @@
+# ============================================================
+# VisionGuard AI - Event Classification Service Dockerfile
+# ============================================================
+# SINGLE INSTANCE ONLY - Deterministic, rule-based classifier.
+# Consumes from vg:ai:results Redis stream.
+# Sole authority for shared memory cleanup.
+# ============================================================
+
+FROM python:3.11-slim
+
+LABEL maintainer="VisionGuard AI"
+LABEL description="Event Classification Service (ECS)"
+LABEL version="1.0.0"
+LABEL singleton="true"
+
+# Build arguments
+ARG USER_ID=1000
+ARG GROUP_ID=1000
+
+# Environment
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH="/app" \
+    ECS_REDIS_HOST="redis" \
+    ECS_REDIS_PORT="6379"
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    supervisor \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN groupadd -g ${GROUP_ID} vguser && \
+    useradd -m -u ${USER_ID} -g vguser vguser
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements - ECS uses pydantic
+COPY event_classification/requirements.txt /app/event_classification/requirements.txt
+RUN pip install --no-cache-dir --timeout 300 --retries 5 \
+    -r /app/event_classification/requirements.txt
+
+# Copy application code
+COPY event_classification/ /app/event_classification/
+COPY camera_capture/ /app/camera_capture/
+COPY db/ /app/db/
+
+# Copy supervisor config
+COPY docker/supervisord/ecs.conf /etc/supervisor/conf.d/ecs.conf
+
+# Create directories
+RUN mkdir -p /var/log/visionguard /data && \
+    chown -R vguser:vguser /var/log/visionguard /data /app
+
+# Switch to non-root user
+USER vguser
+
+# Signal handling
+STOPSIGNAL SIGTERM
+
+# Start supervisord
+CMD ["supervisord", "-n", "-c", "/etc/supervisor/conf.d/ecs.conf"]

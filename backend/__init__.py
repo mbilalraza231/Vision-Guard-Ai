@@ -1,0 +1,1 @@
+"""VisionGuard AI backend package."""

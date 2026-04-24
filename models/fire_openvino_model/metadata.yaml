@@ -1,0 +1,23 @@
+description: Ultralytics YOLO11s model trained on /home/circulus/project/yolo_project/falldetect-11s/datasets/Fire_Detection.v8i.yolov11/data.yaml
+author: Ultralytics
+date: '2026-04-10T17:47:26.854828'
+version: 8.4.7
+license: AGPL-3.0 License (https://ultralytics.com/license)
+docs: https://docs.ultralytics.com
+stride: 32
+task: detect
+batch: 1
+imgsz:
+- 416
+- 416
+names:
+  0: Fire
+  1: Smoke
+args:
+  batch: 1
+  fraction: 1.0
+  half: false
+  int8: true
+  dynamic: false
+  nms: false
+channels: 3

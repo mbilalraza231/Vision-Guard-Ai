@@ -1,0 +1,68 @@
+# Virtual environment
+venv/
+.venv
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Logs
+logs/
+*.log
+
+# IDE
+.pytest_cache/
+.coverage
+htmlcov/
+.vscode/
+.idea/
+
+# Test artifacts
+test_metrics.json
+test_report.txt
+
+# Environment
+.env
+.env.*
+
+# Runtime
+.vg_pids
+
+# Data
+/data/
+*.db
+*.sqlite
+
+# SQLite WAL/SHM files
+*.db-wal
+*.db-shm
+
+# Node modules
+node_modules/
+
+# Detection image cache
+debug_ui/.detection_cache/
+.detection_cache/
+
+# Docker volumes data
+vg-data/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# ML training datasets (large image collections)
+fire-and-smoke-detection*/
+datasets/
+
+# Binaries
+mediamtx
+models/backup/
