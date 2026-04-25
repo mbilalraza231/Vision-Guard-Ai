@@ -211,7 +211,7 @@ function EvidenceModal({ incident, onClose }: EvidenceModalProps) {
                   ) : (
                     <div className="flex items-center justify-center rounded-lg border border-dashed border-white/20 bg-white/5 py-8 text-sm text-white/40">
                       <AlertTriangle className="mr-2 h-4 w-4" />
-                      No snapshot available
+                      <span className="capitalize">{incident.type} Detected</span>
                     </div>
                   )}
                 </div>
