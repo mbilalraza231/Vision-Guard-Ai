@@ -27,7 +27,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { API_ENDPOINTS } from '@/config/api';
+import { API_ENDPOINTS, buildApiUrl } from '@/config/api';
 import { apiService } from '@/services/api.service';
 import type { Incident, IncidentFilters, Severity, IncidentStatus } from '@/types';
 
@@ -101,6 +101,12 @@ function adaptEventToIncident(event: BackendEvent): Incident & { confidence: num
 // EvidenceModal
 // ---------------------------------------------------------------------------
 
+function getMediaUrl(url: string | null): string | undefined {
+  if (!url) return undefined;
+  if (url.startsWith('http')) return url;
+  return buildApiUrl(url);
+}
+
 interface EvidenceModalProps {
   incident: (Incident & { confidence: number }) | null;
   onClose: () => void;
@@ -134,17 +140,9 @@ function EvidenceModal({ incident, onClose }: EvidenceModalProps) {
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent
-        className="max-w-2xl border border-white/10 bg-[#0f1117] text-white shadow-2xl"
+        className="max-w-2xl border border-white/10 bg-[#0f1117] text-white shadow-2xl max-h-[85vh] overflow-y-auto"
         style={{ borderRadius: '1rem' }}
       >
-        {/* Close button */}
-        <button
-          onClick={onClose}
-          className="absolute right-4 top-4 rounded-full p-1 text-white/50 hover:text-white transition-colors"
-          aria-label="Close"
-        >
-          <X className="h-5 w-5" />
-        </button>
 
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3 text-lg font-semibold">
@@ -205,7 +203,7 @@ function EvidenceModal({ incident, onClose }: EvidenceModalProps) {
                   </div>
                   {data.snapshot_url ? (
                     <img
-                      src={data.snapshot_url}
+                      src={getMediaUrl(data.snapshot_url)}
                       alt="Detection snapshot"
                       className="w-full rounded-lg border border-white/10"
                       style={{ maxHeight: '300px', objectFit: 'contain', background: '#000' }}
@@ -227,7 +225,7 @@ function EvidenceModal({ incident, onClose }: EvidenceModalProps) {
                   {data.clip_url ? (
                     <video
                       controls
-                      src={data.clip_url}
+                      src={getMediaUrl(data.clip_url)}
                       className="w-full rounded-lg border border-white/10 bg-black"
                       style={{ maxWidth: '100%' }}
                     >

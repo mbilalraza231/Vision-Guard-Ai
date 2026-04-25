@@ -116,6 +116,25 @@ async def serve_detection_image(filename: str):
     )
 
 
+CLIP_DIR = Path("/data/visionguard/clips")
+
+@router.get("/clips/{filename}")
+async def serve_clip_file(filename: str):
+    """Serve a recorded video clip file."""
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    filepath = CLIP_DIR / filename
+    if not filepath.exists() or not filepath.is_file():
+        raise HTTPException(status_code=404, detail="Clip file not found")
+
+    return FileResponse(
+        filepath,
+        media_type="video/mp4",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
 @router.get("/boxes")
 async def get_live_boxes(
     camera_id: Optional[str] = Query(None, description="Filter by camera ID"),

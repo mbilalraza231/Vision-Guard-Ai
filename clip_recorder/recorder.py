@@ -19,6 +19,7 @@ import threading
 from collections import deque
 
 import cv2
+import subprocess
 
 from .config import ClipConfig
 from .uploader import CloudinaryUploader
@@ -223,7 +224,7 @@ class ClipRecorder:
         # Step 5 — Write evidence to database
         self._write_evidence(event_id, result)
 
-        if result["clip_url"]:
+        if result["clip_url"] or result["clip_local"]:
             self._update_clip_status(event_id, "ready", None)
         else:
             self._update_clip_status(
@@ -245,6 +246,23 @@ class ClipRecorder:
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
+
+    def _transcode_to_h264(self, filepath: str) -> None:
+        """Convert the mp4v file to a web-playable H.264 mp4 file."""
+        temp_path = filepath + ".temp.mp4"
+        try:
+            cmd = [
+                "ffmpeg", "-y", "-i", filepath,
+                "-vcodec", "libx264", "-preset", "ultrafast",
+                "-pix_fmt", "yuv420p", temp_path
+            ]
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            os.replace(temp_path, filepath)
+            logger.info(f"Successfully transcoded {filepath} to H.264")
+        except Exception as e:
+            logger.error(f"Failed to transcode {filepath} to H.264: {e}")
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
 
     def _find_snapshot(
         self,
@@ -387,6 +405,7 @@ class ClipRecorder:
                 writer.write(frame)
             writer.release()
             
+            self._transcode_to_h264(out_path)
             return out_path
             
         except Exception as e:
@@ -445,6 +464,15 @@ class ClipRecorder:
                     "output": out_path,
                 },
             )
+            
+            if writer:
+                writer.release()
+                writer = None
+            if cap:
+                cap.release()
+                cap = None
+                
+            self._transcode_to_h264(out_path)
             return out_path
 
         except Exception as e:

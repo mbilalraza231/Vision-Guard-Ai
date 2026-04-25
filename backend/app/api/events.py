@@ -135,6 +135,15 @@ async def get_event_evidence(
             None,
         )
 
+        # Translate local paths to API URLs
+        if snapshot_url and snapshot_url.startswith("/data/visionguard/detections/"):
+            filename = os.path.basename(snapshot_url)
+            snapshot_url = f"/detections/images/{filename}"
+            
+        if clip_url and clip_url.startswith("/data/visionguard/clips/"):
+            filename = os.path.basename(clip_url)
+            clip_url = f"/detections/clips/{filename}"
+
         clip_status = "pending"
         clip_error = None
         if event_row:

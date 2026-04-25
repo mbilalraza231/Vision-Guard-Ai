@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { buildApiUrl, API_ENDPOINTS, API_CONFIG } from '@/config/api';
 import { apiService } from '@/services/api.service';
 import { RefreshCw, Camera, Loader2, Shield, Flame, PersonStanding, Maximize2, Minimize2 } from 'lucide-react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 
 // ────── Types ──────
 
@@ -244,7 +244,7 @@ export default function LiveMonitoring() {
     refetchInterval: 30000, // Refresh camera list every 30s
   });
 
-  const enabledCameras = cameras?.filter(c => c.enabled) ?? [];
+  const enabledCameras = useMemo(() => cameras?.filter(c => c.enabled) ?? [], [cameras]);
   const liveCameras = enabledCameras.filter((camera) => liveFeedState[camera.id]);
 
   useEffect(() => {
