@@ -286,8 +286,8 @@ class AIWorker:
                     result["inference_latency_ms"] = inference_latency_ms
                     
                     # Save detection image with bounding box (only if above image threshold)
-                    # Image threshold is higher than publish threshold to reduce gallery noise
-                    image_threshold = float(os.getenv("IMAGE_SAVE_THRESHOLD", "0.50"))
+                    # By default, save images for ALL detections that pass the confidence threshold
+                    image_threshold = float(os.getenv("IMAGE_SAVE_THRESHOLD", str(self.config.confidence_threshold)))
                     detection_image_path = ""
                     if result.get("confidence", 0) >= image_threshold:
                         detection_image_path = self._save_detection_image(
