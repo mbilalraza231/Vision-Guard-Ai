@@ -48,6 +48,13 @@ class SharedMemoryImpl(SharedMemoryInterface):
         # Ensure shared directory exists
         os.makedirs(self.shared_dir, exist_ok=True)
         
+        # Grant world write/delete permissions so non-root containers can delete frames
+        # Use 0o777 instead of 0o1777 to avoid the sticky bit (which prevents deleting root-owned files)
+        try:
+            os.chmod(self.shared_dir, 0o777)
+        except PermissionError:
+            self._logger.debug(f"Could not chmod {self.shared_dir} (expected if not root)")
+        
         # Dtype mapping for serialization
         self._dtype_map = {
             np.uint8: 0,

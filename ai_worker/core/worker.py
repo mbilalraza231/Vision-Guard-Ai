@@ -281,26 +281,30 @@ class AIWorker:
                 # 6. Calculate inference latency
                 inference_latency_ms = (time.time() - start_time) * 1000
                 
-                # 7. Publish result (if confidence met)
-                if result:
-                    result["inference_latency_ms"] = inference_latency_ms
-                    # Save detection image with bounding box (only if above image threshold)
-                    # Image threshold is higher than publish threshold to reduce gallery noise
-                    image_threshold = float(os.getenv("IMAGE_SAVE_THRESHOLD", "0.50"))
-                    detection_image_path = ""
-                    if result.get("confidence", 0) >= image_threshold:
-                        detection_image_path = self._save_detection_image(
-                            frame, result, task, base_logger
-                        )
-                        if detection_image_path:
-                            result["detection_image"] = detection_image_path
+                # 7. Publish result (ALWAYS publish so ECS can cleanup)
+                if not result:
+                    result = {"confidence": 0.0, "bbox": []}
                     
-                    self.result_publisher.publish(
-                        task=task,
-                        result=result,
-                        model_type=self.config.model_type
+                result["inference_latency_ms"] = inference_latency_ms
+                
+                # Save detection image with bounding box (only if above image threshold)
+                # Image threshold is higher than publish threshold to reduce gallery noise
+                image_threshold = float(os.getenv("IMAGE_SAVE_THRESHOLD", "0.50"))
+                detection_image_path = ""
+                if result.get("confidence", 0) >= image_threshold:
+                    detection_image_path = self._save_detection_image(
+                        frame, result, task, base_logger
                     )
-                    
+                    if detection_image_path:
+                        result["detection_image"] = detection_image_path
+                
+                self.result_publisher.publish(
+                    task=task,
+                    result=result,
+                    model_type=self.config.model_type
+                )
+                
+                if result.get("confidence", 0) >= self.config.confidence_threshold:
                     base_logger.info(
                         f"DETECTION {task.frame_id} confidence={result.get('confidence', 0):.3f}",
                         extra={
