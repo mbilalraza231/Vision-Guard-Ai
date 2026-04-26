@@ -111,10 +111,12 @@ class ResultPublisher:
         # Retry logic
         for attempt in range(self.MAX_RETRIES):
             try:
-                # Publish to Redis stream (XADD)
+                # Publish to Redis stream (XADD) with maxlen to prevent memory leaks
                 message_id = self.client.xadd(
                     self.RESULT_STREAM,
-                    result_dict
+                    result_dict,
+                    maxlen=10000,
+                    approximate=True
                 )
                 
                 self.results_published += 1
