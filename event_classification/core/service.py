@@ -11,6 +11,10 @@ import time
 import redis as redis_lib
 from multiprocessing import Process, Event as ProcessEvent
 from typing import Optional
+import json
+import psutil
+import threading
+import socket
 
 from ..config import ECSConfig
 from ..buffer.frame_buffer import FrameBuffer
@@ -67,6 +71,8 @@ class ECSService:
         self.camera_history_manager: Optional[CameraHistoryManager] = None
         # Clip request publisher
         self._clip_redis: Optional[redis_lib.Redis] = None
+        # Metrics reporter
+        self._metrics_reporter = None
     
     def start(self) -> bool:
         """
@@ -141,6 +147,51 @@ class ECSService:
         
         self.logger.info("ECS starting (SINGLE INSTANCE)")
         
+        # Setup metrics reporter inside the process
+        try:
+            r_client = redis_lib.Redis(
+                host=self.config.redis_host,
+                port=self.config.redis_port,
+                db=self.config.redis_db or 0
+            )
+            # Create a simplified reporter here as well
+            class MetricsReporter:
+                def __init__(self, r, name):
+                    self.r, self.name = r, name
+                    self.pid = os.getpid()
+                    self.host = socket.gethostname()
+                    self.key = f"vg:metrics:{name}:{self.host}"
+                    self._stop = threading.Event()
+                def start(self):
+                    threading.Thread(target=self._run, daemon=True).start()
+                def _run(self):
+                    p = psutil.Process(self.pid)
+                    p.cpu_percent(interval=None)
+                    while not self._stop.is_set():
+                        try:
+                            mem = p.memory_info().rss
+                            for c in p.children(recursive=True):
+                                try: mem += c.memory_info().rss
+                                except: pass
+                            cpu = p.cpu_percent(interval=0.5)
+                            for c in p.children(recursive=True):
+                                try: cpu += c.cpu_percent(interval=0.5)
+                                except: pass
+                            self.r.setex(self.key, 15, json.dumps({
+                                "cpu_percent": round(cpu, 2),
+                                "memory_gb": round(mem / (1024**3), 4),
+                                "timestamp": time.time()
+                            }))
+                        except: pass
+                        time.sleep(5)
+                def stop(self): self._stop.set()
+
+            self._metrics_reporter = MetricsReporter(r_client, "ecs")
+            self._metrics_reporter.start()
+            self.logger.info("ECS metrics heartbeat started")
+        except Exception as e:
+            self.logger.warning(f"Failed to start metrics reporter: {e}")
+        
         try:
             # Initialize components
             if not self._initialize():
@@ -157,6 +208,8 @@ class ECSService:
             )
         finally:
             # Cleanup
+            if self._metrics_reporter:
+                self._metrics_reporter.stop()
             self._shutdown()
     
     def _initialize(self) -> bool:

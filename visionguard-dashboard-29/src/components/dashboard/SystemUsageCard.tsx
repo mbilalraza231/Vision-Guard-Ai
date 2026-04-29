@@ -47,15 +47,12 @@ export function SystemUsageCard({ metrics }: SystemUsageCardProps) {
               {metrics.memoryUsed}GB / {metrics.memoryTotal}GB
             </span>
           </div>
-          <div className="flex items-end justify-center gap-2 h-28">
+          <div className="flex items-end justify-center gap-2 h-32">
             <BarIndicator
               value={metrics.memoryUsed}
               max={metrics.memoryTotal}
-              className="w-20"
+              className="w-full"
             />
-            <div className="flex items-center gap-1 text-xs text-status-online">
-              <span>Normal</span>
-            </div>
           </div>
         </div>
 
@@ -67,12 +64,12 @@ export function SystemUsageCard({ metrics }: SystemUsageCardProps) {
               {metrics.incidentsStored.toLocaleString()} Incidents
             </span>
           </div>
-          <div className="flex items-end justify-center gap-2 h-28">
+          <div className="flex items-end justify-center gap-2 h-32">
             <BarIndicator
               value={metrics.storageUsed}
               max={metrics.storageTotal}
-              className="w-20"
-              valueLabel={`${metrics.storageUsed}GB / ${metrics.storageTotal >= 1000 ? `${metrics.storageTotal / 1000}TB` : `${metrics.storageTotal}GB`}`}
+              unit="MB"
+              className="w-full"
             />
           </div>
         </div>

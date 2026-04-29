@@ -11,6 +11,15 @@ import logging
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import time
+import json
+import psutil
+import threading
+import socket
+import redis
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from ai_worker import start_worker, stop_worker, WorkerConfig
 
 logging.basicConfig(
@@ -18,6 +27,45 @@ logging.basicConfig(
     format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+class MetricsReporter:
+    def __init__(self, redis_client, service_name: str):
+        self.redis = redis_client
+        self.service_name = service_name
+        self.instance_id = socket.gethostname()
+        self.key = f"vg:metrics:{service_name}:{self.instance_id}"
+        self.process = psutil.Process(os.getpid())
+        self._stop = threading.Event()
+        self._thread = None
+
+    def start(self):
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def _run(self):
+        self.process.cpu_percent(interval=None)
+        while not self._stop.is_set():
+            try:
+                mem = self.process.memory_info().rss
+                for c in self.process.children(recursive=True):
+                    try: mem += c.memory_info().rss
+                    except: pass
+                cpu = self.process.cpu_percent(interval=0.5)
+                for c in self.process.children(recursive=True):
+                    try: cpu += c.cpu_percent(interval=0.5)
+                    except: pass
+                
+                metrics = {
+                    "cpu_percent": round(cpu, 2),
+                    "memory_gb": round(mem / (1024**3), 4),
+                    "timestamp": time.time()
+                }
+                self.redis.setex(self.key, 15, json.dumps(metrics))
+            except: pass
+            time.sleep(5)
+
+    def stop(self):
+        self._stop.set()
 
 MODEL_QUEUE_MAP = {
     "weapon": "vg:critical",
@@ -79,11 +127,25 @@ def main():
     )
     
     worker = None
+    reporter = None
+    
+    # Start metrics reporter
+    try:
+        r_host = os.getenv("REDIS_HOST", "localhost")
+        r_port = int(os.getenv("REDIS_PORT", "6379"))
+        r_client = redis.Redis(host=r_host, port=r_port)
+        reporter = MetricsReporter(r_client, f"worker-{model_type}")
+        reporter.start()
+        logger.info(f"Metrics heartbeat started for worker-{model_type}")
+    except Exception as e:
+        logger.warning(f"Failed to start metrics reporter: {e}")
 
     def shutdown(signum, frame):
         logger.info("Received shutdown signal, stopping worker...")
         if worker:
             stop_worker(worker)
+        if reporter:
+            reporter.stop()
         sys.exit(0)
     
     signal.signal(signal.SIGTERM, shutdown)

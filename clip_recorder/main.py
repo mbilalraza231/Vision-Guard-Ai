@@ -15,6 +15,10 @@ import sys
 import time
 
 import redis
+import psutil
+import json
+import threading
+import socket
 
 from .config import ClipConfig, CLIP_REQUEST_STREAM
 from .recorder import ClipRecorder
@@ -29,6 +33,40 @@ def setup_logging(level_str: str) -> None:
         datefmt="%Y-%m-%dT%H:%M:%S",
         stream=sys.stdout,
     )
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+    logging.getLogger().handlers = [handler]
+
+class MetricsReporter:
+    def __init__(self, r, name):
+        self.r, self.name = r, name
+        self.pid = os.getpid()
+        self.host = socket.gethostname()
+        self.key = f"vg:metrics:{name}:{self.host}"
+        self._stop = threading.Event()
+    def start(self):
+        threading.Thread(target=self._run, daemon=True).start()
+    def _run(self):
+        p = psutil.Process(self.pid)
+        p.cpu_percent(interval=None)
+        while not self._stop.is_set():
+            try:
+                mem = p.memory_info().rss
+                for c in p.children(recursive=True):
+                    try: mem += c.memory_info().rss
+                    except: pass
+                cpu = p.cpu_percent(interval=0.5)
+                for c in p.children(recursive=True):
+                    try: cpu += c.cpu_percent(interval=0.5)
+                    except: pass
+                self.r.setex(self.key, 15, json.dumps({
+                    "cpu_percent": round(cpu, 2),
+                    "memory_gb": round(mem / (1024**3), 4),
+                    "timestamp": time.time()
+                }))
+            except: pass
+            time.sleep(5)
+    def stop(self): self._stop.set()
 
 
 def main() -> None:
@@ -75,6 +113,11 @@ def main() -> None:
         except redis.ConnectionError as e:
             log.warning(f"Redis not available, retrying in 5s: {e}")
             time.sleep(5)
+
+    # --- Start metrics reporter ---
+    reporter = MetricsReporter(redis_client, "clip-recorder")
+    reporter.start()
+    log.info("Metrics heartbeat started")
 
     # --- Initialise recorder ---
     recorder = ClipRecorder(config)
@@ -174,6 +217,8 @@ def main() -> None:
             time.sleep(1)
 
     recorder.shutdown()
+    if reporter:
+        reporter.stop()
     log.info("Clip recorder stopped")
 
 

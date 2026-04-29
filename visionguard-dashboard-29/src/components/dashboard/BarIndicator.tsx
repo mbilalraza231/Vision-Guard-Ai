@@ -3,11 +3,12 @@ interface BarIndicatorProps {
   max: number;
   label?: string;
   valueLabel?: string;
+  unit?: string;
   className?: string;
 }
 
-export function BarIndicator({ value, max, label, valueLabel, className }: BarIndicatorProps) {
-  const percentage = Math.min((value / max) * 100, 100);
+export function BarIndicator({ value, max, label, valueLabel, unit = 'GB', className }: BarIndicatorProps) {
+  const percentage = Math.max(0, Math.min((value / max) * 100, 100));
 
   return (
     <div className={className}>
@@ -17,14 +18,14 @@ export function BarIndicator({ value, max, label, valueLabel, className }: BarIn
           <span className="text-sm text-muted-foreground">{valueLabel}</span>
         </div>
       )}
-      <div className="relative h-20 w-full rounded-lg bg-muted overflow-hidden">
+      <div className="relative h-28 w-full rounded-xl bg-secondary/50 overflow-hidden border border-border/50 shadow-inner">
         <div
-          className="absolute bottom-0 left-0 right-0 bg-primary/60 transition-all duration-500 rounded-lg"
+          className="absolute bottom-0 left-0 right-0 bg-primary/70 transition-all duration-700 ease-out rounded-xl"
           style={{ height: `${percentage}%` }}
         />
         <div className="absolute inset-0 flex items-center justify-center">
           <span className="text-sm font-medium text-foreground">
-            {value.toFixed(1)} GB
+            {valueLabel || `${value.toFixed(1)} ${unit}`}
           </span>
         </div>
       </div>

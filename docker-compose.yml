@@ -75,6 +75,7 @@ services:
       - vg-data:/data
       - vg-logs:/var/log/visionguard
       - ./cameras.json:/app/cameras.json:ro
+      - vg-frames:/shared-frames
     environment:
       - VG_HOST=0.0.0.0
       - VG_PORT=8000
@@ -84,6 +85,8 @@ services:
       - VG_RUNTIME_MODE=docker
       - VG_LOG_LEVEL=${VG_LOG_LEVEL:-INFO}
       - VG_DB_PATH=/data/visionguard/events.db
+      - SHARED_FRAMES_DIR=/shared-frames
+      - VG_STORAGE_TOTAL_MB=512000
     depends_on:
       redis:
         condition: service_healthy

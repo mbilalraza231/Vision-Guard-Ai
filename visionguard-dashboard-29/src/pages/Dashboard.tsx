@@ -38,6 +38,12 @@ interface StatusResponse {
     redis: { name: string; status: string; details: Record<string, unknown> };
     cameras: { name: string; status: string; details: Record<string, unknown> };
   };
+  cpu_usage: number;
+  cpu_cores: number;
+  memory_used_gb: number;
+  memory_total_gb: number;
+  storage_used_mb: number;
+  storage_total_mb: number;
 }
 
 interface BackendEvent {
@@ -124,12 +130,12 @@ export default function Dashboard() {
 
   // Map system status to SystemMetrics shape for the existing component
   const metrics: SystemMetrics = {
-    cpuUsage: 0,
-    cpuCores: '-',
-    memoryUsed: 0,
-    memoryTotal: 0,
-    storageUsed: 0,
-    storageTotal: 0,
+    cpuUsage: systemStatus?.cpu_usage ?? 0,
+    cpuCores: `${systemStatus?.cpu_cores ?? '-'} Cores`,
+    memoryUsed: systemStatus?.memory_used_gb ?? 0,
+    memoryTotal: systemStatus?.memory_total_gb ?? 0,
+    storageUsed: systemStatus?.storage_used_mb ?? 0,
+    storageTotal: systemStatus?.storage_total_mb ?? 0,
     incidentsStored: stats?.total_events ?? 0,
     isOperational: systemStatus?.status === 'healthy',
     lastUpdated: systemStatus

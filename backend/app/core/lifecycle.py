@@ -15,6 +15,9 @@ from .config import get_settings
 from ..services.ecs_manager import get_ecs_manager
 from ..services.camera_manager import get_camera_manager
 from ..utils.logging import setup_logging, get_logger
+from ..utils.metrics_utils import MetricsReporter
+from ..core.config import get_redis_config
+import redis
 
 logger = get_logger(__name__)
 
@@ -48,6 +51,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     ecs_manager = get_ecs_manager()
     camera_manager = get_camera_manager()
     
+    # Initialize metrics reporter
+    try:
+        redis_config = get_redis_config()
+        redis_client = redis.Redis(**redis_config)
+        app.state.metrics_reporter = MetricsReporter(redis_client, "backend")
+        app.state.metrics_reporter.start()
+        logger.info("Project metrics heartbeat started")
+    except Exception as e:
+        logger.warning(f"Failed to start metrics heartbeat: {e}")
+
     logger.info("Service managers initialized")
     logger.info(f"Backend ready at http://{settings.host}:{settings.port}")
     
@@ -73,6 +86,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info(f"Stopping {camera_status['running']} cameras...")
         await camera_manager.stop_all()
     
+    # Stop metrics reporter
+    if hasattr(app.state, "metrics_reporter"):
+        app.state.metrics_reporter.stop()
+        logger.info("Project metrics heartbeat stopped")
+
     logger.info("Shutdown complete")
 
 

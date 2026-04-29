@@ -38,6 +38,12 @@ class StatusResponse(BaseModel):
     timestamp: str
     uptime_seconds: float
     components: Dict[str, ComponentStatus]
+    cpu_usage: float = Field(description="CPU usage percentage")
+    cpu_cores: int = Field(description="Number of CPU cores")
+    memory_used_gb: float = Field(description="Used memory in GB")
+    memory_total_gb: float = Field(description="Total memory in GB")
+    storage_used_mb: float = Field(description="Storage used by shared frames in MB")
+    storage_total_mb: float = Field(description="Total storage capacity in MB")
     
     class Config:
         json_schema_extra = {

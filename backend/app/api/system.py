@@ -8,6 +8,8 @@ GET  /metrics
 """
 
 import time
+import os
+import psutil
 from datetime import datetime
 from typing import Dict, Any
 
@@ -19,6 +21,7 @@ from ..services.ecs_manager import get_ecs_manager, ECSManager
 from ..services.camera_manager import get_camera_manager, CameraManager
 from ..models.system import HealthResponse, StatusResponse, MetricsResponse, ComponentStatus
 from ..utils.logging import get_logger
+from ..utils.metrics_utils import aggregate_project_metrics
 
 router = APIRouter(tags=["System"])
 logger = get_logger(__name__)
@@ -62,6 +65,26 @@ def check_redis_health() -> Dict[str, Any]:
             "status": "error",
             "error": str(e)
         }
+
+
+def get_directory_size(path: str) -> float:
+    """Calculate total size of a directory in MB."""
+    total_size = 0
+    if not os.path.exists(path):
+        return 0.0
+    
+    try:
+        for dirpath, dirnames, filenames in os.walk(path):
+            for f in filenames:
+                fp = os.path.join(dirpath, f)
+                # skip if it is symbolic link
+                if not os.path.islink(fp):
+                    total_size += os.path.getsize(fp)
+    except Exception:
+        pass
+        
+    # Convert to MB
+    return round(total_size / (1024 * 1024), 1)
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -130,11 +153,51 @@ async def system_status(
     else:
         overall_status = "healthy"
     
+    # Fetch aggregated project-only metrics
+    try:
+        redis_config = get_redis_config()
+        r_client = redis.Redis(**redis_config)
+        project_metrics = aggregate_project_metrics(r_client)
+        cpu_usage = project_metrics["cpu_usage"]
+        memory_used = project_metrics["memory_used_gb"]
+        r_client.close()
+    except Exception:
+        cpu_usage = 0.0
+        memory_used = 0.0
+        
+    cpu_cores = psutil.cpu_count(logical=True)
+    
+    virtual_mem = psutil.virtual_memory()
+    memory_total = round(virtual_mem.total / (1024 * 1024 * 1024), 2)
+    
+    shared_frames_dir = os.environ.get("SHARED_FRAMES_DIR", "/shared-frames")
+    storage_used = get_directory_size(shared_frames_dir)
+    
+    # Storage total (approximate disk/volume size in MB)
+    storage_total_override = os.environ.get("VG_STORAGE_TOTAL_MB")
+    if storage_total_override:
+        try:
+            storage_total = float(storage_total_override)
+        except ValueError:
+            storage_total = 512000.0
+    else:
+        try:
+            usage = psutil.disk_usage(shared_frames_dir)
+            storage_total = round(usage.total / (1024 * 1024), 1)
+        except Exception:
+            storage_total = 512000.0  # Default to 512GB in MB
+    
     return StatusResponse(
         status=overall_status,
         timestamp=datetime.utcnow().isoformat() + "Z",
         uptime_seconds=round(time.time() - _start_time, 2),
-        components=components
+        components=components,
+        cpu_usage=cpu_usage,
+        cpu_cores=cpu_cores,
+        memory_used_gb=memory_used,
+        memory_total_gb=memory_total,
+        storage_used_mb=storage_used,
+        storage_total_mb=storage_total
     )
 
 
