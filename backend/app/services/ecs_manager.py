@@ -16,8 +16,10 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
 from ..core.supervisor import ProcessSupervisor, ProcessState
-from ..core.config import get_settings, get_ecs_config
+from ..core.config import get_settings, get_ecs_config, get_redis_config
 from ..utils.logging import get_logger
+from ..utils.metrics_utils import check_service_liveness
+import redis
 
 logger = get_logger(__name__)
 
@@ -206,6 +208,19 @@ class ECSManager:
         status = self._supervisor.get_status()
         settings = get_settings()
         
+        # In docker mode, if supervisor says stopped, check Redis heartbeat
+        if settings.is_docker_runtime and status["state"] == ProcessState.STOPPED:
+            try:
+                r_config = get_redis_config()
+                r_client = redis.Redis(**r_config)
+                if check_service_liveness(r_client, "ecs"):
+                    status["state"] = ProcessState.RUNNING
+                    status["is_alive"] = True
+                    status["message"] = "ECS is running (detected via heartbeat)"
+                r_client.close()
+            except Exception:
+                pass
+
         # Add ECS-specific info
         status["config"] = self._config
         status["manager_start_time"] = (
@@ -218,12 +233,42 @@ class ECSManager:
     
     def is_running(self) -> bool:
         """Check if ECS is running."""
-        return self._supervisor.check_health()
+        if self._supervisor.check_health():
+            return True
+        
+        # If supervisor doesn't see it, check heartbeat in Docker mode
+        settings = get_settings()
+        if settings.is_docker_runtime:
+            try:
+                r_config = get_redis_config()
+                r_client = redis.Redis(**r_config)
+                alive = check_service_liveness(r_client, "ecs")
+                r_client.close()
+                return alive
+            except Exception:
+                return False
+        
+        return False
     
     @property
     def state(self) -> ProcessState:
         """Get current ECS state."""
-        self._supervisor.check_health()
+        if self._supervisor.check_health():
+            return self._supervisor.info.state
+            
+        # If supervisor doesn't see it, check heartbeat in Docker mode
+        settings = get_settings()
+        if settings.is_docker_runtime:
+            try:
+                r_config = get_redis_config()
+                r_client = redis.Redis(**r_config)
+                alive = check_service_liveness(r_client, "ecs")
+                r_client.close()
+                if alive:
+                    return ProcessState.RUNNING
+            except Exception:
+                pass
+                
         return self._supervisor.info.state
 
 

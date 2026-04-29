@@ -99,3 +99,20 @@ def aggregate_project_metrics(redis_client) -> Dict[str, float]:
         "cpu_usage": round(total_cpu, 2),
         "memory_used_gb": round(total_memory, 3)
     }
+
+def check_service_liveness(redis_client, service_name: str) -> bool:
+    """
+    Check if a specific service has an active heartbeat in Redis.
+    
+    Args:
+        redis_client: Redis client instance
+        service_name: Name of the service (e.g., 'ecs', 'camera')
+        
+    Returns:
+        True if at least one instance of the service is active
+    """
+    try:
+        keys = redis_client.keys(f"vg:metrics:{service_name}:*")
+        return len(keys) > 0
+    except Exception:
+        return False

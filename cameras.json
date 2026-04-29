@@ -3,8 +3,8 @@
         {
             "id": "ip_webcam",
             "name": "IP Webcam Stream",
-            "source": "http://192.168.0.100:8080/video",
-            "fps": 15,
+            "source": "http://192.168.0.102:8080/video",
+            "fps": 30,
             "motion_threshold": 0.02,
             "priority": "critical",
             "enabled": true,

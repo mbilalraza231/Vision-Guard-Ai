@@ -39,9 +39,11 @@ async def list_cameras(
 ) -> List[dict]:
     """
     Get all cameras from cameras.json merged with runtime status.
-    
+
     Returns camera config (name, source, fps, priority, enabled) merged
     with runtime state (running/stopped/unknown, pid).
+    In Docker mode, also checks Redis vg:camera:sources to detect
+    which cameras the camera container is actively streaming.
     """
     # Read cameras.json
     cameras_config = []
@@ -56,9 +58,30 @@ async def list_cameras(
         logger.error(f"Failed to read cameras.json: {e}")
         return []
 
-    # Get runtime status from camera_manager
+    # Get runtime status from camera_manager (local process mode)
     runtime_status = camera_manager.get_all_status()
     runtime_cameras = runtime_status.get("cameras", {})
+
+    # In Docker mode, check Redis for which cameras are actively running
+    redis_active_cameras: set = set()
+    camera_service_alive = False
+    try:
+        from ..core.config import get_settings, get_redis_config
+        from ..utils.metrics_utils import check_service_liveness
+        import redis as redis_lib
+        settings = get_settings()
+        if settings.is_docker_runtime:
+            r_config = get_redis_config()
+            r_client = redis_lib.Redis(**r_config)
+            camera_service_alive = check_service_liveness(r_client, "camera")
+            if camera_service_alive:
+                sources = r_client.hgetall("vg:camera:sources")
+                for key in sources:
+                    cam_id = key.decode("utf-8") if isinstance(key, bytes) else key
+                    redis_active_cameras.add(cam_id)
+            r_client.close()
+    except Exception as e:
+        logger.warning(f"Could not check Redis camera liveness: {e}")
 
     # Merge config with runtime status
     result = []
@@ -67,8 +90,17 @@ async def list_cameras(
         runtime = runtime_cameras.get(cam_id)
 
         if runtime is not None:
+            # Local process manager knows about it
             status = "running" if runtime.get("is_running") else "stopped"
             pid = runtime.get("pid")
+        elif cam_id in redis_active_cameras:
+            # Docker camera container is actively streaming this camera
+            status = "running"
+            pid = None
+        elif camera_service_alive and cam.get("enabled", True):
+            # Camera service is alive but this cam isn't in sources — stopped/failed
+            status = "stopped"
+            pid = None
         else:
             status = "unknown"
             pid = None
