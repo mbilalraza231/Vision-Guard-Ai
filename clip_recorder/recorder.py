@@ -189,59 +189,78 @@ class ClipRecorder:
         result["snapshot_local"] = snapshot_path
         if snapshot_path:
             logger.info(f"Found snapshot: {snapshot_path}")
+            # WRITE SNAPSHOT TO DB IMMEDIATELY (Instant feedback)
+            self._write_evidence(event_id, result)
         else:
-            logger.warning(
-                f"No matching snapshot found for event {event_id}",
-                extra={"camera_id": camera_id, "detection_ts": detection_ts},
-            )
+            logger.warning(f"No matching snapshot found for event {event_id}")
 
-        # Step 2 — Record latency-aware post-event clip from ring buffer
+        # Step 2 — Record latency-aware post-event clip (This takes 10-15 seconds)
         clip_path = self._record_clip(event_id, event_type, camera_source, detection_ts)
         result["clip_local"] = clip_path
         if clip_path:
             logger.info(f"Clip recorded: {clip_path}")
-        else:
-            result["clip_error"] = "clip_record_failed"
-            logger.warning(f"Clip recording failed or skipped for event {event_id}")
-
-        # Step 3 — Upload snapshot
-        if snapshot_path and os.path.exists(snapshot_path):
-            result["snapshot_url"] = self.uploader.upload_snapshot(
-                snapshot_path, event_id, event_type
-            )
-
-        # Step 4 — Upload clip
-        if clip_path and os.path.exists(clip_path):
-            result["clip_url"] = self.uploader.upload_clip(
-                clip_path, event_id, event_type
-            )
-            if not result["clip_url"]:
-                result["clip_error"] = "clip_upload_failed"
-            # Step 6 — We now keep the local clip even after successful upload
-            if result["clip_url"]:
-                logger.info(f"Kept local clip file: {clip_path} (upload was successful)")
-
-        # Step 5 — Write evidence to database
-        self._write_evidence(event_id, result)
-
-        if result["clip_url"] or result["clip_local"]:
+            # WRITE CLIP TO DB IMMEDIATELY (Available before Cloud upload)
+            self._write_evidence(event_id, result)
             self._update_clip_status(event_id, "ready", None)
         else:
-            self._update_clip_status(
-                event_id,
-                "failed",
-                result.get("clip_error") or "clip_not_available",
-            )
+            result["clip_error"] = "clip_record_failed"
+            self._update_clip_status(event_id, "failed", "clip_record_failed")
+            logger.warning(f"Clip recording failed or skipped for event {event_id}")
+
+        # Step 3 — Start background thread for Cloudinary upload
+        if self.config.cloudinary_configured:
+            threading.Thread(
+                target=self._upload_and_update_task,
+                args=(event_id, event_type, result),
+                daemon=True,
+                name=f"Upload-{event_id[:8]}"
+            ).start()
+            logger.info(f"Started background upload task for event {event_id}")
 
         logger.info(
-            f"Clip pipeline complete for event {event_id}",
+            f"Local capture pipeline complete for event {event_id}. Cloud upload pending in background.",
             extra={
-                "snapshot_url": result["snapshot_url"],
-                "clip_url": result["clip_url"],
+                "snapshot": result["snapshot_local"],
+                "clip": result["clip_local"],
             },
         )
 
         return result
+
+    def _upload_and_update_task(
+        self,
+        event_id: str,
+        event_type: str,
+        result: Dict[str, Any],
+    ) -> None:
+        """Background task to upload to Cloudinary and update database records."""
+        try:
+            snapshot_path = result.get("snapshot_local")
+            clip_path = result.get("clip_local")
+            
+            # 1. Upload Snapshot
+            if snapshot_path and os.path.exists(snapshot_path):
+                snapshot_url = self.uploader.upload_snapshot(
+                    snapshot_path, event_id, event_type
+                )
+                if snapshot_url:
+                    result["snapshot_url"] = snapshot_url
+                    self._write_evidence(event_id, result)  # Update DB with cloud URL
+
+            # 2. Upload Clip
+            if clip_path and os.path.exists(clip_path):
+                clip_url = self.uploader.upload_clip(
+                    clip_path, event_id, event_type
+                )
+                if clip_url:
+                    result["clip_url"] = clip_url
+                    self._write_evidence(event_id, result)  # Update DB with cloud URL
+                    logger.info(f"Background upload successful for event {event_id}")
+                else:
+                    logger.warning(f"Background clip upload failed for event {event_id}")
+
+        except Exception as e:
+            logger.error(f"Error in background upload task for event {event_id}: {e}")
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -490,29 +509,18 @@ class ClipRecorder:
         result: Dict[str, Any],
     ) -> None:
         """
-        Insert snapshot and/or clip evidence rows into event_evidence table.
-
-        Silently skips if both URLs are None. Never raises.
-
-        Args:
-            event_id: UUID of the event
-            result:   Dict with snapshot_url and clip_url keys
+        Write evidence to database. Handles both initial local write and cloud updates.
         """
         snapshot_url = result.get("snapshot_url")
         clip_url = result.get("clip_url")
-
-        # Fallback to local paths if cloud upload failed or is disabled
         snapshot_local = result.get("snapshot_local")
         clip_local = result.get("clip_local")
 
-        # Use cloud URL if available, otherwise use local path
+        # Prioritize cloud URLs if they exist
         final_snapshot = snapshot_url or snapshot_local
         final_clip = clip_url or clip_local
 
         if not final_snapshot and not final_clip:
-            logger.warning(
-                f"No evidence for event {event_id} — nothing to write"
-            )
             return
 
         try:
@@ -521,47 +529,62 @@ class ClipRecorder:
             cursor = conn.cursor()
             now = time.time()
 
+            # Process Snapshot
             if final_snapshot:
                 provider = "cloudinary" if snapshot_url else "local"
+                # Check if record already exists for this (event_id, evidence_type)
                 cursor.execute(
-                    """
-                    INSERT INTO event_evidence
-                        (id, event_id, evidence_type, storage_provider, public_url, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        str(uuid.uuid4()),
-                        event_id,
-                        "snapshot",
-                        provider,
-                        final_snapshot,
-                        now,
-                    ),
+                    "SELECT id FROM event_evidence WHERE event_id = ? AND evidence_type = ?",
+                    (event_id, "snapshot")
                 )
+                row = cursor.fetchone()
+                
+                if row:
+                    # Update existing record (promote local to cloud)
+                    cursor.execute(
+                        "UPDATE event_evidence SET storage_provider = ?, public_url = ? WHERE id = ?",
+                        (provider, final_snapshot, row[0])
+                    )
+                else:
+                    # Insert new record
+                    cursor.execute(
+                        """
+                        INSERT INTO event_evidence
+                            (id, event_id, evidence_type, storage_provider, public_url, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        (str(uuid.uuid4()), event_id, "snapshot", provider, final_snapshot, now),
+                    )
                 logger.info(
-                    f"Snapshot evidence written for event {event_id}",
+                    f"Snapshot evidence {provider} updated for event {event_id}",
                     extra={"url": final_snapshot},
                 )
 
+            # Process Clip
             if final_clip:
                 provider = "cloudinary" if clip_url else "local"
                 cursor.execute(
-                    """
-                    INSERT INTO event_evidence
-                        (id, event_id, evidence_type, storage_provider, public_url, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        str(uuid.uuid4()),
-                        event_id,
-                        "clip",
-                        provider,
-                        final_clip,
-                        now,
-                    ),
+                    "SELECT id FROM event_evidence WHERE event_id = ? AND evidence_type = ?",
+                    (event_id, "clip")
                 )
+                row = cursor.fetchone()
+                
+                if row:
+                    cursor.execute(
+                        "UPDATE event_evidence SET storage_provider = ?, public_url = ? WHERE id = ?",
+                        (provider, final_clip, row[0])
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        INSERT INTO event_evidence
+                            (id, event_id, evidence_type, storage_provider, public_url, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        (str(uuid.uuid4()), event_id, "clip", provider, final_clip, now),
+                    )
                 logger.info(
-                    f"Clip evidence written for event {event_id}",
+                    f"Clip evidence {provider} updated for event {event_id}",
                     extra={"url": final_clip},
                 )
 
@@ -569,10 +592,7 @@ class ClipRecorder:
             conn.close()
 
         except Exception as e:
-            logger.error(
-                f"Failed to write evidence for event {event_id}: {e}",
-                extra={"event_id": event_id},
-            )
+            logger.error(f"Failed to write evidence for event {event_id}: {e}")
 
     def _update_clip_status(
         self,

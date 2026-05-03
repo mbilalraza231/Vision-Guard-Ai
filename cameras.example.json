@@ -1,0 +1,29 @@
+{
+    "cameras": [
+        {
+            "id": "ip_webcam",
+            "name": "IP Webcam Stream",
+            "source": "http://192.168.0.X:8080/video",
+            "fps": 30,
+            "motion_threshold": 0.02,
+            "priority": "critical",
+            "enabled": true,
+            "_comment": "Template for Mobile IP Webcam"
+        },
+        {
+            "id": "rtsp_camera_01",
+            "name": "External RTSP Camera",
+            "source": "rtsp://YOUR_USERNAME:YOUR_PASSWORD@192.168.X.X:554/live",
+            "fps": 15,
+            "motion_threshold": 0.02,
+            "priority": "high",
+            "enabled": false,
+            "_comment": "Template for RTSP security camera"
+        }
+    ],
+    "global": {
+        "motion_detection": true,
+        "default_fps": 15,
+        "reconnect_delay_sec": 5
+    }
+}

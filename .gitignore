@@ -40,6 +40,7 @@ test_report.txt
 /data/
 *.db
 *.sqlite
+cameras.json
 
 # SQLite WAL/SHM files
 *.db-wal
@@ -66,3 +67,4 @@ datasets/
 # Binaries
 mediamtx
 models/backup/
+scratch/
