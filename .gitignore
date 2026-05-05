@@ -32,6 +32,7 @@ test_report.txt
 # Environment
 .env
 .env.*
+!.env.example
 
 # Runtime
 .vg_pids
