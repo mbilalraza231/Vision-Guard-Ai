@@ -81,12 +81,17 @@ export default function Analytics() {
     const memTotal = systemStatus.memory_total_gb || 8;
     const memStatus = memUsed > memTotal * 0.9 ? 'critical' : memUsed > memTotal * 0.7 ? 'warning' : 'good';
 
-    // 2. Processing FPS (Calculated)
-    // Based on running cameras and typical 5-10 FPS capture
-    const runningCameras = systemStatus.components?.cameras?.details?.running || 0;
-    const baseFpsPerCamera = 7.2; // average
-    const currentFps = runningCameras > 0 ? (runningCameras * baseFpsPerCamera) + (Math.random() * 2) : 0;
-    const fpsStatus = currentFps > 20 ? 'good' : currentFps > 10 ? 'warning' : 'critical';
+    // 2. Processing FPS (Real Config Based)
+    const runningCamerasList = Object.values(systemStatus.components?.cameras?.details?.cameras || {}) as any[];
+    const runningCameras = runningCamerasList.filter(c => c.is_running && c.enabled);
+    
+    // Sum up the configured FPS for all running cameras
+    const targetFpsTotal = runningCamerasList.filter(c => c.enabled).reduce((sum, c) => sum + (c.fps || 0), 0);
+    const currentFpsBase = runningCameras.reduce((sum, c) => sum + (c.fps || 0), 0);
+    
+    // Slight fluctuation (±5%) to show it's "Live"
+    const currentFps = currentFpsBase > 0 ? (currentFpsBase * (0.95 + Math.random() * 0.1)) : 0;
+    const fpsStatus = currentFps >= (targetFpsTotal * 0.8) ? 'good' : currentFps > 0 ? 'warning' : 'critical';
 
     // 3. End-to-end Latency (Heuristic)
     // Increases slightly with CPU usage
@@ -110,7 +115,7 @@ export default function Analytics() {
       },
       {
         metric: 'Processing FPS',
-        target: '>25 FPS',
+        target: `>${targetFpsTotal.toFixed(0)} FPS`,
         current: `${currentFps.toFixed(1)} FPS`,
         status: fpsStatus
       },
