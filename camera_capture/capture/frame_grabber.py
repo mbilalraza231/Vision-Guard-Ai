@@ -34,6 +34,7 @@ class FrameGrabber:
         self.frame_interval = 1.0 / fps
         self.logger = logging.getLogger(__name__)
         
+        self.start_time = time.time()
         self.last_capture_time = 0.0
         self.frames_captured = 0
         self.frames_skipped = 0
@@ -79,10 +80,10 @@ class FrameGrabber:
         Returns:
             Dictionary with fps, frames_captured, frames_skipped, actual_fps
         """
-        # Calculate actual FPS
-        if self.last_capture_time > 0:
-            elapsed_time = time.time() - self.last_capture_time
-            actual_fps = self.frames_captured / elapsed_time if elapsed_time > 0 else 0.0
+        # Calculate actual FPS since last reset
+        if self.start_time > 0:
+            elapsed_time = time.time() - self.start_time
+            actual_fps = self.frames_captured / elapsed_time if elapsed_time > 0.5 else self.fps
         else:
             actual_fps = 0.0
         
@@ -95,6 +96,7 @@ class FrameGrabber:
     
     def reset(self) -> None:
         """Reset statistics."""
+        self.start_time = time.time()
         self.last_capture_time = 0.0
         self.frames_captured = 0
         self.frames_skipped = 0
