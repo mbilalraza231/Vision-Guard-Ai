@@ -306,17 +306,30 @@ class CameraProcess:
                         extra={"frames_processed": frames_processed}
                     )
 
-                if time.time() - last_heartbeat >= heartbeat_interval_sec:
-                    self.logger.info(
+                # Report real FPS to Redis every 5 seconds
+                now = time.time()
+                if now - last_heartbeat >= 5.0:
+                    stats = self.frame_grabber.get_stats()
+                    actual_fps = stats.get("actual_fps", 0.0)
+                    
+                    # Store in Redis for the backend to read
+                    if self.redis_producer and self.redis_producer.client:
+                        try:
+                            # Key format: vg:metrics:camera:{camera_id}:fps
+                            fps_key = f"vg:metrics:camera:{self.camera_config.camera_id}:fps"
+                            self.redis_producer.client.setex(fps_key, 15, str(actual_fps))
+                        except Exception:
+                            pass
+                            
+                    self.logger.debug(
                         "Camera heartbeat",
                         extra={
+                            "fps": actual_fps,
                             "frames_processed": frames_processed,
-                            "consecutive_read_failures": consecutive_read_failures,
-                            "reconnect_attempts": reconnect_attempts,
                             "is_connected": self.rtsp_handler.is_connected if self.rtsp_handler else False,
                         }
                     )
-                    last_heartbeat = time.time()
+                    last_heartbeat = now
                 
             except KeyboardInterrupt:
                 self.logger.info("Received keyboard interrupt")

@@ -418,6 +418,19 @@ class CameraManager:
             if settings.is_docker_runtime and is_service_alive and cam.enabled:
                 cam_dict["is_running"] = True
                 running_count += 1
+                
+                # Try to get REAL FPS from Redis
+                try:
+                    from ..core.config import get_redis_config
+                    import redis
+                    r_config = get_redis_config()
+                    r_client = redis.Redis(**r_config)
+                    fps_val = r_client.get(f"vg:metrics:camera:{cid}:fps")
+                    if fps_val:
+                        cam_dict["fps_actual"] = float(fps_val.decode('utf-8'))
+                    r_client.close()
+                except Exception:
+                    pass
             elif cam.is_running:
                 running_count += 1
                 

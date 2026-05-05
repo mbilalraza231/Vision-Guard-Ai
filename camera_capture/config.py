@@ -14,7 +14,7 @@ class CameraConfig(BaseModel):
     
     camera_id: str = Field(..., description="Unique camera identifier")
     rtsp_url: str = Field(..., description="RTSP stream URL")
-    fps: int = Field(default=5, ge=1, le=30, description="Frames per second to capture")
+    fps: int = Field(default=5, ge=1, le=60, description="Frames per second to capture")
     motion_threshold: float = Field(
         default=0.02,
         ge=0.0,

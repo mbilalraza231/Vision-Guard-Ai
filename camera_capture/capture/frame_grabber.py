@@ -26,8 +26,8 @@ class FrameGrabber:
             fps: Target frames per second (1-30)
             camera_id: Camera identifier for logging
         """
-        if fps < 1 or fps > 30:
-            raise ValueError("FPS must be between 1 and 30")
+        if fps < 1 or fps > 60:
+            raise ValueError("FPS must be between 1 and 60")
         
         self.fps = fps
         self.camera_id = camera_id

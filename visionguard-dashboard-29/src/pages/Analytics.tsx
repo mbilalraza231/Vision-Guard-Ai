@@ -90,10 +90,9 @@ export default function Analytics() {
     
     // Sum up the configured FPS for all cameras that SHOULD be running (enabled)
     const targetFpsTotal = runningCamerasList.filter((c: any) => c.enabled).reduce((sum, c) => sum + (c.fps || 0), 0) || 30;
-    const currentFpsBase = runningCameras.reduce((sum, c) => sum + (c.fps || 0), 0);
     
-    // Slight fluctuation (±5%) to show it's "Live"
-    const currentFps = currentFpsBase > 0 ? (currentFpsBase * (0.95 + Math.random() * 0.1)) : 0;
+    // Sum up the ACTUAL observed FPS from the camera service
+    const currentFps = runningCameras.reduce((sum, c: any) => sum + (c.fps_actual || 0), 0);
     
     // Status Logic: Good if >= 80% of target
     const fpsStatus = currentFps >= (targetFpsTotal * 0.8) ? 'good' : currentFps > 0 ? 'warning' : 'critical';
