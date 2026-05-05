@@ -83,7 +83,62 @@ class CameraManager:
         self._cameras: Dict[str, CameraInfo] = {}
         self._process_manager = None  # Will hold camera_capture ProcessManager
         self.logger = get_logger(__name__)
+        
+        # Load from config if available (especially for Docker mode status reporting)
+        self.load_from_config()
+        
         self._initialized = True
+
+    def load_from_config(self) -> None:
+        """Load cameras from cameras.json if it exists."""
+        import json
+        config_path = os.environ.get("CAMERA_CONFIG_PATH", "cameras.json")
+        
+        # In docker, the directory is often /app/backend but cameras.json is at /app/cameras.json
+        if not os.path.exists(config_path):
+            alt_path = os.path.join("..", config_path)
+            if os.path.exists(alt_path):
+                config_path = alt_path
+            else:
+                # Try absolute path if we can determine project root
+                try:
+                    from ..core.config import get_settings
+                    settings = get_settings()
+                    # Check in project root
+                    root_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "cameras.json")
+                    if os.path.exists(root_path):
+                        config_path = root_path
+                except:
+                    pass
+
+        if not os.path.exists(config_path):
+            self.logger.debug(f"Camera config not found at {config_path}")
+            return
+            
+        try:
+            with open(config_path, 'r') as f:
+                data = json.load(f)
+                cameras_data = data.get("cameras", [])
+                
+                for cam_data in cameras_data:
+                    camera_id = cam_data.get("id")
+                    if not camera_id:
+                        continue
+                        
+                    camera = CameraInfo(
+                        camera_id=camera_id,
+                        rtsp_url=cam_data.get("source", ""),
+                        fps=cam_data.get("fps", 5),
+                        motion_threshold=cam_data.get("motion_threshold", 0.02),
+                        enabled=cam_data.get("enabled", True)
+                    )
+                    # For status reporting, we assume it might be running if enabled in docker
+                    # Real running status should ideally be verified via Redis heartbeats
+                    self._cameras[camera_id] = camera
+                    
+            self.logger.info(f"Loaded {len(self._cameras)} cameras from {config_path}")
+        except Exception as e:
+            self.logger.error(f"Failed to load camera config: {e}")
 
     def _runtime_block_message(self) -> str:
         return (
@@ -336,15 +391,44 @@ class CameraManager:
     
     def get_all_status(self) -> Dict[str, Any]:
         """Get status of all cameras."""
-        cameras = {cid: cam.to_dict() for cid, cam in self._cameras.items()}
+        settings = get_settings()
         
-        running_count = sum(1 for cam in self._cameras.values() if cam.is_running)
+        # In docker mode, we check Redis heartbeat for the camera service
+        is_service_alive = False
+        if settings.is_docker_runtime:
+            try:
+                from ..core.config import get_redis_config
+                from ..utils.metrics_utils import check_service_liveness
+                import redis
+                
+                r_config = get_redis_config()
+                r_client = redis.Redis(**r_config)
+                is_service_alive = check_service_liveness(r_client, "camera")
+                r_client.close()
+            except Exception:
+                pass
+
+        cameras = {}
+        running_count = 0
+        
+        for cid, cam in self._cameras.items():
+            cam_dict = cam.to_dict()
+            
+            # If service is alive and camera is enabled, consider it running in Docker mode
+            if settings.is_docker_runtime and is_service_alive and cam.enabled:
+                cam_dict["is_running"] = True
+                running_count += 1
+            elif cam.is_running:
+                running_count += 1
+                
+            cameras[cid] = cam_dict
         
         return {
             "total": len(self._cameras),
             "running": running_count,
             "stopped": len(self._cameras) - running_count,
-            "cameras": cameras
+            "cameras": cameras,
+            "service_alive": is_service_alive if settings.is_docker_runtime else None
         }
     
     def list_cameras(self) -> List[str]:

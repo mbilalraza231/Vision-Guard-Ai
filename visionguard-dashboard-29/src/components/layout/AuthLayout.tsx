@@ -1,7 +1,19 @@
-import { Outlet } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Outlet, useNavigate } from 'react-router-dom';
 import { Camera } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 
 export function AuthLayout() {
+  const { isAuthenticated, isLoading } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      navigate('/dashboard');
+    }
+  }, [isAuthenticated, isLoading, navigate]);
+
+  if (isLoading) return null;
   return (
     <div className="flex min-h-screen bg-background">
       {/* Left side - Branding */}

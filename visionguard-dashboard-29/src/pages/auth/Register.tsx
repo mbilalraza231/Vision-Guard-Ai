@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,9 +12,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import type { UserRole } from '@/types';
 
 export default function Register() {
   const navigate = useNavigate();
+  const { register } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -21,18 +25,33 @@ export default function Register() {
     email: '',
     password: '',
     confirmPassword: '',
-    role: 'viewer',
+    role: 'viewer' as UserRole,
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (formData.password !== formData.confirmPassword) {
+      toast.error('Passwords do not match');
+      return;
+    }
+
     setIsLoading(true);
 
-    // Simulate registration
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    const result = await register({
+      email: formData.email,
+      password: formData.password,
+      name: formData.name,
+      role: formData.role,
+    });
 
-    setIsLoading(false);
-    navigate('/auth/login');
+    if (result.success) {
+      toast.success('Account created! Please check your email for verification.');
+      navigate('/auth/login');
+    } else {
+      toast.error(result.error || 'Failed to create account');
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -75,7 +94,7 @@ export default function Register() {
           <Label htmlFor="role">Role</Label>
           <Select
             value={formData.role}
-            onValueChange={(value) => setFormData({ ...formData, role: value })}
+            onValueChange={(value) => setFormData({ ...formData, role: value as UserRole })}
           >
             <SelectTrigger className="bg-secondary/50">
               <SelectValue placeholder="Select a role" />
@@ -151,3 +170,4 @@ export default function Register() {
     </div>
   );
 }
+

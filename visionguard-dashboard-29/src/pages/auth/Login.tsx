@@ -1,22 +1,35 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function Login() {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // No auth on backend — navigate directly to dashboard
-    navigate('/dashboard');
+    setIsLoading(true);
+
+    const result = await login(formData);
+    
+    if (result.success) {
+      toast.success('Logged in successfully');
+      navigate('/dashboard');
+    } else {
+      toast.error(result.error || 'Failed to login');
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -37,6 +50,7 @@ export default function Login() {
             placeholder="admin@example.com"
             value={formData.email}
             onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+            required
             className="bg-secondary/50"
           />
         </div>
@@ -50,6 +64,7 @@ export default function Login() {
               placeholder="••••••••"
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              required
               className="bg-secondary/50 pr-10"
             />
             <Button
@@ -81,8 +96,15 @@ export default function Login() {
           </Link>
         </div>
 
-        <Button type="submit" className="w-full">
-          Sign in
+        <Button type="submit" className="w-full" disabled={isLoading}>
+          {isLoading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Signing in...
+            </>
+          ) : (
+            'Sign in'
+          )}
         </Button>
       </form>
 
@@ -96,9 +118,10 @@ export default function Login() {
       {/* Demo credentials hint */}
       <div className="mt-8 rounded-lg bg-secondary/30 border border-border p-4">
         <p className="text-xs text-muted-foreground text-center">
-          <strong>Demo Mode:</strong> Click "Sign in" to access the dashboard — no credentials required
+          <strong>Security:</strong> Authentication is now powered by Supabase.
         </p>
       </div>
     </div>
   );
 }
+
