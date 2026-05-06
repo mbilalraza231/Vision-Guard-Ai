@@ -95,7 +95,7 @@ export function Header({ title, showDateNav = true }: HeaderProps) {
             <DropdownMenuItem onClick={() => navigate('/settings')}>
               Settings
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => navigate('/users')}>
+            <DropdownMenuItem onClick={() => navigate('/profile')}>
               Profile
             </DropdownMenuItem>
             <DropdownMenuSeparator />

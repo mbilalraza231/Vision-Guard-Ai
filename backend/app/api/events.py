@@ -8,8 +8,8 @@ GET /alerts - List alerts from database
 GET /alerts/{id} - Get single alert with event metadata
 """
 
-import sys
 import os
+import aiosqlite
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, Path
@@ -47,7 +47,7 @@ async def list_events(
 ) -> DBEventListResponse:
     reader = get_db_reader()
     
-    result = reader.list_events(
+    result = await reader.list_events(
         limit=limit,
         offset=offset,
         camera_id=camera_id,
@@ -68,7 +68,7 @@ async def list_events(
 @router.get("/events/stats", response_model=dict)
 async def get_event_stats() -> dict:
     reader = get_db_reader()
-    return reader.get_stats()
+    return await reader.get_stats()
 
 
 @router.get("/events/{event_id}/evidence", response_model=dict)
@@ -82,8 +82,6 @@ async def get_event_evidence(
     Returns snapshot_url, clip_url (first match each), and full evidence list.
     Never raises 500 — returns error key on exception.
     """
-    import sqlite3 as _sqlite3
-
     db_path = os.getenv("VG_DB_PATH", "/data/visionguard/events.db")
     empty = {
         "event_id": event_id,
@@ -98,31 +96,29 @@ async def get_event_evidence(
         if not os.path.exists(db_path):
             return empty
 
-        conn = _sqlite3.connect(db_path)
-        conn.row_factory = _sqlite3.Row
-        cursor = conn.cursor()
+        async with aiosqlite.connect(db_path) as db:
+            db.row_factory = aiosqlite.Row
+            
+            async with db.execute(
+                """
+                SELECT id, event_id, evidence_type, storage_provider, public_url, created_at
+                FROM event_evidence
+                WHERE event_id = ?
+                ORDER BY created_at ASC
+                """,
+                (event_id,),
+            ) as cursor:
+                rows = await cursor.fetchall()
 
-        cursor.execute(
-            """
-            SELECT id, event_id, evidence_type, storage_provider, public_url, created_at
-            FROM event_evidence
-            WHERE event_id = ?
-            ORDER BY created_at ASC
-            """,
-            (event_id,),
-        )
-        rows = cursor.fetchall()
-
-        cursor.execute(
-            """
-            SELECT clip_status, clip_error
-            FROM events
-            WHERE id = ?
-            """,
-            (event_id,),
-        )
-        event_row = cursor.fetchone()
-        conn.close()
+            async with db.execute(
+                """
+                SELECT clip_status, clip_error
+                FROM events
+                WHERE id = ?
+                """,
+                (event_id,),
+            ) as cursor:
+                event_row = await cursor.fetchone()
 
         evidence = [dict(r) for r in rows]
 
@@ -170,7 +166,7 @@ async def get_event(
 ) -> DBEvent:
     reader = get_db_reader()
     
-    event = reader.get_event(event_id)
+    event = await reader.get_event(event_id)
     
     if event is None:
         raise HTTPException(

@@ -1,0 +1,262 @@
+import { useParams, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { Header } from '@/components/layout/Header';
+import { Button } from '@/components/ui/button';
+import { SeverityBadge, StatusBadge } from '@/components/common/StatusBadge';
+import { API_ENDPOINTS, buildApiUrl } from '@/config/api';
+import { apiService } from '@/services/api.service';
+import { 
+  ChevronLeft, 
+  Clock, 
+  Camera, 
+  MapPin, 
+  Shield, 
+  Video, 
+  Download, 
+  Share2, 
+  MessageSquare,
+  AlertTriangle,
+  Loader2
+} from 'lucide-react';
+import type { Incident } from '@/types';
+
+interface EvidenceRow {
+  id: string;
+  event_id: string;
+  evidence_type: 'snapshot' | 'clip';
+  storage_provider: string;
+  public_url: string;
+  created_at: number;
+}
+
+interface EvidenceResponse {
+  event_id: string;
+  evidence: EvidenceRow[];
+  snapshot_url: string | null;
+  clip_url: string | null;
+  clip_status?: 'pending' | 'ready' | 'failed';
+  clip_error?: string | null;
+}
+
+export default function IncidentDetails() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+
+  const { data: incident, isLoading: incidentLoading, error: incidentError } = useQuery({
+    queryKey: ['incident', id],
+    queryFn: async () => {
+      // Fetch single incident
+      // For now we fetch from list and find, but in production we'd have a single GET endpoint
+      const response = await apiService.getData<{ events: any[] }>(API_ENDPOINTS.incidents.list, { limit: '100' });
+      const event = response.events.find(e => e.id === id);
+      if (!event) throw new Error('Incident not found');
+      
+      return {
+        id: event.id,
+        time: new Date(event.start_ts * 1000).toLocaleTimeString(),
+        camera: {
+          id: event.camera_id,
+          name: event.camera_id,
+          location: 'Camera',
+          status: 'online',
+          aiActive: true,
+        },
+        type: event.event_type as Incident['type'],
+        severity: event.severity as Incident['severity'],
+        status: 'active' as Incident['status'],
+        createdAt: new Date(event.start_ts * 1000).toISOString(),
+        updatedAt: new Date(event.end_ts * 1000).toISOString(),
+        confidence: event.confidence,
+      };
+    },
+  });
+
+  const { data: evidence, isLoading: evidenceLoading } = useQuery<EvidenceResponse>({
+    queryKey: ['evidence', id],
+    queryFn: () => apiService.getData<EvidenceResponse>(API_ENDPOINTS.incidents.evidence(id!)),
+    enabled: !!id && !!incident,
+  });
+
+  if (incidentLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (incidentError || !incident) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-4 bg-background">
+        <AlertTriangle className="h-12 w-12 text-severity-critical" />
+        <h2 className="text-xl font-bold">Incident Not Found</h2>
+        <Button onClick={() => navigate('/incidents')}>Back to Incidents</Button>
+      </div>
+    );
+  }
+
+  const getMediaUrl = (url: string | null) => {
+    if (!url) return undefined;
+    if (url.startsWith('http')) return url;
+    return buildApiUrl(url);
+  };
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Header title="Incident Details" showDateNav={false} />
+      
+      <div className="p-6">
+        {/* Navigation & Actions */}
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+          <Button 
+            variant="ghost" 
+            className="gap-2" 
+            onClick={() => navigate('/incidents')}
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Back to Incidents
+          </Button>
+          
+          <div className="flex items-center gap-2">
+            <Button variant="outline" className="gap-2">
+              <Download className="h-4 w-4" />
+              Download Evidence
+            </Button>
+            <Button variant="outline" className="gap-2">
+              <Share2 className="h-4 w-4" />
+              Share
+            </Button>
+            <Button className="gap-2">
+              <MessageSquare className="h-4 w-4" />
+              Add Note
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          {/* Main Content: Media */}
+          <div className="lg:col-span-2 space-y-6">
+            <div className="dashboard-card overflow-hidden">
+              <div className="border-b border-white/5 bg-white/5 p-4 flex items-center justify-between">
+                <div className="flex items-center gap-2 font-medium">
+                  <Video className="h-4 w-4 text-primary" />
+                  Video Evidence
+                </div>
+                {evidence?.clip_status === 'pending' && (
+                  <Badge variant="outline" className="animate-pulse">Processing Clip...</Badge>
+                )}
+              </div>
+              <div className="aspect-video bg-black relative flex items-center justify-center">
+                {evidence?.clip_url ? (
+                  <video 
+                    controls 
+                    className="h-full w-full object-contain"
+                    src={getMediaUrl(evidence.clip_url)}
+                  />
+                ) : (
+                  <div className="text-center text-muted-foreground">
+                    <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-primary" />
+                    <p>Loading video evidence...</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="dashboard-card overflow-hidden">
+              <div className="border-b border-white/5 bg-white/5 p-4 flex items-center gap-2 font-medium">
+                <Camera className="h-4 w-4 text-primary" />
+                Detection Snapshot
+              </div>
+              <div className="bg-black relative flex items-center justify-center" style={{ minHeight: '300px' }}>
+                {evidence?.snapshot_url ? (
+                  <img 
+                    className="w-full object-contain"
+                    src={getMediaUrl(evidence.snapshot_url)}
+                    alt="Detection snapshot"
+                  />
+                ) : (
+                  <div className="text-center text-muted-foreground">
+                    <AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-20" />
+                    <p>Snapshot unavailable</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Sidebar: Details */}
+          <div className="space-y-6">
+            <div className="dashboard-card p-6">
+              <h3 className="text-lg font-bold mb-4">Incident Info</h3>
+              <div className="space-y-4">
+                <div className="flex justify-between items-center py-2 border-b border-white/5">
+                  <span className="text-muted-foreground flex items-center gap-2">
+                    <Shield className="h-4 w-4" /> Type
+                  </span>
+                  <span className="font-bold capitalize">{incident.type}</span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b border-white/5">
+                  <span className="text-muted-foreground flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4" /> Severity
+                  </span>
+                  <SeverityBadge severity={incident.severity} />
+                </div>
+                <div className="flex justify-between items-center py-2 border-b border-white/5">
+                  <span className="text-muted-foreground flex items-center gap-2">
+                    <Clock className="h-4 w-4" /> Time
+                  </span>
+                  <span className="font-mono text-sm">{new Date(incident.createdAt).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b border-white/5">
+                  <span className="text-muted-foreground flex items-center gap-2">
+                    <Camera className="h-4 w-4" /> Camera
+                  </span>
+                  <span className="font-medium">{incident.camera.name}</span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b border-white/5">
+                  <span className="text-muted-foreground flex items-center gap-2">
+                    <MapPin className="h-4 w-4" /> Location
+                  </span>
+                  <span>{incident.camera.location}</span>
+                </div>
+                <div className="flex justify-between items-center py-2">
+                  <span className="text-muted-foreground">Status</span>
+                  <StatusBadge status={incident.status} />
+                </div>
+              </div>
+              
+              <div className="mt-6 pt-6 border-t border-white/10">
+                <h4 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wider">AI Confidence</h4>
+                <div className="flex items-center gap-4">
+                  <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-primary" 
+                      style={{ width: `${(incident as any).confidence * 100}%` }}
+                    />
+                  </div>
+                  <span className="font-mono font-bold text-primary">
+                    {((incident as any).confidence * 100).toFixed(1)}%
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="dashboard-card p-6">
+              <h3 className="text-lg font-bold mb-4">Investigation Notes</h3>
+              <div className="space-y-4 mb-4 max-h-[300px] overflow-y-auto">
+                <p className="text-sm text-muted-foreground italic">No notes added yet for this incident.</p>
+              </div>
+              <div className="flex gap-2">
+                <input 
+                  className="flex-1 bg-secondary/50 border border-white/10 rounded-lg px-3 py-2 text-sm" 
+                  placeholder="Type a note..."
+                />
+                <Button size="sm">Post</Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

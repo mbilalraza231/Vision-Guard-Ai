@@ -1,0 +1,132 @@
+import { useState } from 'react';
+import { Header } from '@/components/layout/Header';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { useAuth } from '@/contexts/AuthContext';
+import { Loader2, User, Mail, Shield, Camera, Save, Key } from 'lucide-react';
+import { toast } from 'sonner';
+
+export default function Profile() {
+  const { user } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    name: user?.name || '',
+    email: user?.email || '',
+  });
+
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    
+    // Logic to update user profile in Supabase would go here
+    // For now we just simulate success
+    setTimeout(() => {
+      setIsLoading(false);
+      toast.success('Profile updated successfully');
+    }, 1000);
+  };
+
+  if (!user) return null;
+
+  return (
+    <div className="min-h-screen">
+      <Header title="My Profile" showDateNav={false} />
+      
+      <div className="p-6 max-w-4xl mx-auto">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Avatar Section */}
+          <div className="md:col-span-1 space-y-6">
+            <div className="dashboard-card p-6 flex flex-col items-center text-center">
+              <div className="relative mb-4">
+                <Avatar className="h-32 w-32 border-4 border-primary/20">
+                  <AvatarImage src={user.avatar} />
+                  <AvatarFallback className="bg-primary/10 text-primary text-4xl">
+                    {user.name.split(' ').map(n => n[0]).join('')}
+                  </AvatarFallback>
+                </Avatar>
+                <Button 
+                  size="icon" 
+                  className="absolute bottom-0 right-0 rounded-full h-10 w-10 border-4 border-background"
+                >
+                  <Camera className="h-4 w-4" />
+                </Button>
+              </div>
+              <h3 className="text-xl font-bold">{user.name}</h3>
+              <p className="text-sm text-muted-foreground capitalize mb-4">{user.role}</p>
+              <div className="w-full pt-4 border-t border-white/5 space-y-2">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Mail className="h-4 w-4" />
+                  {user.email}
+                </div>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Shield className="h-4 w-4" />
+                  Role: <span className="capitalize text-foreground font-medium">{user.role}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Settings Section */}
+          <div className="md:col-span-2 space-y-6">
+            <div className="dashboard-card p-6">
+              <div className="flex items-center gap-2 mb-6">
+                <User className="h-5 w-5 text-primary" />
+                <h3 className="text-xl font-bold">Personal Information</h3>
+              </div>
+              
+              <form onSubmit={handleUpdateProfile} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Full Name</Label>
+                    <Input 
+                      id="name" 
+                      value={formData.name} 
+                      onChange={e => setFormData({...formData, name: e.target.value})}
+                      className="bg-secondary/50" 
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email Address</Label>
+                    <Input 
+                      id="email" 
+                      type="email" 
+                      value={formData.email} 
+                      disabled
+                      className="bg-secondary/50 opacity-50 cursor-not-allowed" 
+                    />
+                    <p className="text-[10px] text-muted-foreground">Email cannot be changed directly.</p>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-4">
+                  <Button type="submit" className="gap-2" disabled={isLoading}>
+                    {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                    Save Changes
+                  </Button>
+                </div>
+              </form>
+            </div>
+
+            <div className="dashboard-card p-6">
+              <div className="flex items-center gap-2 mb-6">
+                <Key className="h-5 w-5 text-primary" />
+                <h3 className="text-xl font-bold">Security</h3>
+              </div>
+              
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  To update your password, we will send a reset link to your email address.
+                </p>
+                <Button variant="outline" className="gap-2">
+                  Send Password Reset Link
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

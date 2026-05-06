@@ -23,6 +23,8 @@ import Cameras from "@/pages/Cameras";
 import Zones from "@/pages/Zones";
 import Users from "@/pages/Users";
 import Settings from "@/pages/Settings";
+import Profile from "@/pages/Profile";
+import IncidentDetails from "@/pages/IncidentDetails";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -76,22 +78,10 @@ const App = () => (
                   </ProtectedRoute>
                 } 
               />
-              <Route 
-                path="/users" 
-                element={
-                  <ProtectedRoute requiredRoles={['admin']}>
-                    <Users />
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/settings" 
-                element={
-                  <ProtectedRoute requiredRoles={['admin']}>
-                    <Settings />
-                  </ProtectedRoute>
-                } 
-              />
+              <Route path="/users" element={<ProtectedRoute requiredRoles={['admin']}><Users /></ProtectedRoute>} />
+              <Route path="/settings" element={<ProtectedRoute requiredRoles={['admin']}><Settings /></ProtectedRoute>} />
+              <Route path="/profile" element={<Profile />} />
+              <Route path="/incidents/:id" element={<IncidentDetails />} />
             </Route>
 
             {/* Catch-all */}

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/button';
+import { Link } from 'react-router-dom';
 import {
   Select,
   SelectContent,
@@ -472,16 +473,27 @@ export default function Incidents() {
                           <StatusBadge status={incident.status} />
                         </td>
                         <td>
-                          <Button
-                            id={`view-evidence-${incident.id}`}
-                            size="sm"
-                            variant="outline"
-                            className="gap-1.5 text-xs h-7 px-2"
-                            onClick={() => setActiveIncident(incident)}
-                          >
-                            <Paperclip className="h-3 w-3" />
-                            View
-                          </Button>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              id={`view-evidence-${incident.id}`}
+                              size="sm"
+                              variant="outline"
+                              className="gap-1.5 text-xs h-7 px-2"
+                              onClick={() => setActiveIncident(incident)}
+                            >
+                              <Paperclip className="h-3 w-3" />
+                              View
+                            </Button>
+                            <Link to={`/incidents/${incident.id}`}>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-xs h-7 px-2 text-primary hover:text-primary hover:bg-primary/10"
+                              >
+                                Details
+                              </Button>
+                            </Link>
+                          </div>
                         </td>
                       </tr>
                     ))
