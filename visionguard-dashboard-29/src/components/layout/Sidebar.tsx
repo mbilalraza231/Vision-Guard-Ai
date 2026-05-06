@@ -14,28 +14,37 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface NavItem {
   label: string;
   path: string;
   icon: React.ComponentType<{ className?: string }>;
+  requiredRoles?: string[];
 }
 
 const navItems: NavItem[] = [
   { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
   { label: 'Live Monitoring', path: '/monitoring', icon: Monitor },
   { label: 'Incidents', path: '/incidents', icon: AlertTriangle },
-  { label: 'Analytics', path: '/analytics', icon: BarChart3 },
-  { label: 'Cameras', path: '/cameras', icon: Camera },
-  { label: 'Zones', path: '/zones', icon: MapPin },
-  { label: 'Users', path: '/users', icon: Users },
-  { label: 'Settings', path: '/settings', icon: Settings },
+  { label: 'Analytics', path: '/analytics', icon: BarChart3, requiredRoles: ['admin', 'manager'] },
+  { label: 'Cameras', path: '/cameras', icon: Camera, requiredRoles: ['admin', 'manager'] },
+  { label: 'Zones', path: '/zones', icon: MapPin, requiredRoles: ['admin', 'manager'] },
+  { label: 'Users', path: '/users', icon: Users, requiredRoles: ['admin'] },
+  { label: 'Settings', path: '/settings', icon: Settings, requiredRoles: ['admin'] },
 ];
 
 export function Sidebar() {
   const location = useLocation();
+  const { user } = useAuth();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+
+  const filteredNavItems = navItems.filter((item) => {
+    if (!item.requiredRoles) return true;
+    if (!user) return false;
+    return item.requiredRoles.includes(user.role);
+  });
 
   return (
     <>
@@ -80,7 +89,7 @@ export function Sidebar() {
 
         {/* Navigation */}
         <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-          {navItems.map((item) => {
+          {filteredNavItems.map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path || 
               (item.path !== '/dashboard' && location.pathname.startsWith(item.path));

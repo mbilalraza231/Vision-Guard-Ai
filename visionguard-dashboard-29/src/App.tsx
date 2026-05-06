@@ -6,10 +6,13 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { AuthLayout } from "@/components/layout/AuthLayout";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 
 // Auth Pages
 import Login from "@/pages/auth/Login";
 import Register from "@/pages/auth/Register";
+import ForgotPassword from "@/pages/auth/ForgotPassword";
+import UpdatePassword from "@/pages/auth/UpdatePassword";
 
 // Dashboard Pages
 import Dashboard from "@/pages/Dashboard";
@@ -39,6 +42,8 @@ const App = () => (
             <Route path="/auth" element={<AuthLayout />}>
               <Route path="login" element={<Login />} />
               <Route path="register" element={<Register />} />
+              <Route path="forgot-password" element={<ForgotPassword />} />
+              <Route path="update-password" element={<UpdatePassword />} />
             </Route>
 
             {/* Dashboard routes */}
@@ -46,11 +51,47 @@ const App = () => (
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/monitoring" element={<LiveMonitoring />} />
               <Route path="/incidents" element={<Incidents />} />
-              <Route path="/analytics" element={<Analytics />} />
-              <Route path="/cameras" element={<Cameras />} />
-              <Route path="/zones" element={<Zones />} />
-              <Route path="/users" element={<Users />} />
-              <Route path="/settings" element={<Settings />} />
+              
+              <Route 
+                path="/analytics" 
+                element={
+                  <ProtectedRoute requiredRoles={['admin', 'manager']}>
+                    <Analytics />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/cameras" 
+                element={
+                  <ProtectedRoute requiredRoles={['admin', 'manager']}>
+                    <Cameras />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/zones" 
+                element={
+                  <ProtectedRoute requiredRoles={['admin', 'manager']}>
+                    <Zones />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/users" 
+                element={
+                  <ProtectedRoute requiredRoles={['admin']}>
+                    <Users />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/settings" 
+                element={
+                  <ProtectedRoute requiredRoles={['admin']}>
+                    <Settings />
+                  </ProtectedRoute>
+                } 
+              />
             </Route>
 
             {/* Catch-all */}

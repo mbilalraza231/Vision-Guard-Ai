@@ -29,6 +29,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { API_ENDPOINTS, buildApiUrl } from '@/config/api';
 import { apiService } from '@/services/api.service';
+import { useAuth } from '@/contexts/AuthContext';
 import type { Incident, IncidentFilters, Severity, IncidentStatus } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -265,6 +266,7 @@ function EvidenceModal({ incident, onClose }: EvidenceModalProps) {
 // ---------------------------------------------------------------------------
 
 export default function Incidents() {
+  const { user } = useAuth();
   const [filters, setFilters] = useState<IncidentFilters>({
     severity: 'all',
     type: 'all',
@@ -377,10 +379,12 @@ export default function Incidents() {
             <span className="text-sm text-muted-foreground">
               {data?.total ?? 0} total events
             </span>
-            <Button variant="outline" className="gap-2">
-              <Download className="h-4 w-4" />
-              Export
-            </Button>
+            {(user?.role === 'admin' || user?.role === 'manager') && (
+              <Button variant="outline" className="gap-2">
+                <Download className="h-4 w-4" />
+                Export
+              </Button>
+            )}
           </div>
         </div>
 

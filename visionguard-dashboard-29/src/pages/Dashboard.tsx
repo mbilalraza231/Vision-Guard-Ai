@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { API_ENDPOINTS } from '@/config/api';
 import { apiService } from '@/services/api.service';
+import { useAuth } from '@/contexts/AuthContext';
 import type { SystemMetrics, Incident } from '@/types';
 
 // Backend response types
@@ -87,6 +88,7 @@ function adaptEventToIncident(event: BackendEvent): Incident {
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   // Fetch event stats
   const { data: stats, isLoading: statsLoading, error: statsError, refetch: refetchStats } =
@@ -211,9 +213,11 @@ export default function Dashboard() {
             </div>
 
             {/* System Usage */}
-            <div className="mb-6">
-              <SystemUsageCard metrics={metrics} />
-            </div>
+            {(user?.role === 'admin' || user?.role === 'manager') && (
+              <div className="mb-6">
+                <SystemUsageCard metrics={metrics} />
+              </div>
+            )}
 
             {/* Recent Incidents */}
             <RecentIncidentsTable
