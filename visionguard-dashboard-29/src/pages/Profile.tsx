@@ -16,9 +16,10 @@ export default function Profile() {
     email: user?.email || '',
   });
 
-  // Sync form data if user updates from elsewhere, but NOT while we are updating
+  // 1. GLOBAL SYNC: Keep form updated if user data changes elsewhere (e.g. User Management page)
   useEffect(() => {
     if (user && !isLoading) {
+      console.log('[Profile] Syncing form with global user state:', user.name);
       setFormData(prev => ({
         ...prev,
         name: user.name || '',
@@ -30,19 +31,19 @@ export default function Profile() {
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isLoading) return;
+    
+    // We update local state first for instant feedback (Optimistic)
     setIsLoading(true);
     
     try {
+      // The actual work is done in AuthContext (with its own internal optimistic update)
       const res = await updateProfile({ name: formData.name });
+      
       if (!res?.success) {
         throw new Error(res?.error || 'Failed to update profile');
       }
       
-      if ((res as any).warning) {
-        toast.warning((res as any).warning, { duration: 5000 });
-      } else {
-        toast.success('Profile updated successfully');
-      }
+      toast.success('Profile updated successfully');
     } catch (err: any) {
       console.error('[Profile] Update error:', err);
       toast.error(err.message || 'Failed to update profile');

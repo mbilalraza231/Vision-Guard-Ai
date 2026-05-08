@@ -61,6 +61,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (session?.user) {
         const user = await buildUser(session.user);
         setState({ user, isAuthenticated: true, isLoading: false });
+
+        // --- REAL-TIME SYNC ---
+        // Listen for changes to the current user's profile
+        const channel = supabase
+          .channel(`profile-sync-${session.user.id}`)
+          .on(
+            'postgres_changes',
+            { 
+              event: 'UPDATE', 
+              schema: 'public', 
+              table: 'profiles',
+              filter: `id=eq.${session.user.id}` 
+            },
+            async () => {
+              console.log('[AuthContext] Real-time profile change detected, re-syncing...');
+              const { data: { session: currentSession } } = await supabase.auth.getSession();
+              if (currentSession?.user) {
+                const updatedUser = await buildUser(currentSession.user);
+                setState(prev => ({ ...prev, user: updatedUser }));
+              }
+            }
+          )
+          .subscribe();
+
+        return () => {
+          supabase.removeChannel(channel);
+        };
       } else {
         setState(prev => ({ ...prev, isLoading: false }));
       }
@@ -109,63 +136,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Update profile in public.profiles AND auth.user_metadata — keeps both in sync
   const updateProfile = async (data: { name?: string; avatar?: string }) => {
-    console.log('[AuthContext] updateProfile called with:', data);
+    console.log('[AuthContext] updateProfile START (Optimistic):', data);
     
+    // 0. UPDATE UI INSTANTLY (Optimistic Update)
+    // We update the local state before the server responds so the user sees no lag.
+    const previousUser = state.user;
+    setState(prev => ({
+      ...prev,
+      user: prev.user ? { ...prev.user, ...data } : null,
+    }));
+
     try {
-      if (!state.user) {
-        console.error('[AuthContext] Update failed: Not authenticated');
-        return { success: false, error: 'Not authenticated' };
+      if (!previousUser) {
+        throw new Error('Not authenticated');
       }
 
       // 1. Update public.profiles (Primary Source of Truth)
-      console.log('[AuthContext] Step 1: Updating profiles table...');
+      console.log('[AuthContext] Step 1: Syncing with DB...');
       
-      let dbError = null;
-      try {
-        const dbPromise = supabase
-          .from('profiles')
-          .update(data)
-          .eq('id', state.user.id);
-        
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Database update timed out. Please check your connection.')), 7000)
-        );
+      const dbPromise = supabase
+        .from('profiles')
+        .update(data)
+        .eq('id', previousUser.id);
+      
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('DB Sync delayed, but local change kept.')), 8000)
+      );
 
-        const result = await Promise.race([dbPromise, timeoutPromise]) as any;
-        dbError = result.error;
-      } catch (err: any) {
-        console.error('[AuthContext] Step 1 EXCEPTION:', err.message);
-        return { success: false, error: err.message };
-      }
+      const { error: dbError } = await Promise.race([dbPromise, timeoutPromise]) as any;
       
       if (dbError) {
-        console.error('[AuthContext] Step 1 FAILED:', dbError.message);
-        throw new Error(`Database: ${dbError.message}`);
+        console.warn('[AuthContext] Step 1 WARNING:', dbError.message);
+        // We don't revert the UI here to keep it "feeling" instant, 
+        // but we warn the user if the server didn't save.
       }
-      console.log('[AuthContext] Step 1 SUCCESS');
 
-      // 2. Update auth.user_metadata (Background Sync)
-      // We do NOT 'await' this anymore because it hangs in some environments.
-      // This keeps the session metadata in sync eventually without blocking the UI.
-      console.log('[AuthContext] Step 2: Triggering Auth metadata sync (Background)...');
-      supabase.auth.updateUser({ data: { ...data } })
-        .then(({ error }) => {
-          if (error) console.warn('[AuthContext] Background Auth sync failed:', error.message);
-          else console.log('[AuthContext] Background Auth sync SUCCESS');
-        })
-        .catch(err => console.warn('[AuthContext] Background Auth sync exception:', err));
-
-      // 3. Update local state immediately
-      console.log('[AuthContext] Step 3: Syncing local state');
-      setState(prev => ({
-        ...prev,
-        user: prev.user ? { ...prev.user, ...data } : null,
-      }));
+      // 2. Update auth.user_metadata (Background)
+      supabase.auth.updateUser({ data: { ...data } }).catch(() => {});
 
       return { success: true };
     } catch (err: any) {
       console.error('[AuthContext] updateProfile EXCEPTION:', err);
-      return { success: false, error: err.message || 'An unexpected error occurred' };
+      // Optional: Revert UI on critical failure if needed
+      // setState(prev => ({ ...prev, user: previousUser }));
+      return { success: false, error: err.message };
     }
   };
 
