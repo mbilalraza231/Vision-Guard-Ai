@@ -418,8 +418,8 @@ class AIWorker:
                     f for f in os.listdir(DETECTION_DIR)
                     if f.startswith(prefix) and f.endswith('.jpg')
                 ])
-                if len(all_images) > 50:
-                    for old in all_images[:-50]:
+                if len(all_images) > 100:
+                    for old in all_images[:-100]:
                         os.remove(os.path.join(DETECTION_DIR, old))
             except Exception:
                 pass

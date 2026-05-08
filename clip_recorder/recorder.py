@@ -185,7 +185,7 @@ class ClipRecorder:
         )
 
         # Step 1 — Find existing snapshot
-        snapshot_path = self._find_snapshot(camera_id, event_type, detection_ts)
+        snapshot_path = self._find_snapshot(event_id, camera_id, event_type, detection_ts)
         result["snapshot_local"] = snapshot_path
         if snapshot_path:
             logger.info(f"Found snapshot: {snapshot_path}")
@@ -239,13 +239,21 @@ class ClipRecorder:
             clip_path = result.get("clip_local")
             
             # 1. Upload Snapshot
-            if snapshot_path and os.path.exists(snapshot_path):
-                snapshot_url = self.uploader.upload_snapshot(
-                    snapshot_path, event_id, event_type
-                )
-                if snapshot_url:
-                    result["snapshot_url"] = snapshot_url
-                    self._write_evidence(event_id, result)  # Update DB with cloud URL
+            if snapshot_path:
+                if os.path.exists(snapshot_path):
+                    logger.info(f"Uploading snapshot to Cloudinary: {snapshot_path}")
+                    snapshot_url = self.uploader.upload_snapshot(
+                        snapshot_path, event_id, event_type
+                    )
+                    if snapshot_url:
+                        result["snapshot_url"] = snapshot_url
+                        self._write_evidence(event_id, result)  # Update DB with cloud URL
+                    else:
+                        logger.warning(f"Cloudinary snapshot upload failed for {event_id}")
+                else:
+                    logger.warning(f"Snapshot file MISSING before upload: {snapshot_path}")
+            else:
+                logger.info(f"No local snapshot path provided for event {event_id}")
 
             # 2. Upload Clip
             if clip_path and os.path.exists(clip_path):
@@ -285,6 +293,7 @@ class ClipRecorder:
 
     def _find_snapshot(
         self,
+        event_id: str,
         camera_id: str,
         event_type: str,
         detection_ts: float,
@@ -314,7 +323,7 @@ class ClipRecorder:
             # Expected prefix: <model_type>_<camera_id>_
             prefix = f"{model_type}_{camera_id}_"
             detection_ts_ms = detection_ts * 1000
-            tolerance_ms = 10 * 1000  # 10 seconds
+            tolerance_ms = 30 * 1000  # 30 seconds
 
             best_path: Optional[str] = None
             best_diff = float("inf")
@@ -337,6 +346,11 @@ class ClipRecorder:
                 if diff <= tolerance_ms and diff < best_diff:
                     best_diff = diff
                     best_path = str(f)
+
+            if best_path:
+                logger.info(f"Found best snapshot match for {event_id}: {os.path.basename(best_path)} (diff: {best_diff/1000:.2f}s)")
+            else:
+                logger.warning(f"No snapshot found within {tolerance_ms/1000}s for {event_id}")
 
             return best_path
 

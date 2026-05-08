@@ -28,6 +28,7 @@ htmlcov/
 # Test artifacts
 test_metrics.json
 test_report.txt
+status_output.json
 
 # Environment
 .env
