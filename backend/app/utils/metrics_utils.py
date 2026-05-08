@@ -83,21 +83,32 @@ def aggregate_project_metrics(redis_client) -> Dict[str, float]:
     """Aggregate metrics from all active services in Redis."""
     total_cpu = 0.0
     total_memory = 0.0
+    keys_found = 0
     
     try:
+        # Use a more explicit search and ensure we handle byte keys
         keys = redis_client.keys("vg:metrics:*")
+        keys_found = len(keys)
+        
         for key in keys:
-            data = redis_client.get(key)
-            if data:
-                metrics = json.loads(data)
-                total_cpu += metrics.get("cpu_percent", 0.0)
-                total_memory += metrics.get("memory_gb", 0.0)
+            try:
+                data = redis_client.get(key)
+                if data:
+                    # json.loads handles both str and bytes in Python 3
+                    metrics = json.loads(data)
+                    total_cpu += float(metrics.get("cpu_percent", 0.0))
+                    total_memory += float(metrics.get("memory_gb", 0.0))
+            except (json.JSONDecodeError, ValueError, TypeError):
+                continue
+                
     except Exception:
+        # Fallback to zeros if Redis fails
         pass
         
     return {
         "cpu_usage": round(total_cpu, 2),
-        "memory_used_gb": round(total_memory, 3)
+        "memory_used_gb": round(total_memory, 3),
+        "active_services": keys_found
     }
 
 def check_service_liveness(redis_client, service_name: str) -> bool:

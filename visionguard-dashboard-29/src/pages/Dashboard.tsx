@@ -57,6 +57,7 @@ interface BackendEvent {
   confidence: number;
   model_version: string;
   created_at: number;
+  processing_delay?: number;
 }
 
 interface EventsListResponse {
@@ -70,7 +71,6 @@ interface EventsListResponse {
 function adaptEventToIncident(event: BackendEvent): Incident {
   return {
     id: event.id,
-    time: new Date(event.start_ts * 1000).toLocaleTimeString(),
     camera: {
       id: event.camera_id,
       name: event.camera_id,
@@ -81,7 +81,11 @@ function adaptEventToIncident(event: BackendEvent): Incident {
     type: event.event_type as Incident['type'],
     severity: event.severity as Incident['severity'],
     status: 'active',
-    createdAt: new Date(event.start_ts * 1000).toISOString(),
+    time: new Date(event.start_ts * 1000).toLocaleString(),
+    incidentTime: new Date(event.start_ts * 1000).toLocaleString(),
+    reportingTime: new Date(event.created_at * 1000).toLocaleString(),
+    processingDelay: event.created_at - event.start_ts,
+    createdAt: new Date(event.created_at * 1000).toISOString(),
     updatedAt: new Date(event.end_ts * 1000).toISOString(),
   };
 }

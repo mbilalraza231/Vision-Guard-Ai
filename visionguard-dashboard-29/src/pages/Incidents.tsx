@@ -93,6 +93,8 @@ function adaptEventToIncident(event: BackendEvent): Incident & { confidence: num
     type: event.event_type as Incident['type'],
     severity: event.severity as Incident['severity'],
     status: 'active',
+    incidentTime: new Date(event.start_ts * 1000).toLocaleString(),
+    reportingTime: new Date(event.created_at * 1000).toLocaleString(),
     createdAt: new Date(event.start_ts * 1000).toISOString(),
     updatedAt: new Date(event.end_ts * 1000).toISOString(),
     confidence: event.confidence,
@@ -178,10 +180,16 @@ function EvidenceModal({ incident, onClose }: EvidenceModalProps) {
                 <span className="text-white/50">Confidence</span>
                 <div className="mt-1 font-mono">{(incident.confidence * 100).toFixed(1)}%</div>
               </div>
-              <div className="col-span-2">
-                <span className="text-white/50">Time</span>
+              <div>
+                <span className="text-white/50">Incident Time</span>
                 <div className="mt-1 font-mono text-xs">
-                  {new Date(incident.createdAt).toLocaleString()}
+                  {(incident as any).incidentTime}
+                </div>
+              </div>
+              <div>
+                <span className="text-white/50">Reporting Time</span>
+                <div className="mt-1 font-mono text-xs text-status-online">
+                  {(incident as any).reportingTime}
                 </div>
               </div>
             </div>
@@ -453,7 +461,7 @@ export default function Incidents() {
                           />
                         </td>
                         <td className="text-sm font-mono">#{incident.id.slice(0, 8)}</td>
-                        <td className="text-sm">{incident.time}</td>
+                        <td className="text-sm">{new Date((incident as any).createdAt).toLocaleTimeString()}</td>
                         <td>
                           <div>
                             <div className="text-sm font-medium">{incident.camera.name}</div>

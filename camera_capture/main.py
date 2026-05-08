@@ -40,29 +40,39 @@ class MetricsReporter:
         self._thread.start()
 
     def _run(self):
+        # Initial call to initialize cpu_percent
         self.process.cpu_percent(interval=None)
         while not self._stop.is_set():
             try:
-                mem = self.process.memory_info().rss
-                for c in self.process.children(recursive=True):
-                    try: mem += c.memory_info().rss
-                    except: pass
-                cpu = self.process.cpu_percent(interval=0.5)
-                for c in self.process.children(recursive=True):
-                    try: cpu += c.cpu_percent(interval=0.5)
-                    except: pass
+                # Use a small interval to get a real-time sample
+                mem_bytes = self.process.memory_info().rss
+                cpu_total = self.process.cpu_percent(interval=0.1)
+                
+                try:
+                    children = self.process.children(recursive=True)
+                    for child in children:
+                        try:
+                            mem_bytes += child.memory_info().rss
+                            cpu_total += child.cpu_percent(interval=0.1)
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            continue
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
                 
                 metrics = {
-                    "cpu_percent": round(cpu, 2),
-                    "memory_gb": round(mem / (1024**3), 4),
+                    "cpu_percent": round(cpu_total, 2),
+                    "memory_gb": round(mem_bytes / (1024**3), 4),
                     "timestamp": time.time()
                 }
                 self.redis.setex(self.key, 15, json.dumps(metrics))
-            except: pass
+            except Exception:
+                pass
             time.sleep(5)
 
     def stop(self):
-        self._stop.set()
+        if self._thread:
+            self._stop.set()
+            self._thread.join(timeout=1.0)
 
 
 def load_cameras_from_json(config_path: str) -> tuple[list, dict]:

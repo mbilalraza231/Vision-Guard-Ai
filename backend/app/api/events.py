@@ -9,6 +9,7 @@ GET /alerts/{id} - Get single alert with event metadata
 """
 
 import os
+import sys
 import aiosqlite
 from typing import Optional
 

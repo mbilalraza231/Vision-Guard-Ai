@@ -6,18 +6,19 @@ import { Badge } from '@/components/ui/badge';
 import { SeverityBadge, StatusBadge } from '@/components/common/StatusBadge';
 import { API_ENDPOINTS, buildApiUrl } from '@/config/api';
 import { apiService } from '@/services/api.service';
-import { 
-  ChevronLeft, 
-  Clock, 
-  Camera, 
-  MapPin, 
-  Shield, 
-  Video, 
-  Download, 
-  Share2, 
+import {
+  ChevronLeft,
+  Clock,
+  Camera,
+  MapPin,
+  Shield,
+  Video,
+  Download,
+  Share2,
   MessageSquare,
   AlertTriangle,
-  Loader2
+  Loader2,
+  Zap
 } from 'lucide-react';
 import type { Incident } from '@/types';
 
@@ -51,7 +52,7 @@ export default function IncidentDetails() {
       const response = await apiService.getData<{ events: any[] }>(API_ENDPOINTS.incidents.list, { limit: '100' });
       const event = response.events.find(e => e.id === id);
       if (!event) throw new Error('Incident not found');
-      
+
       return {
         id: event.id,
         time: new Date(event.start_ts * 1000).toLocaleTimeString(),
@@ -65,7 +66,10 @@ export default function IncidentDetails() {
         type: event.event_type as Incident['type'],
         severity: event.severity as Incident['severity'],
         status: 'active' as Incident['status'],
-        createdAt: new Date(event.start_ts * 1000).toISOString(),
+        incidentTime: new Date(event.start_ts * 1000).toLocaleString(),
+        reportingTime: new Date(event.created_at * 1000).toLocaleString(),
+        processingDelay: event.created_at - event.start_ts,
+        createdAt: new Date(event.created_at * 1000).toISOString(),
         updatedAt: new Date(event.end_ts * 1000).toISOString(),
         confidence: event.confidence,
       };
@@ -105,19 +109,19 @@ export default function IncidentDetails() {
   return (
     <div className="min-h-screen bg-background">
       <Header title="Incident Details" showDateNav={false} />
-      
+
       <div className="p-6">
         {/* Navigation & Actions */}
         <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-          <Button 
-            variant="ghost" 
-            className="gap-2" 
+          <Button
+            variant="ghost"
+            className="gap-2"
             onClick={() => navigate('/incidents')}
           >
             <ChevronLeft className="h-4 w-4" />
             Back to Incidents
           </Button>
-          
+
           <div className="flex items-center gap-2">
             <Button variant="outline" className="gap-2">
               <Download className="h-4 w-4" />
@@ -149,8 +153,8 @@ export default function IncidentDetails() {
               </div>
               <div className="aspect-video bg-black relative flex items-center justify-center">
                 {evidence?.clip_url ? (
-                  <video 
-                    controls 
+                  <video
+                    controls
                     className="h-full w-full object-contain"
                     src={getMediaUrl(evidence.clip_url)}
                   />
@@ -170,7 +174,7 @@ export default function IncidentDetails() {
               </div>
               <div className="bg-black relative flex items-center justify-center" style={{ minHeight: '300px' }}>
                 {evidence?.snapshot_url ? (
-                  <img 
+                  <img
                     className="w-full object-contain"
                     src={getMediaUrl(evidence.snapshot_url)}
                     alt="Detection snapshot"
@@ -204,9 +208,15 @@ export default function IncidentDetails() {
                 </div>
                 <div className="flex justify-between items-center py-2 border-b border-white/5">
                   <span className="text-muted-foreground flex items-center gap-2">
-                    <Clock className="h-4 w-4" /> Time
+                    <Clock className="h-4 w-4" /> Incident Time
                   </span>
-                  <span className="font-mono text-sm">{new Date(incident.createdAt).toLocaleString()}</span>
+                  <span className="font-mono text-sm">{incident.incidentTime}</span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b border-white/5">
+                  <span className="text-muted-foreground flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-status-online" /> Reporting Time
+                  </span>
+                  <span className="font-mono text-sm">{incident.reportingTime}</span>
                 </div>
                 <div className="flex justify-between items-center py-2 border-b border-white/5">
                   <span className="text-muted-foreground flex items-center gap-2">
@@ -225,13 +235,13 @@ export default function IncidentDetails() {
                   <StatusBadge status={incident.status} />
                 </div>
               </div>
-              
+
               <div className="mt-6 pt-6 border-t border-white/10">
                 <h4 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wider">AI Confidence</h4>
                 <div className="flex items-center gap-4">
                   <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-primary" 
+                    <div
+                      className="h-full bg-primary"
                       style={{ width: `${(incident as any).confidence * 100}%` }}
                     />
                   </div>
@@ -248,8 +258,8 @@ export default function IncidentDetails() {
                 <p className="text-sm text-muted-foreground italic">No notes added yet for this incident.</p>
               </div>
               <div className="flex gap-2">
-                <input 
-                  className="flex-1 bg-secondary/50 border border-white/10 rounded-lg px-3 py-2 text-sm" 
+                <input
+                  className="flex-1 bg-secondary/50 border border-white/10 rounded-lg px-3 py-2 text-sm"
                   placeholder="Type a note..."
                 />
                 <Button size="sm">Post</Button>

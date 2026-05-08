@@ -162,29 +162,42 @@ class ECSService:
                     self.host = socket.gethostname()
                     self.key = f"vg:metrics:{name}:{self.host}"
                     self._stop = threading.Event()
+                    self.process = psutil.Process(self.pid)
+
                 def start(self):
                     threading.Thread(target=self._run, daemon=True).start()
+
                 def _run(self):
-                    p = psutil.Process(self.pid)
-                    p.cpu_percent(interval=None)
+                    # Initial call to initialize cpu_percent
+                    self.process.cpu_percent(interval=None)
                     while not self._stop.is_set():
                         try:
-                            mem = p.memory_info().rss
-                            for c in p.children(recursive=True):
-                                try: mem += c.memory_info().rss
-                                except: pass
-                            cpu = p.cpu_percent(interval=0.5)
-                            for c in p.children(recursive=True):
-                                try: cpu += c.cpu_percent(interval=0.5)
-                                except: pass
+                            # Total usage = self + all children
+                            mem_bytes = self.process.memory_info().rss
+                            cpu_total = self.process.cpu_percent(interval=0.1)
+                            
+                            try:
+                                children = self.process.children(recursive=True)
+                                for child in children:
+                                    try:
+                                        mem_bytes += child.memory_info().rss
+                                        cpu_total += child.cpu_percent(interval=0.1)
+                                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                                        continue
+                            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                                pass
+                                
                             self.r.setex(self.key, 15, json.dumps({
-                                "cpu_percent": round(cpu, 2),
-                                "memory_gb": round(mem / (1024**3), 4),
+                                "cpu_percent": round(cpu_total, 2),
+                                "memory_gb": round(mem_bytes / (1024**3), 4),
                                 "timestamp": time.time()
                             }))
-                        except: pass
+                        except Exception:
+                            pass
                         time.sleep(5)
-                def stop(self): self._stop.set()
+
+                def stop(self):
+                    self._stop.set()
 
             self._metrics_reporter = MetricsReporter(r_client, "ecs")
             self._metrics_reporter.start()
