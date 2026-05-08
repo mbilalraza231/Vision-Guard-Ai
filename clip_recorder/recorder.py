@@ -328,9 +328,17 @@ class ClipRecorder:
             best_path: Optional[str] = None
             best_diff = float("inf")
 
+            match_attempts = 0
             for f in snapshot_dir.iterdir():
-                if not (f.name.startswith(prefix) and f.name.endswith(".jpg")):
+                if not f.name.endswith(".jpg"):
                     continue
+                
+                match_attempts += 1
+                if not f.name.startswith(prefix):
+                    if match_attempts <= 5: # Only log first 5 mismatches to avoid spam
+                        logger.debug(f"Snapshot mismatch prefix: {f.name} vs {prefix}")
+                    continue
+                
                 # Filename: <type>_<cam>_<ts_ms>.jpg
                 # Extract timestamp part
                 stem = f.stem  # e.g. weapon_cam1_1711000000123
