@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,23 +9,46 @@ import { Loader2, User, Mail, Shield, Camera, Save, Key } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Profile() {
-  const { user } = useAuth();
+  const { user, updateProfile } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: user?.name || '',
     email: user?.email || '',
   });
 
+  // Sync form data if user updates from elsewhere, but NOT while we are updating
+  useEffect(() => {
+    if (user && !isLoading) {
+      setFormData(prev => ({
+        ...prev,
+        name: user.name || '',
+        email: user.email || ''
+      }));
+    }
+  }, [user, isLoading]);
+
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
     setIsLoading(true);
     
-    // Logic to update user profile in Supabase would go here
-    // For now we just simulate success
-    setTimeout(() => {
+    try {
+      const res = await updateProfile({ name: formData.name });
+      if (!res?.success) {
+        throw new Error(res?.error || 'Failed to update profile');
+      }
+      
+      if ((res as any).warning) {
+        toast.warning((res as any).warning, { duration: 5000 });
+      } else {
+        toast.success('Profile updated successfully');
+      }
+    } catch (err: any) {
+      console.error('[Profile] Update error:', err);
+      toast.error(err.message || 'Failed to update profile');
+    } finally {
       setIsLoading(false);
-      toast.success('Profile updated successfully');
-    }, 1000);
+    }
   };
 
   if (!user) return null;

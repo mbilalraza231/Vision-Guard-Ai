@@ -178,21 +178,40 @@ interface EditUserModalProps {
 }
 
 function EditUserModal({ user, onClose, onSuccess }: EditUserModalProps) {
+  const [name, setName] = useState(user.name || '');
+  const [avatar, setAvatar] = useState(user.avatar || '');
   const [role, setRole] = useState<UserRole>(user.role);
   const [status, setStatus] = useState(user.status);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const initials = name.trim()
+    ? name.trim().split(' ').map(n => n[0]).join('').toUpperCase()
+    : '?';
+
   const handleSave = async () => {
+    if (!name.trim()) {
+      toast.error('Name cannot be empty.');
+      return;
+    }
     setIsSubmitting(true);
     try {
       const { error } = await supabase
         .from('profiles')
-        .update({ role, status })
+        .update({ name: name.trim(), avatar: avatar.trim() || null, role, status })
         .eq('id', user.id);
 
       if (error) throw error;
 
-      toast.success(`User "${user.name}" updated successfully.`);
+      // If the admin is editing THEIR OWN profile, sync with Auth metadata too
+      const { data: authData } = await supabase.auth.getUser();
+      if (authData?.user?.id === user.id) {
+        console.log('[Users] Detected self-edit, syncing Auth metadata...');
+        supabase.auth.updateUser({ 
+          data: { name: name.trim(), avatar: avatar.trim() || null } 
+        }).catch(err => console.warn('[Users] Background Auth sync failed:', err));
+      }
+
+      toast.success(`User "${name.trim()}" updated successfully.`);
       onSuccess();
       onClose();
     } catch (err: any) {
@@ -204,7 +223,8 @@ function EditUserModal({ user, onClose, onSuccess }: EditUserModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl shadow-2xl p-6 animate-in slide-in-from-bottom-4 duration-300">
+      <div className="relative w-full max-w-md bg-card border border-border rounded-2xl shadow-2xl p-6 animate-in slide-in-from-bottom-4 duration-300">
+        {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-lg font-bold">Edit User</h2>
@@ -215,18 +235,49 @@ function EditUserModal({ user, onClose, onSuccess }: EditUserModalProps) {
           </button>
         </div>
 
-        {/* Avatar */}
-        <div className="flex items-center gap-3 mb-5 p-3 bg-secondary/50 rounded-xl">
-          <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm">
-            {user.name.split(' ').map(n => n[0]).join('')}
+        {/* Avatar Preview */}
+        <div className="flex items-center gap-4 mb-5 p-3 bg-secondary/50 rounded-xl">
+          <div className="h-12 w-12 rounded-full overflow-hidden bg-primary/10 flex items-center justify-center text-primary font-bold shrink-0">
+            {avatar ? (
+              <img src={avatar} alt={name} className="h-full w-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+            ) : (
+              <span className="text-sm">{initials}</span>
+            )}
           </div>
           <div>
-            <p className="text-sm font-semibold">{user.name}</p>
+            <p className="text-sm font-semibold">{name || 'Unnamed User'}</p>
             <p className="text-xs text-muted-foreground">Joined {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}</p>
           </div>
         </div>
 
         <div className="space-y-4">
+          {/* Name */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Full Name</label>
+            <input
+              id="edit-user-name"
+              type="text"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="e.g. Officer 1, John Smith"
+              className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40 transition-all"
+            />
+          </div>
+
+          {/* Avatar URL */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Profile Picture URL <span className="text-muted-foreground/60">(optional)</span></label>
+            <input
+              id="edit-user-avatar"
+              type="url"
+              value={avatar}
+              onChange={e => setAvatar(e.target.value)}
+              placeholder="https://example.com/photo.jpg"
+              className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40 transition-all"
+            />
+            <p className="text-xs text-muted-foreground mt-1">Preview updates live above as you type.</p>
+          </div>
+
           {/* Role */}
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Role</label>
@@ -240,6 +291,7 @@ function EditUserModal({ user, onClose, onSuccess }: EditUserModalProps) {
                 <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
               ))}
             </select>
+            <p className="text-xs text-muted-foreground mt-1">{roleDescriptions[role]}</p>
           </div>
 
           {/* Status */}
@@ -378,8 +430,11 @@ export default function Users() {
                     <tr key={user.id} className="hover:bg-secondary/30 transition-colors group">
                       <td>
                         <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs shrink-0">
-                            {user.name?.split(' ').map(n => n[0]).join('') || '?'}
+                          <div className="h-8 w-8 rounded-full overflow-hidden bg-primary/10 flex items-center justify-center text-primary font-bold text-xs shrink-0">
+                            {user.avatar
+                              ? <img src={user.avatar} alt={user.name} className="h-full w-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                              : user.name?.split(' ').map(n => n[0]).join('') || '?'
+                            }
                           </div>
                           <span className="text-sm font-medium">{user.name}</span>
                         </div>
