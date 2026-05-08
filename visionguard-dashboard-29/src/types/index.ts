@@ -39,6 +39,9 @@ export interface Incident {
   zone?: Zone;
   thumbnailUrl?: string;
   videoUrl?: string;
+  snapshotUrl?: string | null;
+  clipUrl?: string | null;
+  confidence?: number;
   incidentTime: string;
   reportingTime: string;
   processingDelay?: number;

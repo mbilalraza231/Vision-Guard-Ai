@@ -110,6 +110,8 @@ class DBEvent(BaseModel):
     confidence: float = Field(..., ge=0.0, le=1.0)
     model_version: str
     created_at: float
+    snapshot_url: Optional[str] = None
+    clip_url: Optional[str] = None
     
     class Config:
         json_schema_extra = {

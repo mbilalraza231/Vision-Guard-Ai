@@ -47,6 +47,8 @@ interface BackendEvent {
   confidence: number;
   model_version: string;
   created_at: number;
+  snapshot_url?: string | null;
+  clip_url?: string | null;
 }
 
 interface EventsListResponse {
@@ -97,6 +99,8 @@ function adaptEventToIncident(event: BackendEvent): Incident & { confidence: num
     reportingTime: new Date(event.created_at * 1000).toLocaleString(),
     createdAt: new Date(event.start_ts * 1000).toISOString(),
     updatedAt: new Date(event.end_ts * 1000).toISOString(),
+    snapshotUrl: event.snapshot_url,
+    clipUrl: event.clip_url,
     confidence: event.confidence,
   };
 }

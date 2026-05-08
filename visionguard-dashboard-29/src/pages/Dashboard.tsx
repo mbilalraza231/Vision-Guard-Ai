@@ -58,6 +58,8 @@ interface BackendEvent {
   model_version: string;
   created_at: number;
   processing_delay?: number;
+  snapshot_url?: string | null;
+  clip_url?: string | null;
 }
 
 interface EventsListResponse {
@@ -84,6 +86,9 @@ function adaptEventToIncident(event: BackendEvent): Incident {
     time: new Date(event.start_ts * 1000).toLocaleString(),
     incidentTime: new Date(event.start_ts * 1000).toLocaleString(),
     reportingTime: new Date(event.created_at * 1000).toLocaleString(),
+    snapshotUrl: event.snapshot_url,
+    clipUrl: event.clip_url,
+    confidence: event.confidence,
     processingDelay: event.created_at - event.start_ts,
     createdAt: new Date(event.created_at * 1000).toISOString(),
     updatedAt: new Date(event.end_ts * 1000).toISOString(),

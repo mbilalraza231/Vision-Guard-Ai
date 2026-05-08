@@ -116,13 +116,18 @@ class DatabaseReader:
                     row = await cursor.fetchone()
                     total = row[0]
                 
-                # Get events
+                # Get events with evidence URLs
                 query_sql = f"""
-                    SELECT id, camera_id, event_type, severity, 
-                           start_ts, end_ts, confidence, model_version, created_at
-                    FROM events 
+                    SELECT e.*, 
+                           s.public_url as snapshot_url, 
+                           s.storage_provider as snapshot_provider,
+                           c.public_url as clip_url,
+                           c.storage_provider as clip_provider
+                    FROM events e
+                    LEFT JOIN event_evidence s ON e.id = s.event_id AND s.evidence_type = 'snapshot'
+                    LEFT JOIN event_evidence c ON e.id = c.event_id AND c.evidence_type = 'clip'
                     {where_sql}
-                    ORDER BY created_at DESC
+                    ORDER BY e.created_at DESC
                     LIMIT ? OFFSET ?
                 """
                 params.extend([limit, offset])
@@ -132,17 +137,26 @@ class DatabaseReader:
                 
                 events = []
                 for row in rows:
-                    events.append({
-                        "id": row["id"],
-                        "camera_id": row["camera_id"],
-                        "event_type": row["event_type"],
-                        "severity": row["severity"],
-                        "start_ts": row["start_ts"],
-                        "end_ts": row["end_ts"],
-                        "confidence": row["confidence"],
-                        "model_version": row["model_version"],
-                        "created_at": row["created_at"]
-                    })
+                    ev = dict(row)
+                    
+                    # Translate local paths to API URLs
+                    snap_url = ev.get("snapshot_url")
+                    if snap_url and snap_url.startswith("/data/visionguard/detections/"):
+                        if os.path.exists(snap_url):
+                            filename = os.path.basename(snap_url)
+                            ev["snapshot_url"] = f"/detections/images/{filename}"
+                        else:
+                            ev["snapshot_url"] = None
+                    
+                    c_url = ev.get("clip_url")
+                    if c_url and c_url.startswith("/data/visionguard/clips/"):
+                        if os.path.exists(c_url):
+                            filename = os.path.basename(c_url)
+                            ev["clip_url"] = f"/detections/clips/{filename}"
+                        else:
+                            ev["clip_url"] = None
+                            
+                    events.append(ev)
                 
                 return {
                     "total": total,
@@ -185,15 +199,43 @@ class DatabaseReader:
 
             async with aiosqlite.connect(self.db_path) as db:
                 db.row_factory = aiosqlite.Row
-                async with db.execute(
-                    "SELECT * FROM events WHERE id = ?", (event_id,)
-                ) as cursor:
+                query_sql = """
+                    SELECT e.*, 
+                           s.public_url as snapshot_url, 
+                           s.storage_provider as snapshot_provider,
+                           c.public_url as clip_url,
+                           c.storage_provider as clip_provider
+                    FROM events e
+                    LEFT JOIN event_evidence s ON e.id = s.event_id AND s.evidence_type = 'snapshot'
+                    LEFT JOIN event_evidence c ON e.id = c.event_id AND c.evidence_type = 'clip'
+                    WHERE e.id = ?
+                """
+                async with db.execute(query_sql, (event_id,)) as cursor:
                     row = await cursor.fetchone()
                 
                 if row is None:
                     return None
                 
-                return dict(row)
+                ev = dict(row)
+                
+                # Translate local paths to API URLs
+                snap_url = ev.get("snapshot_url")
+                if snap_url and snap_url.startswith("/data/visionguard/detections/"):
+                    if os.path.exists(snap_url):
+                        filename = os.path.basename(snap_url)
+                        ev["snapshot_url"] = f"/detections/images/{filename}"
+                    else:
+                        ev["snapshot_url"] = None
+                
+                c_url = ev.get("clip_url")
+                if c_url and c_url.startswith("/data/visionguard/clips/"):
+                    if os.path.exists(c_url):
+                        filename = os.path.basename(c_url)
+                        ev["clip_url"] = f"/detections/clips/{filename}"
+                    else:
+                        ev["clip_url"] = None
+                        
+                return ev
             
         except Exception as e:
             self.logger.error(f"Error getting event: {e}")
