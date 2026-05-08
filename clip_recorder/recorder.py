@@ -334,9 +334,17 @@ class ClipRecorder:
                     continue
                 
                 match_attempts += 1
-                if not f.name.startswith(prefix):
-                    if match_attempts <= 5: # Only log first 5 mismatches to avoid spam
-                        logger.debug(f"Snapshot mismatch prefix: {f.name} vs {prefix}")
+                
+                # Flexible matching: handle fire vs fire_detected and case sensitivity
+                filename_lower = f.name.lower()
+                prefix_lower = prefix.lower()
+                alt_prefix_lower = prefix_lower.replace("_detected", "")
+                
+                is_match = filename_lower.startswith(prefix_lower) or filename_lower.startswith(alt_prefix_lower)
+                
+                if not is_match:
+                    if match_attempts <= 10:
+                        logger.debug(f"Snapshot mismatch: {f.name} doesn't match {prefix} or {alt_prefix_lower}")
                     continue
                 
                 # Filename: <type>_<cam>_<ts_ms>.jpg
