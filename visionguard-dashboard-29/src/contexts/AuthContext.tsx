@@ -119,10 +119,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // 1. Update public.profiles (Primary Source of Truth)
       console.log('[AuthContext] Step 1: Updating profiles table...');
-      const { error: dbError } = await supabase
-        .from('profiles')
-        .update(data)
-        .eq('id', state.user.id);
+      
+      let dbError = null;
+      try {
+        const dbPromise = supabase
+          .from('profiles')
+          .update(data)
+          .eq('id', state.user.id);
+        
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Database update timed out. Please check your connection.')), 7000)
+        );
+
+        const result = await Promise.race([dbPromise, timeoutPromise]) as any;
+        dbError = result.error;
+      } catch (err: any) {
+        console.error('[AuthContext] Step 1 EXCEPTION:', err.message);
+        return { success: false, error: err.message };
+      }
       
       if (dbError) {
         console.error('[AuthContext] Step 1 FAILED:', dbError.message);

@@ -195,12 +195,21 @@ function EditUserModal({ user, onClose, onSuccess }: EditUserModalProps) {
     }
     setIsSubmitting(true);
     try {
-      const { error } = await supabase
+      console.log('[Users] Step 1: Updating profile table for ID:', user.id);
+      
+      const dbPromise = supabase
         .from('profiles')
         .update({ name: name.trim(), avatar: avatar.trim() || null, role, status })
         .eq('id', user.id);
+      
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Update timed out. Please refresh.')), 7000)
+      );
+
+      const { error } = await Promise.race([dbPromise, timeoutPromise]) as any;
 
       if (error) throw error;
+      console.log('[Users] Step 1 SUCCESS');
 
       // If the admin is editing THEIR OWN profile, sync with Auth metadata too
       const { data: authData } = await supabase.auth.getUser();
@@ -215,6 +224,7 @@ function EditUserModal({ user, onClose, onSuccess }: EditUserModalProps) {
       onSuccess();
       onClose();
     } catch (err: any) {
+      console.error('[Users] Update error:', err.message);
       toast.error(err.message || 'Failed to update user.');
     } finally {
       setIsSubmitting(false);
@@ -334,16 +344,26 @@ export default function Users() {
   const fetchUsers = async () => {
     setIsLoading(true);
     setError(null);
+    console.log('[Users] Fetching user list...');
     try {
-      const { data, error: sbError } = await supabase
+      const dbPromise = supabase
         .from('profiles')
         .select('*')
         .order('name');
+      
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Fetching users timed out. Please refresh the page.')), 8000)
+      );
+
+      const { data, error: sbError } = await Promise.race([dbPromise, timeoutPromise]) as any;
 
       if (sbError) throw sbError;
-      if (data) setUsers(data as User[]);
+      if (data) {
+        console.log('[Users] Fetch SUCCESS:', data.length, 'users found');
+        setUsers(data as User[]);
+      }
     } catch (err: any) {
-      console.error('Error fetching users:', err);
+      console.error('[Users] Fetch error:', err.message);
       setError(err.message);
     } finally {
       setIsLoading(false);
