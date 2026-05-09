@@ -206,6 +206,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    // Clear state immediately to prevent race conditions with routing
+    setState({ user: null, isAuthenticated: false, isLoading: false });
     await supabase.auth.signOut();
   };
 
