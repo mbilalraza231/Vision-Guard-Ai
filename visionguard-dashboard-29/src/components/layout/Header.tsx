@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/contexts/AuthContext';
+import { useProfile } from '@/hooks/useProfile';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 
@@ -19,7 +20,8 @@ interface HeaderProps {
 }
 
 export function Header({ title, showDateNav = true }: HeaderProps) {
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
+  const { data: user } = useProfile();
   const navigate = useNavigate();
   const today = new Date();
 

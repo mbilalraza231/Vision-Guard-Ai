@@ -5,12 +5,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/contexts/AuthContext';
+import { useProfile, useUpdateProfile } from '@/hooks/useProfile';
 import { Loader2, User, Mail, Shield, Camera, Save, Key } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Profile() {
-  const { user, updateProfile } = useAuth();
-  const [isLoading, setIsLoading] = useState(false);
+  const { data: user, isLoading: isProfileLoading } = useProfile();
+  const updateProfile = useUpdateProfile();
+  
   const [formData, setFormData] = useState({
     name: user?.name || '',
     email: user?.email || '',
@@ -18,7 +20,7 @@ export default function Profile() {
 
   // 1. GLOBAL SYNC: Keep form updated if user data changes elsewhere (e.g. User Management page)
   useEffect(() => {
-    if (user && !isLoading) {
+    if (user) {
       console.log('[Profile] Syncing form with global user state:', user.name);
       setFormData(prev => ({
         ...prev,
@@ -26,29 +28,18 @@ export default function Profile() {
         email: user.email || ''
       }));
     }
-  }, [user, isLoading]);
+  }, [user]);
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isLoading) return;
-    
-    // We update local state first for instant feedback (Optimistic)
-    setIsLoading(true);
+    if (updateProfile.isPending) return;
     
     try {
-      // The actual work is done in AuthContext (with its own internal optimistic update)
-      const res = await updateProfile({ name: formData.name });
-      
-      if (!res?.success) {
-        throw new Error(res?.error || 'Failed to update profile');
-      }
-      
+      await updateProfile.mutateAsync({ name: formData.name });
       toast.success('Profile updated successfully');
     } catch (err: any) {
       console.error('[Profile] Update error:', err);
       toast.error(err.message || 'Failed to update profile');
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -125,8 +116,8 @@ export default function Profile() {
                 </div>
 
                 <div className="flex justify-end pt-4">
-                  <Button type="submit" className="gap-2" disabled={isLoading}>
-                    {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  <Button type="submit" className="gap-2" disabled={updateProfile.isPending}>
+                    {updateProfile.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                     Save Changes
                   </Button>
                 </div>

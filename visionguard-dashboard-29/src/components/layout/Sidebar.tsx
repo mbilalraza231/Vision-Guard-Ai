@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { useAuth } from '@/contexts/AuthContext';
+import { useProfile } from '@/hooks/useProfile';
 
 interface NavItem {
   label: string;
@@ -36,7 +36,7 @@ const navItems: NavItem[] = [
 
 export function Sidebar() {
   const location = useLocation();
-  const { user } = useAuth();
+  const { data: user } = useProfile();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 

@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { useProfile } from '@/hooks/useProfile';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -7,8 +8,11 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps) {
-  const { isAuthenticated, isLoading, user } = useAuth();
+  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { data: user, isLoading: isProfileLoading } = useProfile();
   const location = useLocation();
+
+  const isLoading = isAuthLoading || (isAuthenticated && isProfileLoading);
 
   if (isLoading) {
     return (

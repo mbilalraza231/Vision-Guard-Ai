@@ -1,3 +1,5 @@
+import type { Session } from '@supabase/supabase-js';
+
 // User and Authentication Types
 export interface User {
   id: string;
@@ -12,7 +14,7 @@ export interface User {
 export type UserRole = 'admin' | 'manager' | 'officer' | 'viewer';
 
 export interface AuthState {
-  user: User | null;
+  session: Session | null;
   isAuthenticated: boolean;
   isLoading: boolean;
 }

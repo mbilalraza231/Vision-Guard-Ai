@@ -147,7 +147,7 @@ interface EditUserModalProps {
 
 function EditUserModal({ user, onClose, onSuccess }: EditUserModalProps) {
   const queryClient = useQueryClient();
-  const { user: currentUser, updateLocalUser } = useAuth();
+  const { session } = useAuth();
   const [name, setName] = useState(user.name || '');
   const [avatar, setAvatar] = useState(user.avatar || '');
   const [role, setRole] = useState<UserRole>(user.role);
@@ -168,9 +168,9 @@ function EditUserModal({ user, onClose, onSuccess }: EditUserModalProps) {
       return old?.map(u => u.id === user.id ? updatedUser : u);
     });
 
-    // If editing myself, instantly sync AuthContext!
-    if (currentUser?.id === user.id) {
-      updateLocalUser(updatedUser);
+    // If editing myself, instantly sync the useProfile cache
+    if (session?.user?.id === user.id) {
+      queryClient.setQueryData(['profile', session.user.id], updatedUser);
     }
 
     try {
@@ -191,12 +191,8 @@ function EditUserModal({ user, onClose, onSuccess }: EditUserModalProps) {
         console.warn('[Users] DB sync warning:', error.message);
       }
       
-      // Background Auth sync for self-edits
-      const { data: authData } = await supabase.auth.getUser();
-      if (authData?.user?.id === user.id) {
-        supabase.auth.updateUser({ data: { name: name.trim(), avatar: avatar.trim() || null } }).catch(() => {});
-      }
-
+      // Removed the duplicated supabase.auth.updateUser call since profiles table is SSOT
+      
       toast.success(`User updated successfully.`);
       onSuccess();
       onClose();
