@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import type { User, UserRole } from '@/types';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/contexts/AuthContext';
 
 const roleDescriptions: Record<UserRole, string> = {
   admin: 'Full system access, user management, settings configuration',
@@ -146,6 +147,7 @@ interface EditUserModalProps {
 
 function EditUserModal({ user, onClose, onSuccess }: EditUserModalProps) {
   const queryClient = useQueryClient();
+  const { user: currentUser, updateLocalUser } = useAuth();
   const [name, setName] = useState(user.name || '');
   const [avatar, setAvatar] = useState(user.avatar || '');
   const [role, setRole] = useState<UserRole>(user.role);
@@ -165,6 +167,11 @@ function EditUserModal({ user, onClose, onSuccess }: EditUserModalProps) {
     queryClient.setQueryData(['users'], (old: User[] | undefined) => {
       return old?.map(u => u.id === user.id ? updatedUser : u);
     });
+
+    // If editing myself, instantly sync AuthContext!
+    if (currentUser?.id === user.id) {
+      updateLocalUser(updatedUser);
+    }
 
     try {
       console.log('[Users] Step 1: Syncing with DB (Optimistic)...');

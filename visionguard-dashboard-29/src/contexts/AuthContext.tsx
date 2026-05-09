@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import type { User, AuthState, LoginCredentials, UserRole } from '@/types';
 
@@ -9,6 +10,7 @@ interface AuthContextType extends AuthState {
   resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
   updatePassword: (password: string) => Promise<{ success: boolean; error?: string }>;
   updateProfile: (data: { name?: string; avatar?: string }) => Promise<{ success: boolean; error?: string }>;
+  updateLocalUser: (data: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -34,6 +36,7 @@ async function fetchProfile(userId: string): Promise<Partial<User>> {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [state, setState] = useState<AuthState>({
     user: null,
     isAuthenticated: false,
@@ -134,6 +137,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Immediately update local AuthContext state (useful for cross-page optimistic UI)
+  const updateLocalUser = (data: Partial<User>) => {
+    setState(prev => ({
+      ...prev,
+      user: prev.user ? { ...prev.user, ...data } : null,
+    }));
+  };
+
   // Update profile in public.profiles AND auth.user_metadata — keeps both in sync
   const updateProfile = async (data: { name?: string; avatar?: string }) => {
     console.log('[AuthContext] updateProfile START (Optimistic):', data);
@@ -145,6 +156,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ...prev,
       user: prev.user ? { ...prev.user, ...data } : null,
     }));
+
+    // Optimistically update the global users list cache if it exists
+    if (previousUser) {
+      queryClient.setQueryData(['users'], (old: User[] | undefined) => {
+        if (!old) return old;
+        return old.map(u => u.id === previousUser.id ? { ...u, ...data } : u);
+      });
+    }
 
     try {
       if (!previousUser) {
@@ -212,7 +231,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ ...state, login, register, logout, resetPassword, updatePassword, updateProfile }}>
+    <AuthContext.Provider value={{ ...state, login, register, logout, resetPassword, updatePassword, updateProfile, updateLocalUser }}>
       {children}
     </AuthContext.Provider>
   );

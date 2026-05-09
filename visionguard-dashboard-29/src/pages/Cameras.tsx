@@ -49,12 +49,48 @@ export default function Cameras() {
 
   const startMutation = useMutation({
     mutationFn: (id: string) => apiService.postData(API_ENDPOINTS.cameras.start(id)),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['cameras'] }),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['cameras'] });
+      const previousCameras = queryClient.getQueryData<BackendCamera[]>(['cameras']);
+      
+      // Optimistically update the camera state
+      queryClient.setQueryData<BackendCamera[]>(['cameras'], (old) => {
+        if (!old) return old;
+        return old.map(cam => cam.id === id ? { ...cam, status: 'running', pid: 9999 } : cam);
+      });
+      
+      return { previousCameras };
+    },
+    onError: (err, id, context) => {
+      // Revert if mutation fails
+      if (context?.previousCameras) {
+        queryClient.setQueryData(['cameras'], context.previousCameras);
+      }
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['cameras'] }),
   });
 
   const stopMutation = useMutation({
     mutationFn: (id: string) => apiService.postData(API_ENDPOINTS.cameras.stop(id)),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['cameras'] }),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['cameras'] });
+      const previousCameras = queryClient.getQueryData<BackendCamera[]>(['cameras']);
+      
+      // Optimistically update the camera state
+      queryClient.setQueryData<BackendCamera[]>(['cameras'], (old) => {
+        if (!old) return old;
+        return old.map(cam => cam.id === id ? { ...cam, status: 'stopped', pid: null } : cam);
+      });
+      
+      return { previousCameras };
+    },
+    onError: (err, id, context) => {
+      // Revert if mutation fails
+      if (context?.previousCameras) {
+        queryClient.setQueryData(['cameras'], context.previousCameras);
+      }
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['cameras'] }),
   });
 
   const cameras = data?.map(adaptCamera) ?? [];
