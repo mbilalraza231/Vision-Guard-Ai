@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { API_ENDPOINTS } from '@/config/api';
 import { apiService } from '@/services/api.service';
 import { useAuth } from '@/contexts/AuthContext';
+import { useProfile } from '@/hooks/useProfile';
 import type { SystemMetrics, Incident } from '@/types';
 
 // Backend response types
@@ -97,7 +98,7 @@ function adaptEventToIncident(event: BackendEvent): Incident {
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { data: user } = useProfile();
 
   // Fetch event stats
   const { data: stats, isLoading: statsLoading, error: statsError, refetch: refetchStats } =

@@ -179,7 +179,9 @@ function EditUserModal({ user, onClose, onSuccess }: EditUserModalProps) {
       const dbPromise = supabase
         .from('profiles')
         .update({ name: name.trim(), avatar: avatar.trim() || null, role, status })
-        .eq('id', user.id);
+        .eq('id', user.id)
+        .select()
+        .single();
       
       const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Sync delayed. Local change kept.')), 8000)
@@ -188,7 +190,7 @@ function EditUserModal({ user, onClose, onSuccess }: EditUserModalProps) {
       const { error } = await Promise.race([dbPromise, timeoutPromise]) as any;
 
       if (error) {
-        console.warn('[Users] DB sync warning:', error.message);
+        throw error;
       }
       
       // Removed the duplicated supabase.auth.updateUser call since profiles table is SSOT

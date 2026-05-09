@@ -21,6 +21,18 @@ export function useProfile() {
         .single();
         
       if (error) {
+        // If the profile doesn't exist yet (e.g. old user before triggers), fallback gracefully
+        if (error.code === 'PGRST116') {
+          console.warn('[useProfile] No profile found in DB for user, using fallback.');
+          return {
+            id: session.user.id,
+            email: session.user.email || '',
+            name: session.user.user_metadata?.name || 'Unknown User',
+            role: (session.user.user_metadata?.role as UserRole) || 'viewer',
+            status: 'active',
+            createdAt: session.user.created_at,
+          };
+        }
         console.error('[useProfile] Fetch error:', error);
         throw error;
       }
@@ -38,6 +50,7 @@ export function useProfile() {
     },
     enabled: !!session?.user?.id,
     staleTime: 1000 * 60 * 5, // Cache profile for 5 minutes
+    retry: 0, // Fail fast if Supabase rejects the connection
   });
 }
 

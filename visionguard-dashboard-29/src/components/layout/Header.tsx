@@ -30,13 +30,15 @@ export function Header({ title, showDateNav = true }: HeaderProps) {
     navigate('/auth/login');
   };
 
-  // Mock user for development
-  const displayUser = user || {
-    name: 'Fayaz Ali',
-    email: 'fayaz@example.com',
-    role: 'admin',
-    avatar: undefined,
-  };
+  if (!user) {
+    return (
+      <header className="flex h-16 items-center justify-between border-b border-border bg-background px-6">
+        <div className="flex items-center gap-4">
+          {title && <h1 className="text-2xl font-bold">{title}</h1>}
+        </div>
+      </header>
+    );
+  }
 
   return (
     <header className="flex h-16 items-center justify-between border-b border-border bg-background px-6">
@@ -73,9 +75,9 @@ export function Header({ title, showDateNav = true }: HeaderProps) {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="h-10 w-10 rounded-full p-0">
               <Avatar className="h-10 w-10">
-                <AvatarImage src={displayUser.avatar} alt={displayUser.name} />
+                <AvatarImage src={user.avatar} alt={user.name} />
                 <AvatarFallback className="bg-primary text-primary-foreground">
-                  {displayUser.name
+                  {user.name
                     .split(' ')
                     .map((n) => n[0])
                     .join('')
@@ -87,9 +89,9 @@ export function Header({ title, showDateNav = true }: HeaderProps) {
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>
               <div className="flex flex-col">
-                <span>{displayUser.name}</span>
+                <span>{user.name}</span>
                 <span className="text-xs font-normal text-muted-foreground">
-                  {displayUser.email}
+                  {user.email}
                 </span>
               </div>
             </DropdownMenuLabel>

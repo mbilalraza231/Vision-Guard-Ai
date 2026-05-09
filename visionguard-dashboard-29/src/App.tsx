@@ -49,7 +49,7 @@ const App = () => (
             </Route>
 
             {/* Dashboard routes */}
-            <Route element={<DashboardLayout />}>
+            <Route element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/monitoring" element={<LiveMonitoring />} />
               <Route path="/incidents" element={<Incidents />} />
