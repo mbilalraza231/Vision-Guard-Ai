@@ -82,11 +82,6 @@ def main() -> None:
             "Clips and snapshots will be saved locally but not uploaded."
         )
 
-    if config.enable_background_buffer and not config.camera_source:
-        log.error(
-            "CAMERA_SOURCE environment variable is required when CLIP_ENABLE_BACKGROUND_BUFFER=true."
-        )
-        sys.exit(1)
 
     log.info("Clip recorder starting...")
     log.info(f"  Redis:         {config.redis_host}:{config.redis_port}")

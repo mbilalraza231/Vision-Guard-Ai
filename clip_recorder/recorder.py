@@ -421,20 +421,24 @@ class ClipRecorder:
             # Ensure the background buffer is running for this camera
             self._start_camera_buffer(camera_source)
             
-            # Wait briefly to let the buffer build if it was just started or if the detection 
-            # literally just happened, to ensure we get some "post" frames.
-            # In a heavy latency scenario, the detection_ts is already 10 seconds in the past!
-            # But if processing is extremely fast, we might need to wait for post_frames to arrive.
+            # Wait briefly to let the buffer build post-event frames
             time.sleep(2.0)
             
-            with self.buffer_locks.get(camera_source, threading.Lock()):
+            # FIX: Use the REAL shared lock, not a brand-new temporary one
+            lock = self.buffer_locks.get(camera_source)
+            if lock is None:
+                logger.warning(f"No buffer lock found for {camera_source} — falling back to direct recording")
+                return self._record_clip_direct(event_id, event_type, camera_source)
+
+            with lock:
                 if camera_source not in self.frame_buffers:
-                    return None
+                    logger.warning(f"No frame buffer found for {camera_source} — falling back to direct recording")
+                    return self._record_clip_direct(event_id, event_type, camera_source)
                 buffer_snapshot = list(self.frame_buffers[camera_source])
                 
             if not buffer_snapshot:
-                logger.error(f"No frames in ring buffer for {camera_source}")
-                return None
+                logger.warning(f"Ring buffer is empty for {camera_source} — falling back to direct recording")
+                return self._record_clip_direct(event_id, event_type, camera_source)
                 
             # Define exact temporal window
             start_ts = detection_ts - self.config.clip_pre_seconds
@@ -448,9 +452,10 @@ class ClipRecorder:
                     
             if not valid_frames:
                 logger.warning(
-                    f"No frames matched time window [{start_ts}, {end_ts}] in buffer for {camera_source}"
+                    f"No frames matched time window [{start_ts:.1f}, {end_ts:.1f}] "
+                    f"(buffer has {len(buffer_snapshot)} frames) — falling back to direct recording"
                 )
-                return None
+                return self._record_clip_direct(event_id, event_type, camera_source)
 
             height, width = valid_frames[0].shape[:2]
             fps = self.config.camera_fps
@@ -463,7 +468,8 @@ class ClipRecorder:
             writer = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
 
             logger.info(
-                f"Stitching {len(valid_frames)} buffered frames for clip",
+                f"Stitching {len(valid_frames)} buffered frames for clip "
+                f"[window: {self.config.clip_pre_seconds}s pre + {self.config.clip_post_seconds}s post]",
                 extra={"event_id": event_id, "output": out_path},
             )
 
@@ -476,7 +482,12 @@ class ClipRecorder:
             
         except Exception as e:
             logger.error(f"Error recording latency-aware clip: {e}", exc_info=True)
-            return None
+            logger.warning(f"Falling back to direct recording after exception for event {event_id}")
+            try:
+                return self._record_clip_direct(event_id, event_type, camera_source)
+            except Exception as e2:
+                logger.error(f"Direct recording fallback also failed: {e2}")
+                return None
 
     def _record_clip_direct(
         self,
