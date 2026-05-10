@@ -6,6 +6,11 @@ Reads all settings from environment variables with sensible defaults.
 
 import os
 from dataclasses import dataclass, field
+from dotenv import load_dotenv
+
+# --- Explicitly load .env file ---
+load_dotenv()
+
 
 # Redis stream name for clip recording requests
 CLIP_REQUEST_STREAM = "vg:clip:requests"
@@ -77,3 +82,4 @@ class ClipConfig:
             and self.cloudinary_api_key
             and self.cloudinary_api_secret
         )
+
