@@ -305,7 +305,7 @@ export default function Incidents() {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['incidents', filters],
     queryFn: () => apiService.getData<EventsListResponse>(API_ENDPOINTS.incidents.list, queryParams),
-    refetchInterval: 10000,
+    refetchInterval: 5000,
   });
 
   const incidents = data?.events?.map(adaptEventToIncident) ?? [];
