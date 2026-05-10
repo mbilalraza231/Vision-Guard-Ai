@@ -404,9 +404,10 @@ class AIWorker:
                 cv2.putText(annotated, label, (x1, y1 - 5),
                            cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), thickness)
             
-            # Save with timestamp-based filename
-            ts = int(time.time() * 1000)
-            filename = f"{self.config.model_type}_{task.camera_id}_{ts}.jpg"
+            # Save with original frame timestamp (not processing time)
+            # This ensures perfect correlation between snapshots and events
+            ts_ms = int(task.timestamp * 1000)
+            filename = f"{self.config.model_type}_{task.camera_id}_{ts_ms}.jpg"
             filepath = os.path.join(DETECTION_DIR, filename)
             cv2.imwrite(filepath, annotated, [cv2.IMWRITE_JPEG_QUALITY, 80])
             

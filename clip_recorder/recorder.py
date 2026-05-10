@@ -73,6 +73,10 @@ class ClipRecorder:
         self.frame_buffers: Dict[str, deque] = {}
         self.buffer_locks: Dict[str, threading.Lock] = {}
         
+        # New: Auto-start buffers for Dashcam mode
+        if self.config.enable_background_buffer:
+            logger.info("CLIP_ENABLE_BACKGROUND_BUFFER=true. Dashcam mode active.")
+        
         # We start the background capture threads here
         self._shutdown_event = threading.Event()
         self._capture_threads: Dict[str, threading.Thread] = {}
@@ -141,6 +145,19 @@ class ClipRecorder:
         self._shutdown_event.set()
         for t in self._capture_threads.values():
             t.join(timeout=2.0)
+
+    def start_dashcam_buffers(self, camera_sources: list):
+        """
+        Proactively start ring buffers for all known cameras.
+        This ensures history is available BEFORE the first incident happens.
+        """
+        if not self.config.enable_background_buffer:
+            return
+            
+        logger.info(f"Initializing dashcam buffers for {len(camera_sources)} cameras")
+        for source in camera_sources:
+            if source:
+                self._start_camera_buffer(source)
 
     # ------------------------------------------------------------------
     # Public API

@@ -122,6 +122,18 @@ def main() -> None:
     # --- Initialise recorder ---
     recorder = ClipRecorder(config)
 
+    # --- Dashcam Mode: Pre-start buffers for all known cameras ---
+    if config.enable_background_buffer:
+        try:
+            # Fetch all cameras from the registry
+            camera_sources = redis_client.hvals("vg:camera:sources")
+            if camera_sources:
+                recorder.start_dashcam_buffers(camera_sources)
+            else:
+                log.warning("No camera sources found in Redis registry (vg:camera:sources)")
+        except Exception as e:
+            log.warning(f"Failed to auto-start dashcam buffers: {e}")
+
     # --- Graceful shutdown ---
     _running = True
 
