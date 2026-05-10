@@ -90,8 +90,8 @@ class ClipRecorder:
         if camera_source in self._capture_threads:
             return
             
-        # Store ~20 seconds of video dynamically
-        max_buffer_frames = self.config.camera_fps * 20 
+        # Store ~60 seconds of video dynamically to handle processing lag
+        max_buffer_frames = self.config.camera_fps * 60 
         self.frame_buffers[camera_source] = deque(maxlen=max_buffer_frames)
         self.buffer_locks[camera_source] = threading.Lock()
 
@@ -105,9 +105,13 @@ class ClipRecorder:
         t.start()
         
     def _camera_capture_loop(self, camera_source: str):
-        """Continuously reads from RTSP into the ring buffer."""
+        """
+        Continuously reads from RTSP into the ring buffer.
+        Drains the OpenCV buffer as fast as possible to eliminate lag.
+        """
         logger.info(f"Starting background ring buffer for {camera_source}")
         cap = None
+        last_save_time = 0
         
         while not self._shutdown_event.is_set():
             try:
@@ -120,21 +124,31 @@ class ClipRecorder:
                         time.sleep(2.0)
                         continue
                 
-                ret, frame = cap.read()
-                if not ret or frame is None:
+                # Drain the buffer: grab frames as fast as possible
+                ret = cap.grab()
+                if not ret:
+                    logger.warning(f"Failed to grab frame from {camera_source}, reconnecting...")
                     cap.release()
                     cap = None
                     continue
                 
-                ts = time.time()
-                with self.buffer_locks[camera_source]:
-                    self.frame_buffers[camera_source].append((ts, frame))
-                    
-                # Throttle slightly to target fps
-                time.sleep(1.0 / self.config.camera_fps)
+                # Only retrieve and store at the target FPS
+                now = time.time()
+                if now - last_save_time >= (1.0 / self.config.camera_fps):
+                    ret, frame = cap.retrieve()
+                    if ret and frame is not None:
+                        with self.buffer_locks[camera_source]:
+                            self.frame_buffers[camera_source].append((now, frame))
+                        last_save_time = now
+                
+                # Minimal sleep to prevent 100% CPU, but keep buffer drained
+                time.sleep(0.001)
                 
             except Exception as e:
                 logger.error(f"Error in ring buffer capture for {camera_source}: {e}")
+                if cap:
+                    cap.release()
+                    cap = None
                 time.sleep(2.0)
                 
         if cap:
@@ -416,29 +430,35 @@ class ClipRecorder:
         """
         try:
             if not self.config.enable_background_buffer:
-                return self._record_clip_direct(event_id, event_type, camera_source)
+                return self._record_clip_direct(event_id, event_type, camera_source, detection_ts)
 
             # Ensure the background buffer is running for this camera
             self._start_camera_buffer(camera_source)
             
-            # Wait briefly to let the buffer build post-event frames
-            time.sleep(2.0)
+            # Wait dynamically until the full post-event window is captured in the buffer
+            window_end = detection_ts + self.config.clip_post_seconds
+            wait_time = (window_end + 1.5) - time.time()  # +1.5s margin for ingest lag
+            if wait_time > 0:
+                # Cap wait time at 15s to prevent infinite hanging
+                wait_time = min(wait_time, 15.0)
+                logger.info(f"Waiting {wait_time:.1f}s for post-event buffer to fill (event: {event_id})")
+                time.sleep(wait_time)
             
             # FIX: Use the REAL shared lock, not a brand-new temporary one
             lock = self.buffer_locks.get(camera_source)
             if lock is None:
                 logger.warning(f"No buffer lock found for {camera_source} — falling back to direct recording")
-                return self._record_clip_direct(event_id, event_type, camera_source)
+                return self._record_clip_direct(event_id, event_type, camera_source, detection_ts)
 
             with lock:
                 if camera_source not in self.frame_buffers:
                     logger.warning(f"No frame buffer found for {camera_source} — falling back to direct recording")
-                    return self._record_clip_direct(event_id, event_type, camera_source)
+                    return self._record_clip_direct(event_id, event_type, camera_source, detection_ts)
                 buffer_snapshot = list(self.frame_buffers[camera_source])
                 
             if not buffer_snapshot:
                 logger.warning(f"Ring buffer is empty for {camera_source} — falling back to direct recording")
-                return self._record_clip_direct(event_id, event_type, camera_source)
+                return self._record_clip_direct(event_id, event_type, camera_source, detection_ts)
                 
             # Define exact temporal window
             start_ts = detection_ts - self.config.clip_pre_seconds
@@ -455,12 +475,12 @@ class ClipRecorder:
                     f"No frames matched time window [{start_ts:.1f}, {end_ts:.1f}] "
                     f"(buffer has {len(buffer_snapshot)} frames) — falling back to direct recording"
                 )
-                return self._record_clip_direct(event_id, event_type, camera_source)
+                return self._record_clip_direct(event_id, event_type, camera_source, detection_ts)
 
             height, width = valid_frames[0].shape[:2]
             fps = self.config.camera_fps
 
-            ts_str = int(time.time())
+            ts_str = int(detection_ts)
             filename = f"{event_type}_{event_id}_{ts_str}.mp4"
             out_path = os.path.join(self.config.clip_dir, filename)
 
@@ -484,7 +504,7 @@ class ClipRecorder:
             logger.error(f"Error recording latency-aware clip: {e}", exc_info=True)
             logger.warning(f"Falling back to direct recording after exception for event {event_id}")
             try:
-                return self._record_clip_direct(event_id, event_type, camera_source)
+                return self._record_clip_direct(event_id, event_type, camera_source, detection_ts)
             except Exception as e2:
                 logger.error(f"Direct recording fallback also failed: {e2}")
                 return None
@@ -494,6 +514,7 @@ class ClipRecorder:
         event_id: str,
         event_type: str,
         camera_source: str,
+        detection_ts: float,
     ) -> Optional[str]:
         """Record a clip directly from source without persistent background buffer."""
         cap = None
@@ -515,7 +536,7 @@ class ClipRecorder:
             fps = self.config.camera_fps
             total_frames = max(1, int(self.config.clip_post_seconds * fps))
 
-            ts_str = int(time.time())
+            ts_str = int(detection_ts)
             filename = f"{event_type}_{event_id}_{ts_str}.mp4"
             out_path = os.path.join(self.config.clip_dir, filename)
 
@@ -574,83 +595,116 @@ class ClipRecorder:
         snapshot_local = result.get("snapshot_local")
         clip_local = result.get("clip_local")
 
-        # Prioritize cloud URLs if they exist
-        final_snapshot = snapshot_url or snapshot_local
-        final_clip = clip_url or clip_local
+        db_path = self.config.db_path
+        max_retries = 5
+        retry_delay = 2.0
 
-        if not final_snapshot and not final_clip:
-            return
-
-        try:
-            conn = sqlite3.connect(self.config.db_path)
-            conn.execute("PRAGMA foreign_keys=ON;")
-            cursor = conn.cursor()
-            now = time.time()
-
-            # Process Snapshot
-            if final_snapshot:
-                provider = "cloudinary" if snapshot_url else "local"
-                # Check if record already exists for this (event_id, evidence_type)
-                cursor.execute(
-                    "SELECT id FROM event_evidence WHERE event_id = ? AND evidence_type = ?",
-                    (event_id, "snapshot")
-                )
-                row = cursor.fetchone()
+        for attempt in range(max_retries):
+            try:
+                # Use a longer timeout for concurrent access
+                conn = sqlite3.connect(db_path, timeout=30.0)
+                cursor = conn.cursor()
                 
-                if row:
-                    # Update existing record (promote local to cloud)
-                    cursor.execute(
-                        "UPDATE event_evidence SET storage_provider = ?, public_url = ? WHERE id = ?",
-                        (provider, final_snapshot, row[0])
-                    )
-                else:
-                    # Insert new record
-                    cursor.execute(
-                        """
-                        INSERT INTO event_evidence
-                            (id, event_id, evidence_type, storage_provider, public_url, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                        """,
-                        (str(uuid.uuid4()), event_id, "snapshot", provider, final_snapshot, now),
-                    )
-                logger.info(
-                    f"Snapshot evidence {provider} updated for event {event_id}",
-                    extra={"url": final_snapshot},
-                )
+                # Enable WAL mode and Foreign Keys
+                cursor.execute("PRAGMA journal_mode=WAL;")
+                cursor.execute("PRAGMA foreign_keys=ON;")
 
-            # Process Clip
-            if final_clip:
-                provider = "cloudinary" if clip_url else "local"
-                cursor.execute(
-                    "SELECT id FROM event_evidence WHERE event_id = ? AND evidence_type = ?",
-                    (event_id, "clip")
-                )
-                row = cursor.fetchone()
+                now = time.time()
                 
-                if row:
-                    cursor.execute(
-                        "UPDATE event_evidence SET storage_provider = ?, public_url = ? WHERE id = ?",
-                        (provider, final_clip, row[0])
-                    )
+                # Determine Snapshot URL and Provider
+                if snapshot_url:
+                    final_snapshot = snapshot_url
+                    provider_snap = "cloudinary"
+                elif snapshot_local:
+                    filename = os.path.basename(snapshot_local)
+                    final_snapshot = f"/detections/images/{filename}"
+                    provider_snap = "local"
                 else:
+                    final_snapshot = None
+                    provider_snap = None
+
+                # Determine Clip URL and Provider
+                if clip_url:
+                    final_clip = clip_url
+                    provider_clip = "cloudinary"
+                elif clip_local:
+                    filename = os.path.basename(clip_local)
+                    final_clip = f"/detections/clips/{filename}"
+                    provider_clip = "local"
+                else:
+                    final_clip = None
+                    provider_clip = None
+
+                # Process Snapshot
+                if final_snapshot:
                     cursor.execute(
-                        """
-                        INSERT INTO event_evidence
-                            (id, event_id, evidence_type, storage_provider, public_url, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                        """,
-                        (str(uuid.uuid4()), event_id, "clip", provider, final_clip, now),
+                        "SELECT id FROM event_evidence WHERE event_id = ? AND evidence_type = ?",
+                        (event_id, "snapshot")
                     )
-                logger.info(
-                    f"Clip evidence {provider} updated for event {event_id}",
-                    extra={"url": final_clip},
-                )
+                    row = cursor.fetchone()
+                    
+                    if row:
+                        cursor.execute(
+                            "UPDATE event_evidence SET storage_provider = ?, public_url = ? WHERE id = ?",
+                            (provider_snap, final_snapshot, row[0])
+                        )
+                    else:
+                        cursor.execute(
+                            """
+                            INSERT INTO event_evidence
+                                (id, event_id, evidence_type, storage_provider, public_url, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                            """,
+                            (str(uuid.uuid4()), event_id, "snapshot", provider_snap, final_snapshot, now),
+                        )
 
-            conn.commit()
-            conn.close()
+                # Process Clip
+                if final_clip:
+                    cursor.execute(
+                        "SELECT id FROM event_evidence WHERE event_id = ? AND evidence_type = ?",
+                        (event_id, "clip")
+                    )
+                    row = cursor.fetchone()
+                    
+                    if row:
+                        cursor.execute(
+                            "UPDATE event_evidence SET storage_provider = ?, public_url = ? WHERE id = ?",
+                            (provider_clip, final_clip, row[0])
+                        )
+                    else:
+                        cursor.execute(
+                            """
+                            INSERT INTO event_evidence
+                                (id, event_id, evidence_type, storage_provider, public_url, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                            """,
+                            (str(uuid.uuid4()), event_id, "clip", provider_clip, final_clip, now),
+                        )
 
-        except Exception as e:
-            logger.error(f"Failed to write evidence for event {event_id}: {e}")
+                conn.commit()
+                conn.close()
+                return # Success
+
+            except sqlite3.IntegrityError as e:
+                # Often a Foreign Key error because the parent 'event' hasn't been written yet
+                if attempt < max_retries - 1:
+                    logger.warning(f"DB Integrity error (attempt {attempt+1}/{max_retries}), retrying: {e}")
+                    time.sleep(retry_delay)
+                    continue
+                else:
+                    logger.error(f"Failed to write evidence after {max_retries} attempts: {e}")
+                    raise
+            except sqlite3.OperationalError as e:
+                if "locked" in str(e).lower() and attempt < max_retries - 1:
+                    logger.warning(f"DB locked (attempt {attempt+1}/{max_retries}), retrying...")
+                    time.sleep(retry_delay)
+                    continue
+                else:
+                    logger.error(f"DB Error for event {event_id}: {e}")
+                    raise
+            except Exception as e:
+                logger.error(f"Unexpected error writing evidence: {e}")
+                raise
 
     def _update_clip_status(
         self,

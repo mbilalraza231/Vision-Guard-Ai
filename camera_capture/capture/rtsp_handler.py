@@ -6,6 +6,8 @@ Manages RTSP connections with automatic reconnection.
 
 import cv2
 import logging
+import threading
+import time
 from typing import Optional
 from ..utils.retry import RetryContext
 from ..config import RetryConfig
@@ -41,6 +43,13 @@ class RTSPHandler:
         self.is_connected = False
         self.frame_count = 0
         self.reconnect_count = 0
+        
+        # Non-blocking capture
+        self._latest_frame: Optional[cv2.Mat] = None
+        self._latest_ts: float = 0.0
+        self._capture_thread: Optional[threading.Thread] = None
+        self._stop_event = threading.Event()
+        self._frame_lock = threading.Lock()
     
     def connect(self) -> bool:
         """
@@ -75,8 +84,20 @@ class RTSPHandler:
                 
                 if ret and frame is not None:
                     self.is_connected = True
+                    self._latest_frame = frame
+                    self._latest_ts = time.time()
+                    
+                    # Start background capture thread to drain buffer
+                    self._stop_event.clear()
+                    self._capture_thread = threading.Thread(
+                        target=self._capture_loop,
+                        name=f"CaptureThread-{self.camera_id}",
+                        daemon=True
+                    )
+                    self._capture_thread.start()
+                    
                     self.logger.info(
-                        f"Successfully connected to RTSP stream",
+                        f"Successfully connected to RTSP stream with background capture",
                         extra={
                             "rtsp_url": self.rtsp_url,
                             "frame_width": frame.shape[1],
@@ -122,51 +143,65 @@ class RTSPHandler:
     
     def disconnect(self) -> None:
         """Disconnect from RTSP stream."""
+        self._stop_event.set()
+        if self._capture_thread:
+            self._capture_thread.join(timeout=2.0)
+            self._capture_thread = None
+            
         if self.capture:
             self.capture.release()
             self.capture = None
         
         self.is_connected = False
+        self._latest_frame = None
         
         self.logger.info(
             f"Disconnected from RTSP stream",
             extra={"camera_id": self.camera_id}
         )
     
+    def _capture_loop(self) -> None:
+        """Background thread to drain OpenCV buffer and keep latest frame."""
+        while not self._stop_event.is_set() and self.capture and self.capture.isOpened():
+            try:
+                ret = self.capture.grab()
+                if not ret:
+                    self.is_connected = False
+                    break
+                
+                # We only retrieve when someone calls read_frame? 
+                # No, better retrieve here so we have the latest ready.
+                # But to save CPU, we only retrieve if we actually need it?
+                # Actually retrieve is fast enough.
+                ret, frame = self.capture.retrieve()
+                if ret and frame is not None:
+                    with self._frame_lock:
+                        self._latest_frame = frame
+                        self._latest_ts = time.time()
+                
+                # Small sleep to prevent 100% CPU if stream is faster than logic
+                # But keep it very small (1ms) to ensure buffer remains empty
+                time.sleep(0.001)
+                
+            except Exception as e:
+                self.logger.error(f"Error in background capture loop: {e}")
+                self.is_connected = False
+                break
+
     def read_frame(self) -> Optional[cv2.Mat]:
         """
-        Read a frame from the RTSP stream.
+        Get the LATEST frame captured by the background thread.
         
         Returns:
             Frame as NumPy array, or None if read failed
         """
-        if not self.is_connected or not self.capture:
-            self.logger.warning(
-                f"Cannot read frame: not connected",
-                extra={"camera_id": self.camera_id}
-            )
+        if not self.is_connected:
             return None
         
-        try:
-            ret, frame = self.capture.read()
-            
-            if ret and frame is not None:
+        with self._frame_lock:
+            if self._latest_frame is not None:
                 self.frame_count += 1
-                return frame
-            else:
-                self.logger.warning(
-                    f"Failed to read frame from stream",
-                    extra={"camera_id": self.camera_id, "frame_count": self.frame_count}
-                )
-                self.is_connected = False
-                return None
-                
-        except Exception as e:
-            self.logger.error(
-                f"Error reading frame: {e}",
-                extra={"camera_id": self.camera_id, "error": str(e)}
-            )
-            self.is_connected = False
+                return self._latest_frame.copy()
             return None
     
     def get_stats(self) -> dict:

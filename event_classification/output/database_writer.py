@@ -173,7 +173,7 @@ class DatabaseWriter:
             return
         
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = sqlite3.connect(self.db_path, timeout=30.0)
             cursor = conn.cursor()
             
             # Enable foreign keys for this connection
