@@ -17,8 +17,6 @@
 #
 # ============================================================
 
-
-
 networks:
   visionguard:
     driver: bridge
@@ -36,6 +34,18 @@ volumes:
 
 services:
   # ============================================================
+  # PERMISSION INITIALIZER (Auto-fix for Volume permissions)
+  # ============================================================
+  init-perms:
+    image: alpine:latest
+    container_name: vg-init-perms
+    user: "root"
+    volumes:
+      - vg-data:/data
+      - vg-logs:/var/log/visionguard
+    command: chown -R 1000:1000 /data /var/log/visionguard
+
+  # ============================================================
   # Redis - Message Broker (MANDATORY)
   # ============================================================
   redis:
@@ -44,7 +54,6 @@ services:
     restart: unless-stopped
     networks:
       - visionguard
-    # Expose on port 6380 to avoid conflict with local Redis (6379)
     ports:
       - "6380:6379"
     volumes:
@@ -90,6 +99,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      init-perms:
+        condition: service_completed_successfully
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 30s
@@ -108,7 +119,6 @@ services:
     container_name: vg-ecs
     restart: unless-stopped
     stop_grace_period: 20s
-    # SHM access via shared vg-shm volume + chmod 666 (no ipc:host - breaks semaphores for vguser)
     networks:
       - visionguard
     volumes:
@@ -121,23 +131,18 @@ services:
       - ECS_LOG_LEVEL=${ECS_LOG_LEVEL:-INFO}
       - ECS_RESUME_FROM_LATEST=true
       - ECS_MAX_SOURCE_LAG_SEC=20
-      # Entry thresholds (Noise filters)
       - ECS_WEAPON_THRESHOLD=0.30
       - ECS_FIRE_THRESHOLD=0.30
       - ECS_FALL_THRESHOLD=0.30
-      # Required detections to FIRE an event
       - ECS_WEAPON_MIN_DETECTIONS=4
       - ECS_FIRE_MIN_DETECTIONS=4
       - ECS_FALL_MIN_DETECTIONS=4
-      # Time windows to accumulate the hits (Seconds)
       - ECS_WEAPON_PERSISTENCE_WINDOW=5.0
       - ECS_FIRE_PERSISTENCE_WINDOW=8.0
       - ECS_FALL_PERSISTENCE_WINDOW=6.0
-      # Dead-zones after firing (Seconds)
       - ECS_WEAPON_COOLDOWN_SECONDS=30.0
       - ECS_FIRE_COOLDOWN_SECONDS=60.0
       - ECS_FALL_COOLDOWN_SECONDS=30.0
-      
       - VG_DB_PATH=/data/visionguard/events.db
       - SHARED_FRAMES_DIR=/shared-frames
       - ECS_HARD_TTL_SECONDS=15.0
@@ -145,6 +150,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      init-perms:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [
@@ -152,39 +159,25 @@ services:
           "python",
           "-c",
           "import os, sys, redis; r=redis.Redis(host=os.getenv('ECS_REDIS_HOST','redis'), port=int(os.getenv('ECS_REDIS_PORT','6379'))); r.ping(); ok=False;
-
             for pid in [p for p in os.listdir('/proc') if p.isdigit()]:
-
             \    try:
-
             \        cmd=open(f'/proc/{pid}/cmdline','rb').read().decode('utf-8','ignore')
-
             \        if 'event_classification.main' in cmd:
-
             \            ok=True
-
             \            break
-
             \    except Exception:
-
             \        pass
-
             sys.exit(0 if ok else 1)"
         ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
-    # CRITICAL: ECS is SINGLETON - enforce single replica
     deploy:
       replicas: 1
       resources:
         limits:
           memory: 512M
-
-  # ============================================================
-  # Camera Capture Service
-  # ============================================================
 
   # ============================================================
   # Clip Recorder - Post-event clip recording + Cloudinary upload
@@ -217,6 +210,8 @@ services:
         condition: service_healthy
       backend:
         condition: service_healthy
+      init-perms:
+        condition: service_completed_successfully
 
   camera:
     build:
@@ -249,6 +244,8 @@ services:
         condition: service_healthy
       backend:
         condition: service_healthy
+      init-perms:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [
@@ -256,23 +253,14 @@ services:
           "python",
           "-c",
           "import os, sys, redis; r=redis.Redis(host=os.getenv('REDIS_HOST','redis'), port=int(os.getenv('REDIS_PORT','6379'))); r.ping(); ok=False;
-
             for pid in [p for p in os.listdir('/proc') if p.isdigit()]:
-
             \    try:
-
             \        cmd=open(f'/proc/{pid}/cmdline','rb').read().decode('utf-8','ignore')
-
             \        if 'camera_capture.main' in cmd:
-
             \            ok=True
-
             \            break
-
             \    except Exception:
-
             \        pass
-
             sys.exit(0 if ok else 1)"
         ]
       interval: 30s
@@ -284,11 +272,6 @@ services:
         soft: 65536
         hard: 65536
 
-  # ============================================================
-  # AI Workers - Multi-Model Inference
-  # ============================================================
-  # Three specialized workers for comprehensive event detection
-
   worker-weapon:
     build:
       context: .
@@ -296,7 +279,6 @@ services:
     container_name: vg-worker-weapon
     restart: unless-stopped
     stop_grace_period: 35s
-    # SHM access via shared vg-shm volume + chmod 666 (no ipc:host - breaks semaphores for vguser)
     networks:
       - visionguard
     volumes:
@@ -316,6 +298,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      init-perms:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [
@@ -323,23 +307,14 @@ services:
           "python",
           "-c",
           "import os, sys, redis; r=redis.Redis(host=os.getenv('REDIS_HOST','redis'), port=int(os.getenv('REDIS_PORT','6379'))); r.ping(); ok=False;
-
             for pid in [p for p in os.listdir('/proc') if p.isdigit()]:
-
             \    try:
-
             \        cmd=open(f'/proc/{pid}/cmdline','rb').read().decode('utf-8','ignore')
-
             \        if 'ai_worker.main' in cmd:
-
             \            ok=True
-
             \            break
-
             \    except Exception:
-
             \        pass
-
             sys.exit(0 if ok else 1)"
         ]
       interval: 30s
@@ -358,7 +333,6 @@ services:
     container_name: vg-worker-fire
     restart: unless-stopped
     stop_grace_period: 35s
-    # SHM access via shared vg-shm volume + chmod 666 (no ipc:host - breaks semaphores for vguser)
     networks:
       - visionguard
     volumes:
@@ -371,9 +345,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - WORKER_MODEL_TYPE=fire
-      # OpenVINO model directory (replaces fire_detection.onnx)
       - WORKER_MODEL_PATH=/app/models/fire_openvino_model
-      # Tuned thresholds for workplace fire/smoke detection (i5-7th Gen optimized)
       - WORKER_CONFIDENCE_THRESHOLD=0.40
       - WORKER_IOU_THRESHOLD=0.45
       - WORKER_INPUT_WIDTH=416
@@ -385,6 +357,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      init-perms:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [
@@ -392,29 +366,19 @@ services:
           "python",
           "-c",
           "import os, sys, redis; r=redis.Redis(host=os.getenv('REDIS_HOST','redis'), port=int(os.getenv('REDIS_PORT','6379'))); r.ping(); ok=False;
-
             for pid in [p for p in os.listdir('/proc') if p.isdigit()]:
-
             \    try:
-
             \        cmd=open(f'/proc/{pid}/cmdline','rb').read().decode('utf-8','ignore')
-
             \        if 'ai_worker.main' in cmd:
-
             \            ok=True
-
             \            break
-
             \    except Exception:
-
             \        pass
-
             sys.exit(0 if ok else 1)"
         ]
       interval: 30s
       timeout: 30s
       retries: 3
-      # OpenVINO startup is slower — allow 60s for INT8 model load
       start_period: 60s
     deploy:
       resources:
@@ -429,7 +393,6 @@ services:
     container_name: vg-worker-fall
     restart: unless-stopped
     stop_grace_period: 35s
-    # SHM access via shared vg-shm volume + chmod 666 (no ipc:host - breaks semaphores for vguser)
     networks:
       - visionguard
     volumes:
@@ -449,6 +412,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      init-perms:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [
@@ -456,23 +421,14 @@ services:
           "python",
           "-c",
           "import os, sys, redis; r=redis.Redis(host=os.getenv('REDIS_HOST','redis'), port=int(os.getenv('REDIS_PORT','6379'))); r.ping(); ok=False;
-
             for pid in [p for p in os.listdir('/proc') if p.isdigit()]:
-
             \    try:
-
             \        cmd=open(f'/proc/{pid}/cmdline','rb').read().decode('utf-8','ignore')
-
             \        if 'ai_worker.main' in cmd:
-
             \            ok=True
-
             \            break
-
             \    except Exception:
-
             \        pass
-
             sys.exit(0 if ok else 1)"
         ]
       interval: 30s
@@ -484,41 +440,6 @@ services:
         limits:
           memory: 1G
 
-  # ============================================================
-  # AI Worker - GPU (OPTIONAL)
-  # ============================================================
-  # Uncomment to use GPU workers instead of CPU workers
-  # Requires: nvidia-docker runtime
-  #
-  # worker-gpu:
-  #   build:
-  #     context: .
-  #     dockerfile: docker/Dockerfile.worker-gpu
-  #   restart: unless-stopped
-  #   networks:
-  #     - visionguard
-  #   volumes:
-  #     - vg-logs:/var/log/visionguard
-  #     - vg-shm:/dev/shm:ro
-  #   environment:
-  #     - REDIS_HOST=redis
-  #     - REDIS_PORT=6379
-  #     - WORKER_MODEL_TYPE=${WORKER_MODEL_TYPE:-weapon}
-  #     - ONNX_EXECUTION_PROVIDER=CUDAExecutionProvider
-  #   depends_on:
-  #     redis:
-  #       condition: service_healthy
-  #   deploy:
-  #     resources:
-  #       reservations:
-  #         devices:
-  #           - driver: nvidia
-  #             count: 1
-  #             capabilities: [gpu]
-
-  # ============================================================
-  # Debug UI - Streamlit (TEMPORARY/DEBUG ONLY)
-  # ============================================================
   debug-ui:
     build:
       context: .
