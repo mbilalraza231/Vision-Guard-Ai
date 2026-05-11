@@ -140,8 +140,17 @@ def main() -> None:
     signal.signal(signal.SIGTERM, _shutdown)
     signal.signal(signal.SIGINT, _shutdown)
 
-    # Track last-read stream ID for XREAD
-    last_id = "$"  # Start from new messages only
+    # --- Track last-read stream ID for XREAD (with persistence) ---
+    LAST_ID_KEY = "vg:clip:last_id"
+    saved_id = redis_client.get(LAST_ID_KEY)
+    
+    if saved_id:
+        last_id = saved_id
+        log.info(f"Resuming from saved clip request ID: {last_id}")
+    else:
+        # Fallback to config or latest
+        last_id = "$" 
+        log.info("No saved clip request ID found, starting from latest message ($)")
 
     log.info(f"Listening on Redis stream: {CLIP_REQUEST_STREAM}")
 
@@ -160,6 +169,11 @@ def main() -> None:
             for _stream_name, entries in messages:
                 for entry_id, fields in entries:
                     last_id = entry_id  # Advance cursor
+                    # Persist progress
+                    try:
+                        redis_client.set(LAST_ID_KEY, last_id)
+                    except Exception as e:
+                        log.warning(f"Failed to persist clip progress ID: {e}")
 
                     try:
                         event_id    = fields.get("event_id", "")
