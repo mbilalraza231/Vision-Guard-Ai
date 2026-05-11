@@ -8,17 +8,17 @@ Usage:
     python -m clip_recorder.main
 """
 
+import asyncio
 import logging
 import os
 import signal
 import sys
 import time
-
-import redis
-import psutil
 import json
-import threading
 import socket
+
+import redis.asyncio as redis
+import psutil
 
 from .config import ClipConfig, CLIP_REQUEST_STREAM
 from .recorder import ClipRecorder
@@ -33,9 +33,14 @@ def setup_logging(level_str: str) -> None:
         datefmt="%Y-%m-%dT%H:%M:%S",
         stream=sys.stdout,
     )
+    # Ensure stdout handler is set correctly
+    for handler in logging.root.handlers[:]:
+        logging.root.removeHandler(handler)
+    
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
-    logging.getLogger().handlers = [handler]
+    logging.getLogger().addHandler(handler)
+    logging.getLogger().setLevel(level)
 
 class MetricsReporter:
     def __init__(self, r, name):
@@ -43,10 +48,12 @@ class MetricsReporter:
         self.pid = os.getpid()
         self.host = socket.gethostname()
         self.key = f"vg:metrics:{name}:{self.host}"
-        self._stop = threading.Event()
-    def start(self):
-        threading.Thread(target=self._run, daemon=True).start()
-    def _run(self):
+        self._stop = asyncio.Event()
+
+    async def start(self):
+        asyncio.create_task(self._run())
+
+    async def _run(self):
         p = psutil.Process(self.pid)
         p.cpu_percent(interval=None)
         while not self._stop.is_set():
@@ -55,21 +62,29 @@ class MetricsReporter:
                 for c in p.children(recursive=True):
                     try: mem += c.memory_info().rss
                     except: pass
-                cpu = p.cpu_percent(interval=0.5)
+                cpu = p.cpu_percent(interval=None) # Interval None for non-blocking
                 for c in p.children(recursive=True):
-                    try: cpu += c.cpu_percent(interval=0.5)
+                    try: cpu += c.cpu_percent(interval=None)
                     except: pass
-                self.r.setex(self.key, 15, json.dumps({
+                
+                await self.r.setex(self.key, 15, json.dumps({
                     "cpu_percent": round(cpu, 2),
                     "memory_gb": round(mem / (1024**3), 4),
                     "timestamp": time.time()
                 }))
-            except: pass
-            time.sleep(5)
-    def stop(self): self._stop.set()
+            except Exception as e:
+                logging.getLogger("clip_recorder.metrics").debug(f"Metrics error: {e}")
+            
+            try:
+                await asyncio.wait_for(self._stop.wait(), timeout=5)
+            except asyncio.TimeoutError:
+                pass
+
+    def stop(self): 
+        self._stop.set()
 
 
-def main() -> None:
+async def main() -> None:
     config = ClipConfig()
     setup_logging(config.log_level)
 
@@ -83,7 +98,7 @@ def main() -> None:
         )
 
 
-    log.info("Clip recorder starting...")
+    log.info("Clip recorder starting (Async Mode)...")
     log.info(f"  Redis:         {config.redis_host}:{config.redis_port}")
     log.info(f"  Stream:        {CLIP_REQUEST_STREAM}")
     log.info(f"  Camera source: {config.camera_source or '(per-event)'}")
@@ -102,16 +117,16 @@ def main() -> None:
                 db=0,
                 decode_responses=True,
             )
-            redis_client.ping()
+            await redis_client.ping()
             log.info("Connected to Redis")
             break
-        except redis.ConnectionError as e:
+        except Exception as e:
             log.warning(f"Redis not available, retrying in 5s: {e}")
-            time.sleep(5)
+            await asyncio.sleep(5)
 
     # --- Start metrics reporter ---
     reporter = MetricsReporter(redis_client, "clip-recorder")
-    reporter.start()
+    await reporter.start()
     log.info("Metrics heartbeat started")
 
     # --- Initialise recorder ---
@@ -121,7 +136,7 @@ def main() -> None:
     if config.enable_background_buffer:
         try:
             # Fetch all cameras from the registry
-            camera_sources = redis_client.hvals("vg:camera:sources")
+            camera_sources = await redis_client.hvals("vg:camera:sources")
             if camera_sources:
                 recorder.start_dashcam_buffers(camera_sources)
             else:
@@ -130,19 +145,19 @@ def main() -> None:
             log.warning(f"Failed to auto-start dashcam buffers: {e}")
 
     # --- Graceful shutdown ---
-    _running = True
+    stop_event = asyncio.Event()
 
-    def _shutdown(signum, _frame):
-        nonlocal _running
-        log.info(f"Received signal {signum} — shutting down")
-        _running = False
+    def _signal_handler():
+        log.info("Shutdown signal received")
+        stop_event.set()
 
-    signal.signal(signal.SIGTERM, _shutdown)
-    signal.signal(signal.SIGINT, _shutdown)
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, _signal_handler)
 
     # --- Track last-read stream ID for XREAD (with persistence) ---
     LAST_ID_KEY = "vg:clip:last_id"
-    saved_id = redis_client.get(LAST_ID_KEY)
+    saved_id = await redis_client.get(LAST_ID_KEY)
     
     if saved_id:
         last_id = saved_id
@@ -155,93 +170,79 @@ def main() -> None:
     log.info(f"Listening on Redis stream: {CLIP_REQUEST_STREAM}")
 
     # --- Main loop ---
-    while _running:
-        try:
-            messages = redis_client.xread(
-                {CLIP_REQUEST_STREAM: last_id},
-                block=2000,
-                count=10,
-            )
-
-            if not messages:
-                continue
-
-            for _stream_name, entries in messages:
-                for entry_id, fields in entries:
-                    last_id = entry_id  # Advance cursor
-                    # Persist progress
-                    try:
-                        redis_client.set(LAST_ID_KEY, last_id)
-                    except Exception as e:
-                        log.warning(f"Failed to persist clip progress ID: {e}")
-
-                    try:
-                        event_id    = fields.get("event_id", "")
-                        event_type  = fields.get("event_type", "unknown")
-                        camera_id   = fields.get("camera_id", "")
-                        # Allow per-message camera_source override; default to config
-                        camera_src  = fields.get("camera_source") or config.camera_source
-                        timestamp   = float(fields.get("timestamp", time.time()))
-
-                        if not event_id:
-                            log.warning(f"Clip request missing event_id, skipping: {fields}")
-                            continue
-
-                        if not camera_src:
-                            log.warning(
-                                f"Clip request missing camera_source and no default configured, skipping: {fields}"
-                            )
-                            continue
-
-                        log.info(
-                            f"Processing clip request for event {event_id}",
-                            extra={
-                                "event_type": event_type,
-                                "camera_id": camera_id,
-                            },
-                        )
-
-                        result = recorder.record_and_upload(
-                            event_id=event_id,
-                            event_type=event_type,
-                            camera_id=camera_id,
-                            camera_source=camera_src,
-                            detection_ts=timestamp,
-                        )
-
-                        log.info(
-                            f"Clip pipeline done for event {event_id} | "
-                            f"snapshot={result['snapshot_url']} | "
-                            f"clip={result['clip_url']}"
-                        )
-
-                    except Exception as e:
-                        log.error(f"Error processing clip request: {e}", exc_info=True)
-
-        except redis.ConnectionError as e:
-            log.warning(f"Redis connection lost: {e} — retrying in 5s")
-            time.sleep(5)
-            # Re-establish connection
+    try:
+        while not stop_event.is_set():
             try:
-                redis_client = redis.Redis(
-                    host=config.redis_host,
-                    port=config.redis_port,
-                    db=0,
-                    decode_responses=True,
+                messages = await redis_client.xread(
+                    {CLIP_REQUEST_STREAM: last_id},
+                    block=2000,
+                    count=10,
                 )
-                redis_client.ping()
-                log.info("Reconnected to Redis")
-            except redis.ConnectionError:
-                pass
-        except Exception as e:
-            log.error(f"Unexpected error in main loop: {e}", exc_info=True)
-            time.sleep(1)
 
-    recorder.shutdown()
-    if reporter:
+                if not messages:
+                    continue
+
+                for _stream_name, entries in messages:
+                    for entry_id, fields in entries:
+                        last_id = entry_id  # Advance cursor
+                        # Persist progress
+                        try:
+                            await redis_client.set(LAST_ID_KEY, last_id)
+                        except Exception as e:
+                            log.warning(f"Failed to persist clip progress ID: {e}")
+
+                        try:
+                            event_id    = fields.get("event_id", "")
+                            event_type  = fields.get("event_type", "unknown")
+                            camera_id   = fields.get("camera_id", "")
+                            # Allow per-message camera_source override; default to config
+                            camera_src  = fields.get("camera_source") or config.camera_source
+                            timestamp   = float(fields.get("timestamp", time.time()))
+
+                            if not event_id:
+                                log.warning(f"Clip request missing event_id, skipping: {fields}")
+                                continue
+
+                            if not camera_src:
+                                log.warning(
+                                    f"Clip request missing camera_source and no default configured, skipping: {fields}"
+                                )
+                                continue
+
+                            log.info(f"Processing clip request for event {event_id}")
+
+                            # Await the async record_and_upload
+                            result = await recorder.record_and_upload(
+                                event_id=event_id,
+                                event_type=event_type,
+                                camera_id=camera_id,
+                                camera_source=camera_src,
+                                detection_ts=timestamp,
+                            )
+
+                            log.info(
+                                f"Clip pipeline done for event {event_id} | "
+                                f"snapshot={result.get('snapshot_url')} | "
+                                f"clip={result.get('clip_url')}"
+                            )
+
+                        except Exception as e:
+                            log.error(f"Error processing clip request: {e}", exc_info=True)
+
+            except Exception as e:
+                if not stop_event.is_set():
+                    log.error(f"Unexpected error in main loop: {e}", exc_info=True)
+                    await asyncio.sleep(2)
+
+    finally:
+        recorder.shutdown()
         reporter.stop()
-    log.info("Clip recorder stopped")
+        await redis_client.close()
+        log.info("Clip recorder stopped")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass

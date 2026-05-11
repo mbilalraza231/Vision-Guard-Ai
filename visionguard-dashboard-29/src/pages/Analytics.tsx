@@ -24,6 +24,16 @@ interface EventsStatsResponse {
   by_severity: Record<string, number>;
 }
 
+interface CameraItem {
+  id: string;
+  name: string;
+  source: string;
+  fps: number;
+  priority: string;
+  enabled: boolean;
+  status: string;
+}
+
 interface StatusResponse {
   status: string;
   timestamp: string;
@@ -56,12 +66,19 @@ export default function Analytics() {
     refetchInterval: 5000,
   });
 
+  const { data: cameras, refetch: refetchCameras } = useQuery({
+    queryKey: ['analytics-cameras'],
+    queryFn: () => apiService.getData<CameraItem[]>(API_ENDPOINTS.cameras.list),
+    refetchInterval: 5000,
+  });
+
   const isLoading = isStatsLoading || isStatusLoading;
   const error = statsError || statusError;
 
   const refetchAll = () => {
     refetchStats();
     refetchStatus();
+    refetchCameras();
   };
 
   // Transform by_type to chart data
@@ -89,7 +106,8 @@ export default function Analytics() {
     const runningCameras = runningCamerasList.filter((c: any) => c.is_running && c.enabled);
     
     // Sum up the configured FPS for all cameras that SHOULD be running (enabled)
-    const targetFpsTotal = runningCamerasList.filter((c: any) => c.enabled).reduce((sum, c) => sum + (c.fps || 0), 0) || 30;
+    // We use the 'cameras' query here because it is linked directly to cameras.json
+    const targetFpsTotal = cameras?.filter(c => c.enabled).reduce((sum, c) => sum + (c.fps || 0), 0) || 5;
     
     // Sum up the ACTUAL observed FPS from the camera service
     const currentFps = runningCameras.reduce((sum, c: any) => sum + (c.fps_actual || 0), 0);

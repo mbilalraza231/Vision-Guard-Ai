@@ -7,9 +7,10 @@ to Cloudinary, and writes the resulting URLs to the event_evidence table.
 Completely isolated from inference pipeline — runs as a separate process.
 """
 
+import asyncio
+import aiosqlite
 import logging
 import os
-import sqlite3
 import time
 import uuid
 from pathlib import Path
@@ -177,7 +178,7 @@ class ClipRecorder:
     # Public API
     # ------------------------------------------------------------------
 
-    def record_and_upload(
+    async def record_and_upload(
         self,
         event_id: str,
         event_type: str,
@@ -187,16 +188,6 @@ class ClipRecorder:
     ) -> Dict[str, Any]:
         """
         Full pipeline: record, upload, persist URLs.
-
-        Args:
-            event_id:      UUID of the classified event (from events table)
-            event_type:    weapon | fire | fall
-            camera_id:     Camera identifier
-            camera_source: RTSP / HTTP URL of the camera stream
-            detection_ts:  Unix timestamp (seconds) of the detection
-
-        Returns:
-            dict with keys: snapshot_url, clip_url, snapshot_local, clip_local
         """
         result: Dict[str, Any] = {
             "snapshot_url": None,
@@ -216,37 +207,37 @@ class ClipRecorder:
         )
 
         # Step 1 — Find existing snapshot
-        snapshot_path = self._find_snapshot(event_id, camera_id, event_type, detection_ts)
+        # Snapshot finding is just disk I/O, can stay sync or use to_thread
+        snapshot_path = await asyncio.to_thread(self._find_snapshot, event_id, camera_id, event_type, detection_ts)
         result["snapshot_local"] = snapshot_path
         if snapshot_path:
             logger.info(f"Found snapshot: {snapshot_path}")
             # WRITE SNAPSHOT TO DB IMMEDIATELY (Instant feedback)
-            self._write_evidence(event_id, result)
+            await self._write_evidence(event_id, result)
         else:
             logger.warning(f"No matching snapshot found for event {event_id}")
 
         # Step 2 — Record latency-aware post-event clip (This takes 10-15 seconds)
-        clip_path = self._record_clip(event_id, event_type, camera_source, detection_ts)
+        # Recording uses OpenCV/FFMPEG, must be in a thread
+        clip_path = await asyncio.to_thread(self._record_clip, event_id, event_type, camera_source, detection_ts)
         result["clip_local"] = clip_path
         if clip_path:
             logger.info(f"Clip recorded: {clip_path}")
             # WRITE CLIP TO DB IMMEDIATELY (Available before Cloud upload)
-            self._write_evidence(event_id, result)
-            self._update_clip_status(event_id, "ready", None)
+            await self._write_evidence(event_id, result)
+            await self._update_clip_status(event_id, "ready", None)
         else:
             result["clip_error"] = "clip_record_failed"
-            self._update_clip_status(event_id, "failed", "clip_record_failed")
+            await self._update_clip_status(event_id, "failed", "clip_record_failed")
             logger.warning(f"Clip recording failed or skipped for event {event_id}")
 
-        # Step 3 — Start background thread for Cloudinary upload
+        # Step 3 — Start background task for Cloudinary upload
         if self.config.cloudinary_configured:
-            threading.Thread(
-                target=self._upload_and_update_task,
-                args=(event_id, event_type, result),
-                daemon=True,
-                name=f"Upload-{event_id[:8]}"
-            ).start()
+            # We use an async task instead of a thread
+            asyncio.create_task(self._upload_and_update_task(event_id, event_type, result))
             logger.info(f"Started background upload task for event {event_id}")
+
+        return result
 
         logger.info(
             f"Local capture pipeline complete for event {event_id}. Cloud upload pending in background.",
@@ -258,7 +249,7 @@ class ClipRecorder:
 
         return result
 
-    def _upload_and_update_task(
+    async def _upload_and_update_task(
         self,
         event_id: str,
         event_type: str,
@@ -273,12 +264,11 @@ class ClipRecorder:
             if snapshot_path:
                 if os.path.exists(snapshot_path):
                     logger.info(f"Uploading snapshot to Cloudinary: {snapshot_path}")
-                    snapshot_url = self.uploader.upload_snapshot(
-                        snapshot_path, event_id, event_type
-                    )
+                    # Cloudinary upload is blocking I/O
+                    snapshot_url = await asyncio.to_thread(self.uploader.upload_snapshot, snapshot_path, event_id, event_type)
                     if snapshot_url:
                         result["snapshot_url"] = snapshot_url
-                        self._write_evidence(event_id, result)  # Update DB with cloud URL
+                        await self._write_evidence(event_id, result)  # Update DB with cloud URL
                     else:
                         logger.warning(f"Cloudinary snapshot upload failed for {event_id}")
                 else:
@@ -288,12 +278,11 @@ class ClipRecorder:
 
             # 2. Upload Clip
             if clip_path and os.path.exists(clip_path):
-                clip_url = self.uploader.upload_clip(
-                    clip_path, event_id, event_type
-                )
+                # Cloudinary upload is blocking I/O
+                clip_url = await asyncio.to_thread(self.uploader.upload_clip, clip_path, event_id, event_type)
                 if clip_url:
                     result["clip_url"] = clip_url
-                    self._write_evidence(event_id, result)  # Update DB with cloud URL
+                    await self._write_evidence(event_id, result)  # Update DB with cloud URL
                     logger.info(f"Background upload successful for event {event_id}")
                 else:
                     logger.warning(f"Background clip upload failed for event {event_id}")
@@ -582,7 +571,7 @@ class ClipRecorder:
             if cap:
                 cap.release()
 
-    def _write_evidence(
+    async def _write_evidence(
         self,
         event_id: str,
         result: Dict[str, Any],
@@ -601,112 +590,101 @@ class ClipRecorder:
 
         for attempt in range(max_retries):
             try:
-                # Use a longer timeout for concurrent access
-                conn = sqlite3.connect(db_path, timeout=30.0)
-                cursor = conn.cursor()
-                
-                # Enable WAL mode and Foreign Keys
-                cursor.execute("PRAGMA journal_mode=WAL;")
-                cursor.execute("PRAGMA foreign_keys=ON;")
+                # Use aiosqlite for non-blocking connection
+                async with aiosqlite.connect(db_path, timeout=30.0) as db:
+                    # Enable WAL mode and Foreign Keys
+                    await db.execute("PRAGMA journal_mode=WAL;")
+                    await db.execute("PRAGMA foreign_keys=ON;")
 
-                now = time.time()
-                
-                # Determine Snapshot URL and Provider
-                if snapshot_url:
-                    final_snapshot = snapshot_url
-                    provider_snap = "cloudinary"
-                elif snapshot_local:
-                    filename = os.path.basename(snapshot_local)
-                    final_snapshot = f"/detections/images/{filename}"
-                    provider_snap = "local"
-                else:
-                    final_snapshot = None
-                    provider_snap = None
-
-                # Determine Clip URL and Provider
-                if clip_url:
-                    final_clip = clip_url
-                    provider_clip = "cloudinary"
-                elif clip_local:
-                    filename = os.path.basename(clip_local)
-                    final_clip = f"/detections/clips/{filename}"
-                    provider_clip = "local"
-                else:
-                    final_clip = None
-                    provider_clip = None
-
-                # Process Snapshot
-                if final_snapshot:
-                    cursor.execute(
-                        "SELECT id FROM event_evidence WHERE event_id = ? AND evidence_type = ?",
-                        (event_id, "snapshot")
-                    )
-                    row = cursor.fetchone()
+                    now = time.time()
                     
-                    if row:
-                        cursor.execute(
-                            "UPDATE event_evidence SET storage_provider = ?, public_url = ? WHERE id = ?",
-                            (provider_snap, final_snapshot, row[0])
-                        )
+                    # Determine Snapshot URL and Provider
+                    if snapshot_url:
+                        final_snapshot = snapshot_url
+                        provider_snap = "cloudinary"
+                    elif snapshot_local:
+                        filename = os.path.basename(snapshot_local)
+                        final_snapshot = f"/detections/images/{filename}"
+                        provider_snap = "local"
                     else:
-                        cursor.execute(
-                            """
-                            INSERT INTO event_evidence
-                                (id, event_id, evidence_type, storage_provider, public_url, created_at)
-                            VALUES (?, ?, ?, ?, ?, ?)
-                            """,
-                            (str(uuid.uuid4()), event_id, "snapshot", provider_snap, final_snapshot, now),
-                        )
+                        final_snapshot = None
+                        provider_snap = None
 
-                # Process Clip
-                if final_clip:
-                    cursor.execute(
-                        "SELECT id FROM event_evidence WHERE event_id = ? AND evidence_type = ?",
-                        (event_id, "clip")
-                    )
-                    row = cursor.fetchone()
-                    
-                    if row:
-                        cursor.execute(
-                            "UPDATE event_evidence SET storage_provider = ?, public_url = ? WHERE id = ?",
-                            (provider_clip, final_clip, row[0])
-                        )
+                    # Determine Clip URL and Provider
+                    if clip_url:
+                        final_clip = clip_url
+                        provider_clip = "cloudinary"
+                    elif clip_local:
+                        filename = os.path.basename(clip_local)
+                        final_clip = f"/detections/clips/{filename}"
+                        provider_clip = "local"
                     else:
-                        cursor.execute(
-                            """
-                            INSERT INTO event_evidence
-                                (id, event_id, evidence_type, storage_provider, public_url, created_at)
-                            VALUES (?, ?, ?, ?, ?, ?)
-                            """,
-                            (str(uuid.uuid4()), event_id, "clip", provider_clip, final_clip, now),
-                        )
+                        final_clip = None
+                        provider_clip = None
 
-                conn.commit()
-                conn.close()
+                    # Process Snapshot
+                    if final_snapshot:
+                        async with db.execute(
+                            "SELECT id FROM event_evidence WHERE event_id = ? AND evidence_type = ?",
+                            (event_id, "snapshot")
+                        ) as cursor:
+                            row = await cursor.fetchone()
+                        
+                        if row:
+                            await db.execute(
+                                "UPDATE event_evidence SET storage_provider = ?, public_url = ? WHERE id = ?",
+                                (provider_snap, final_snapshot, row[0])
+                            )
+                        else:
+                            await db.execute(
+                                """
+                                INSERT INTO event_evidence
+                                    (id, event_id, evidence_type, storage_provider, public_url, created_at)
+                                VALUES (?, ?, ?, ?, ?, ?)
+                                """,
+                                (str(uuid.uuid4()), event_id, "snapshot", provider_snap, final_snapshot, now),
+                            )
+
+                    # Process Clip
+                    if final_clip:
+                        async with db.execute(
+                            "SELECT id FROM event_evidence WHERE event_id = ? AND evidence_type = ?",
+                            (event_id, "clip")
+                        ) as cursor:
+                            row = await cursor.fetchone()
+                        
+                        if row:
+                            await db.execute(
+                                "UPDATE event_evidence SET storage_provider = ?, public_url = ? WHERE id = ?",
+                                (provider_clip, final_clip, row[0])
+                            )
+                        else:
+                            await db.execute(
+                                """
+                                INSERT INTO event_evidence
+                                    (id, event_id, evidence_type, storage_provider, public_url, created_at)
+                                VALUES (?, ?, ?, ?, ?, ?)
+                                """,
+                                (str(uuid.uuid4()), event_id, "clip", provider_clip, final_clip, now),
+                            )
+
+                    await db.commit()
                 return # Success
 
-            except sqlite3.IntegrityError as e:
-                # Often a Foreign Key error because the parent 'event' hasn't been written yet
-                if attempt < max_retries - 1:
-                    logger.warning(f"DB Integrity error (attempt {attempt+1}/{max_retries}), retrying: {e}")
-                    time.sleep(retry_delay)
-                    continue
-                else:
-                    logger.error(f"Failed to write evidence after {max_retries} attempts: {e}")
-                    raise
-            except sqlite3.OperationalError as e:
+            except aiosqlite.Error as e:
                 if "locked" in str(e).lower() and attempt < max_retries - 1:
                     logger.warning(f"DB locked (attempt {attempt+1}/{max_retries}), retrying...")
-                    time.sleep(retry_delay)
+                    await asyncio.sleep(retry_delay)
+                    continue
+                elif "foreign key" in str(e).lower() and attempt < max_retries - 1:
+                    logger.warning(f"DB Integrity error (attempt {attempt+1}/{max_retries}), retrying: {e}")
+                    await asyncio.sleep(retry_delay)
                     continue
                 else:
                     logger.error(f"DB Error for event {event_id}: {e}")
                     raise
-            except Exception as e:
-                logger.error(f"Unexpected error writing evidence: {e}")
-                raise
 
-    def _update_clip_status(
+    async def _update_clip_status(
         self,
         event_id: str,
         status: str,
@@ -718,34 +696,25 @@ class ClipRecorder:
 
         for attempt in range(1, attempts + 1):
             try:
-                conn = sqlite3.connect(self.config.db_path)
-                conn.execute("PRAGMA foreign_keys=ON;")
-                cursor = conn.cursor()
-                cursor.execute(
-                    """
-                    UPDATE events
-                    SET clip_status = ?, clip_error = ?, clip_updated_at = ?
-                    WHERE id = ?
-                    """,
-                    (status, error, time.time(), event_id),
-                )
-                conn.commit()
-                updated = cursor.rowcount
-                conn.close()
-
-                if updated > 0:
-                    return
-
-                if attempt < attempts:
-                    time.sleep(delay_sec)
+                async with aiosqlite.connect(self.config.db_path) as db:
+                    await db.execute("PRAGMA foreign_keys=ON;")
+                    await db.execute(
+                        """
+                        UPDATE events
+                        SET clip_status = ?, clip_error = ?, clip_updated_at = ?
+                        WHERE id = ?
+                        """,
+                        (status, error, time.time(), event_id),
+                    )
+                    await db.commit()
+                    return # Success
 
             except Exception as e:
                 logger.warning(
-                    f"Failed to update clip status for event {event_id}: {e}",
-                    extra={"event_id": event_id, "status": status, "attempt": attempt},
+                    f"Failed to update clip status for event {event_id}: {e} (attempt {attempt}/{attempts})"
                 )
                 if attempt < attempts:
-                    time.sleep(delay_sec)
+                    await asyncio.sleep(delay_sec)
 
         logger.warning(
             f"Clip status update skipped (event not found yet): {event_id}",
