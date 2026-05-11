@@ -29,12 +29,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Set working directory
 WORKDIR /app
 
-# Copy requirements and install
-COPY ui/requirements.txt /app/ui/requirements.txt
-RUN pip install --no-cache-dir -r /app/ui/requirements.txt
+# Install dependencies
+RUN pip install --no-cache-dir streamlit redis
 
 # Copy UI code
-COPY ui/ /app/ui/
+COPY debug_ui/ /app/debug_ui/
 
 # Expose Streamlit port
 EXPOSE 8501
@@ -44,4 +43,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8501/_stcore/health || exit 1
 
 # Run Streamlit
-CMD ["streamlit", "run", "ui/app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+CMD ["streamlit", "run", "debug_ui/app.py", "--server.port=8501", "--server.address=0.0.0.0"]

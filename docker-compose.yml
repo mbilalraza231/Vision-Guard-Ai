@@ -41,8 +41,8 @@ services:
     container_name: vg-init-perms
     user: "root"
     volumes:
-      - vg-data:/data
-      - vg-logs:/var/log/visionguard
+      - ./data:/data/visionguard
+      - ./data/logs:/var/log/visionguard
     command: chown -R 1000:1000 /data /var/log/visionguard
 
   # ============================================================
@@ -57,7 +57,7 @@ services:
     ports:
       - "6380:6379"
     volumes:
-      - redis-data:/data
+      - ./data/redis:/data
     command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
@@ -81,8 +81,8 @@ services:
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
-      - vg-data:/data
-      - vg-logs:/var/log/visionguard
+      - ./data:/data/visionguard
+      - ./data/logs:/var/log/visionguard
       - ./cameras.json:/app/cameras.json:ro
       - vg-frames:/shared-frames
     environment:
@@ -122,8 +122,8 @@ services:
     networks:
       - visionguard
     volumes:
-      - vg-data:/data
-      - vg-logs:/var/log/visionguard
+      - ./data:/data/visionguard
+      - ./data/logs:/var/log/visionguard
       - vg-frames:/shared-frames
     environment:
       - ECS_REDIS_HOST=redis
@@ -153,22 +153,7 @@ services:
       init-perms:
         condition: service_completed_successfully
     healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import os, sys, redis; r=redis.Redis(host=os.getenv('ECS_REDIS_HOST','redis'), port=int(os.getenv('ECS_REDIS_PORT','6379'))); r.ping(); ok=False;
-            for pid in [p for p in os.listdir('/proc') if p.isdigit()]:
-            \    try:
-            \        cmd=open(f'/proc/{pid}/cmdline','rb').read().decode('utf-8','ignore')
-            \        if 'event_classification.main' in cmd:
-            \            ok=True
-            \            break
-            \    except Exception:
-            \        pass
-            sys.exit(0 if ok else 1)"
-        ]
+      test: [ "CMD", "python", "-c", "import os, sys, redis; r=redis.Redis(host=os.getenv('ECS_REDIS_HOST','redis'), port=int(os.getenv('ECS_REDIS_PORT','6379'))); r.ping(); ok=False; for pid in [p for p in os.listdir('/proc') if p.isdigit()]:     try:         cmd=open(f'/proc/{pid}/cmdline','rb').read().decode('utf-8','ignore')         if 'event_classification.main' in cmd:             ok=True             break     except Exception:         pass sys.exit(0 if ok else 1)" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -191,8 +176,8 @@ services:
     networks:
       - visionguard
     volumes:
-      - vg-data:/data
-      - vg-logs:/var/log/visionguard
+      - ./data:/data/visionguard
+      - ./data/logs:/var/log/visionguard
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -225,7 +210,8 @@ services:
     networks:
       - visionguard
     volumes:
-      - vg-logs:/var/log/visionguard
+      - ./data:/data/visionguard
+      - ./data/logs:/var/log/visionguard
       - vg-frames:/shared-frames
       - ./test-video.mp4:/app/test-video.mp4:ro
       - ./cameras.json:/app/cameras.json:ro
@@ -247,22 +233,7 @@ services:
       init-perms:
         condition: service_completed_successfully
     healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import os, sys, redis; r=redis.Redis(host=os.getenv('REDIS_HOST','redis'), port=int(os.getenv('REDIS_PORT','6379'))); r.ping(); ok=False;
-            for pid in [p for p in os.listdir('/proc') if p.isdigit()]:
-            \    try:
-            \        cmd=open(f'/proc/{pid}/cmdline','rb').read().decode('utf-8','ignore')
-            \        if 'camera_capture.main' in cmd:
-            \            ok=True
-            \            break
-            \    except Exception:
-            \        pass
-            sys.exit(0 if ok else 1)"
-        ]
+      test: [ "CMD", "python", "-c", "import os, sys, redis; r=redis.Redis(host=os.getenv('REDIS_HOST','redis'), port=int(os.getenv('REDIS_PORT','6379'))); r.ping(); ok=False; for pid in [p for p in os.listdir('/proc') if p.isdigit()]:     try:         cmd=open(f'/proc/{pid}/cmdline','rb').read().decode('utf-8','ignore')         if 'camera_capture.main' in cmd:             ok=True             break     except Exception:         pass sys.exit(0 if ok else 1)" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -282,8 +253,8 @@ services:
     networks:
       - visionguard
     volumes:
-      - vg-data:/data
-      - vg-logs:/var/log/visionguard
+      - ./data:/data/visionguard
+      - ./data/logs:/var/log/visionguard
       - vg-frames:/shared-frames
     tmpfs:
       - /tmp:size=100M
@@ -301,22 +272,7 @@ services:
       init-perms:
         condition: service_completed_successfully
     healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import os, sys, redis; r=redis.Redis(host=os.getenv('REDIS_HOST','redis'), port=int(os.getenv('REDIS_PORT','6379'))); r.ping(); ok=False;
-            for pid in [p for p in os.listdir('/proc') if p.isdigit()]:
-            \    try:
-            \        cmd=open(f'/proc/{pid}/cmdline','rb').read().decode('utf-8','ignore')
-            \        if 'ai_worker.main' in cmd:
-            \            ok=True
-            \            break
-            \    except Exception:
-            \        pass
-            sys.exit(0 if ok else 1)"
-        ]
+      test: [ "CMD", "python", "-c", "import os, sys, redis; r=redis.Redis(host=os.getenv('REDIS_HOST','redis'), port=int(os.getenv('REDIS_PORT','6379'))); r.ping(); ok=False; for pid in [p for p in os.listdir('/proc') if p.isdigit()]:     try:         cmd=open(f'/proc/{pid}/cmdline','rb').read().decode('utf-8','ignore')         if 'ai_worker.main' in cmd:             ok=True             break     except Exception:         pass sys.exit(0 if ok else 1)" ]
       interval: 30s
       timeout: 30s
       retries: 3
@@ -336,8 +292,8 @@ services:
     networks:
       - visionguard
     volumes:
-      - vg-data:/data
-      - vg-logs:/var/log/visionguard
+      - ./data:/data/visionguard
+      - ./data/logs:/var/log/visionguard
       - vg-frames:/shared-frames
     tmpfs:
       - /tmp:size=100M
@@ -360,22 +316,7 @@ services:
       init-perms:
         condition: service_completed_successfully
     healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import os, sys, redis; r=redis.Redis(host=os.getenv('REDIS_HOST','redis'), port=int(os.getenv('REDIS_PORT','6379'))); r.ping(); ok=False;
-            for pid in [p for p in os.listdir('/proc') if p.isdigit()]:
-            \    try:
-            \        cmd=open(f'/proc/{pid}/cmdline','rb').read().decode('utf-8','ignore')
-            \        if 'ai_worker.main' in cmd:
-            \            ok=True
-            \            break
-            \    except Exception:
-            \        pass
-            sys.exit(0 if ok else 1)"
-        ]
+      test: [ "CMD", "python", "-c", "import os, sys, redis; r=redis.Redis(host=os.getenv('REDIS_HOST','redis'), port=int(os.getenv('REDIS_PORT','6379'))); r.ping(); ok=False; for pid in [p for p in os.listdir('/proc') if p.isdigit()]:     try:         cmd=open(f'/proc/{pid}/cmdline','rb').read().decode('utf-8','ignore')         if 'ai_worker.main' in cmd:             ok=True             break     except Exception:         pass sys.exit(0 if ok else 1)" ]
       interval: 30s
       timeout: 30s
       retries: 3
@@ -396,8 +337,8 @@ services:
     networks:
       - visionguard
     volumes:
-      - vg-data:/data
-      - vg-logs:/var/log/visionguard
+      - ./data:/data/visionguard
+      - ./data/logs:/var/log/visionguard
       - vg-frames:/shared-frames
     tmpfs:
       - /tmp:size=100M
@@ -415,22 +356,7 @@ services:
       init-perms:
         condition: service_completed_successfully
     healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import os, sys, redis; r=redis.Redis(host=os.getenv('REDIS_HOST','redis'), port=int(os.getenv('REDIS_PORT','6379'))); r.ping(); ok=False;
-            for pid in [p for p in os.listdir('/proc') if p.isdigit()]:
-            \    try:
-            \        cmd=open(f'/proc/{pid}/cmdline','rb').read().decode('utf-8','ignore')
-            \        if 'ai_worker.main' in cmd:
-            \            ok=True
-            \            break
-            \    except Exception:
-            \        pass
-            sys.exit(0 if ok else 1)"
-        ]
+      test: [ "CMD", "python", "-c", "import os, sys, redis; r=redis.Redis(host=os.getenv('REDIS_HOST','redis'), port=int(os.getenv('REDIS_PORT','6379'))); r.ping(); ok=False; for pid in [p for p in os.listdir('/proc') if p.isdigit()]:     try:         cmd=open(f'/proc/{pid}/cmdline','rb').read().decode('utf-8','ignore')         if 'ai_worker.main' in cmd:             ok=True             break     except Exception:         pass sys.exit(0 if ok else 1)" ]
       interval: 30s
       timeout: 30s
       retries: 3
@@ -450,9 +376,12 @@ services:
       - visionguard
     ports:
       - "${DEBUG_UI_PORT:-8501}:8501"
+    volumes:
+      - ./data:/data/visionguard
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - VG_DB_PATH=/data/visionguard/events.db
       - VG_STREAM_NAME=vg:ai:results
       - VG_REFRESH_SEC=1.5
     depends_on:

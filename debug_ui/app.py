@@ -28,7 +28,7 @@ from pathlib import Path
 # ───────── Configuration ─────────
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6380"))  # Docker maps 6379→6380 on host
-DB_PATH = os.getenv("VG_DB_PATH", "/data/visionguard/events.db")
+DB_PATH = os.getenv("VG_DB_PATH", "/data/events.db")
 
 # Detection images directory — try Docker volume first, then host path
 DETECTION_DIRS = [
