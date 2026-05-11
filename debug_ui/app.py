@@ -718,11 +718,14 @@ if db:
             st.metric("Total Events", total)
         type_counts = {r[0]: r[1] for r in by_type}
         with col2:
-            st.metric("🔫 Weapon", type_counts.get("weapon_detected", 0))
+            weapon_count = type_counts.get("weapon_detected", 0) + type_counts.get("weapon", 0)
+            st.metric("🔫 Weapon", weapon_count)
         with col3:
-            st.metric("🔥 Fire", type_counts.get("fire_detected", 0))
+            fire_count = type_counts.get("fire_detected", 0) + type_counts.get("fire", 0)
+            st.metric("🔥 Fire", fire_count)
         with col4:
-            st.metric("🤸 Fall", type_counts.get("fall_detected", 0))
+            fall_count = type_counts.get("fall_detected", 0) + type_counts.get("fall", 0)
+            st.metric("🤸 Fall", fall_count)
 
         # Recent events table
         recent_events = cursor.execute("""
