@@ -287,8 +287,11 @@ class AIWorker:
                     
                 result["inference_latency_ms"] = inference_latency_ms
                 
-                # Ensure snapshots are saved for ALL detections that pass the worker's threshold
-                image_threshold = float(os.getenv("IMAGE_SAVE_THRESHOLD", str(self.config.confidence_threshold)))
+                # Save JPEGs at a threshold aligned with ECS (often ~0.30), not only at the
+                # worker's high inference gate — otherwise events accumulate from weaker frames
+                # but no file exists for clip_recorder / UI to match.
+                default_img_thr = str(min(self.config.confidence_threshold, 0.30))
+                image_threshold = float(os.getenv("IMAGE_SAVE_THRESHOLD", default_img_thr))
                 detection_image_path = ""
                 if result.get("confidence", 0) >= image_threshold:
                     detection_image_path = self._save_detection_image(
@@ -363,7 +366,10 @@ class AIWorker:
         Returns the saved image path, or empty string on failure.
         """
         try:
-            DETECTION_DIR = "/data/visionguard/detections"
+            DETECTION_DIR = os.getenv(
+                "DETECTION_IMAGE_DIR",
+                os.getenv("SNAPSHOT_DIR", "/data/visionguard/detections"),
+            )
             os.makedirs(DETECTION_DIR, exist_ok=True)
             
             # Make a copy to avoid modifying the original
@@ -409,7 +415,10 @@ class AIWorker:
             ts_ms = int(task.timestamp * 1000)
             filename = f"{self.config.model_type}_{task.camera_id}_{ts_ms}.jpg"
             filepath = os.path.join(DETECTION_DIR, filename)
-            cv2.imwrite(filepath, annotated, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            ok_write = cv2.imwrite(filepath, annotated, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            if not ok_write:
+                logger.warning(f"cv2.imwrite returned False for {filepath} (disk full, bad path, or permissions)")
+                return ""
             
             # Auto-cleanup: keep only last 50 images per model type
             try:

@@ -213,7 +213,10 @@ class ClipRecorder:
         if snapshot_path:
             logger.info(f"Found snapshot: {snapshot_path}")
             # WRITE SNAPSHOT TO DB IMMEDIATELY (Instant feedback)
-            await self._write_evidence(event_id, result)
+            try:
+                await self._write_evidence(event_id, result)
+            except Exception as e:
+                logger.warning(f"Could not write snapshot evidence yet for {event_id}: {e} — will retry with clip")
         else:
             logger.warning(f"No matching snapshot found for event {event_id}")
 
@@ -224,7 +227,10 @@ class ClipRecorder:
         if clip_path:
             logger.info(f"Clip recorded: {clip_path}")
             # WRITE CLIP TO DB IMMEDIATELY (Available before Cloud upload)
-            await self._write_evidence(event_id, result)
+            try:
+                await self._write_evidence(event_id, result)
+            except Exception as e:
+                logger.error(f"Failed to write clip evidence for {event_id}: {e}")
             await self._update_clip_status(event_id, "ready", None)
         else:
             result["clip_error"] = "clip_record_failed"
@@ -236,8 +242,6 @@ class ClipRecorder:
             # We use an async task instead of a thread
             asyncio.create_task(self._upload_and_update_task(event_id, event_type, result))
             logger.info(f"Started background upload task for event {event_id}")
-
-        return result
 
         logger.info(
             f"Local capture pipeline complete for event {event_id}. Cloud upload pending in background.",
@@ -303,7 +307,10 @@ class ClipRecorder:
                 "-vcodec", "libx264", "-preset", "ultrafast",
                 "-pix_fmt", "yuv420p", temp_path
             ]
-            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            process = subprocess.run(cmd, capture_output=True, text=True)
+            if process.returncode != 0:
+                raise Exception(f"ffmpeg failed with exit code {process.returncode}. Stderr: {process.stderr}")
+            
             os.replace(temp_path, filepath)
             logger.info(f"Successfully transcoded {filepath} to H.264")
         except Exception as e:
@@ -423,16 +430,7 @@ class ClipRecorder:
 
             # Ensure the background buffer is running for this camera
             self._start_camera_buffer(camera_source)
-            
-            # Wait dynamically until the full post-event window is captured in the buffer
-            window_end = detection_ts + self.config.clip_post_seconds
-            wait_time = (window_end + 1.5) - time.time()  # +1.5s margin for ingest lag
-            if wait_time > 0:
-                # Cap wait time at 15s to prevent infinite hanging
-                wait_time = min(wait_time, 15.0)
-                logger.info(f"Waiting {wait_time:.1f}s for post-event buffer to fill (event: {event_id})")
-                time.sleep(wait_time)
-            
+
             # FIX: Use the REAL shared lock, not a brand-new temporary one
             lock = self.buffer_locks.get(camera_source)
             if lock is None:
@@ -585,8 +583,9 @@ class ClipRecorder:
         clip_local = result.get("clip_local")
 
         db_path = self.config.db_path
-        max_retries = 5
-        retry_delay = 2.0
+        # 12 retries × 3s = 36s window — covers ECS's ~5s async batch flush delay
+        max_retries = 12
+        retry_delay = 3.0
 
         for attempt in range(max_retries):
             try:
@@ -603,8 +602,9 @@ class ClipRecorder:
                         final_snapshot = snapshot_url
                         provider_snap = "cloudinary"
                     elif snapshot_local:
+                        # Store as a valid HTTP URL for the browser/dashboard
                         filename = os.path.basename(snapshot_local)
-                        final_snapshot = f"/detections/images/{filename}"
+                        final_snapshot = f"{self.config.backend_url}/detections/images/{filename}"
                         provider_snap = "local"
                     else:
                         final_snapshot = None
@@ -615,8 +615,9 @@ class ClipRecorder:
                         final_clip = clip_url
                         provider_clip = "cloudinary"
                     elif clip_local:
+                        # Store as a valid HTTP URL for the browser/dashboard
                         filename = os.path.basename(clip_local)
-                        final_clip = f"/detections/clips/{filename}"
+                        final_clip = f"{self.config.backend_url}/detections/clips/{filename}"
                         provider_clip = "local"
                     else:
                         final_clip = None

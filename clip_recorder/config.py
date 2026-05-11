@@ -74,6 +74,11 @@ class ClipConfig:
         default_factory=lambda: os.getenv("LOG_LEVEL", "INFO")
     )
 
+    # Backend URL for local evidence serving
+    backend_url: str = field(
+        default_factory=lambda: os.getenv("BACKEND_URL", "http://localhost:8000")
+    )
+
     @property
     def cloudinary_configured(self) -> bool:
         """True only if all three Cloudinary credentials are non-empty strings."""

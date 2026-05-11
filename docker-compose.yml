@@ -41,9 +41,11 @@ services:
     container_name: vg-init-perms
     user: "root"
     volumes:
-      - ./data:/data/visionguard
-      - ./data/logs:/var/log/visionguard
-    command: chown -R 1000:1000 /data /var/log/visionguard
+      - vg-data:/data/visionguard
+      - vg-logs:/var/log/visionguard
+    command: >
+      sh -c "mkdir -p /data/visionguard/detections /data/visionguard/clips /data/visionguard/events &&
+             chown -R 1000:1000 /data /var/log/visionguard"
 
   # ============================================================
   # Redis - Message Broker (MANDATORY)
@@ -57,7 +59,7 @@ services:
     ports:
       - "6380:6379"
     volumes:
-      - ./data/redis:/data
+      - redis-data:/data
     command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
@@ -81,8 +83,8 @@ services:
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
-      - ./data:/data/visionguard
-      - ./data/logs:/var/log/visionguard
+      - vg-data:/data/visionguard
+      - vg-logs:/var/log/visionguard
       - ./cameras.json:/app/cameras.json:ro
       - vg-frames:/shared-frames
     environment:
@@ -122,8 +124,8 @@ services:
     networks:
       - visionguard
     volumes:
-      - ./data:/data/visionguard
-      - ./data/logs:/var/log/visionguard
+      - vg-data:/data/visionguard
+      - vg-logs:/var/log/visionguard
       - vg-frames:/shared-frames
     environment:
       - ECS_REDIS_HOST=redis
@@ -176,8 +178,8 @@ services:
     networks:
       - visionguard
     volumes:
-      - ./data:/data/visionguard
-      - ./data/logs:/var/log/visionguard
+      - vg-data:/data/visionguard
+      - vg-logs:/var/log/visionguard
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -190,6 +192,10 @@ services:
       - CAMERA_FPS=${CAMERA_FPS:-5}
       - VG_DB_PATH=/data/visionguard/events.db
       - LOG_LEVEL=${VG_LOG_LEVEL:-INFO}
+      - SNAPSHOT_DIR=/data/visionguard/detections
+      - CLIP_DIR=/data/visionguard/clips
+      - CAMERA_SOURCE=${CAMERA_SOURCE:-}
+      - BACKEND_URL=http://localhost:${BACKEND_PORT:-8000}
     depends_on:
       redis:
         condition: service_healthy
@@ -210,8 +216,8 @@ services:
     networks:
       - visionguard
     volumes:
-      - ./data:/data/visionguard
-      - ./data/logs:/var/log/visionguard
+      - vg-data:/data/visionguard
+      - vg-logs:/var/log/visionguard
       - vg-frames:/shared-frames
       - ./test-video.mp4:/app/test-video.mp4:ro
       - ./cameras.json:/app/cameras.json:ro
@@ -253,8 +259,8 @@ services:
     networks:
       - visionguard
     volumes:
-      - ./data:/data/visionguard
-      - ./data/logs:/var/log/visionguard
+      - vg-data:/data/visionguard
+      - vg-logs:/var/log/visionguard
       - vg-frames:/shared-frames
     tmpfs:
       - /tmp:size=100M
@@ -266,6 +272,8 @@ services:
       - ONNX_EXECUTION_PROVIDER=CPUExecutionProvider
       - LOG_LEVEL=${WORKER_LOG_LEVEL:-INFO}
       - SHARED_FRAMES_DIR=/shared-frames
+      - SNAPSHOT_DIR=/data/visionguard/detections
+      - DETECTION_IMAGE_DIR=/data/visionguard/detections
     depends_on:
       redis:
         condition: service_healthy
@@ -292,8 +300,8 @@ services:
     networks:
       - visionguard
     volumes:
-      - ./data:/data/visionguard
-      - ./data/logs:/var/log/visionguard
+      - vg-data:/data/visionguard
+      - vg-logs:/var/log/visionguard
       - vg-frames:/shared-frames
     tmpfs:
       - /tmp:size=100M
@@ -310,6 +318,8 @@ services:
       - WORKER_ALLOWED_CLASS_IDS=0
       - LOG_LEVEL=${WORKER_LOG_LEVEL:-INFO}
       - SHARED_FRAMES_DIR=/shared-frames
+      - SNAPSHOT_DIR=/data/visionguard/detections
+      - DETECTION_IMAGE_DIR=/data/visionguard/detections
     depends_on:
       redis:
         condition: service_healthy
@@ -337,8 +347,8 @@ services:
     networks:
       - visionguard
     volumes:
-      - ./data:/data/visionguard
-      - ./data/logs:/var/log/visionguard
+      - vg-data:/data/visionguard
+      - vg-logs:/var/log/visionguard
       - vg-frames:/shared-frames
     tmpfs:
       - /tmp:size=100M
@@ -350,6 +360,8 @@ services:
       - ONNX_EXECUTION_PROVIDER=CPUExecutionProvider
       - LOG_LEVEL=${WORKER_LOG_LEVEL:-INFO}
       - SHARED_FRAMES_DIR=/shared-frames
+      - SNAPSHOT_DIR=/data/visionguard/detections
+      - DETECTION_IMAGE_DIR=/data/visionguard/detections
     depends_on:
       redis:
         condition: service_healthy
