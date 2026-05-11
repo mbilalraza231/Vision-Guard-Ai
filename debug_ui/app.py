@@ -640,19 +640,39 @@ if r:
     col1, col2, col3 = st.columns(3)
     try:
         stream_len = r.xlen(RESULT_STREAM)
+        ecs_last_id = r.get("vg:ecs:last_id")
+        
+        # Calculate real backlog
+        # If last_id exists, we count how many messages are AFTER it
+        pending_count = 0
+        if ecs_last_id and ecs_last_id != "0-0":
+            try:
+                # XCOUNT gives us messages in a range. 
+                # Range is (ecs_last_id to + (the end)
+                # The "(" makes it "exclusive" (messages strictly after the ID)
+                pending_count = r.xcount(RESULT_STREAM, f"({ecs_last_id}", "+")
+            except Exception:
+                pending_count = 0
+        else:
+            # If no ID, everything is pending
+            pending_count = stream_len
+
         with col1:
-            if stream_len == 0:
+            if pending_count == 0:
                 st.metric("Processing", "Idle")
-                st.success("No pending messages")
-            elif stream_len < 50:
+                st.success("Brain is caught up! ✅")
+            elif pending_count < 50:
                 st.metric("Processing", "Active")
-                st.info(f"{stream_len} messages")
+                st.info(f"{pending_count} pending")
             else:
                 st.metric("Processing", "Backlogged")
-                st.warning(f"{stream_len} unprocessed")
-    except Exception:
+                st.warning(f"{pending_count} unprocessed")
+            
+            st.caption(f"Stream: {stream_len} | Pending: {pending_count}")
+    except Exception as e:
         with col1:
             st.metric("Processing", "Unknown")
+            st.caption(f"Error: {e}")
 
     with col2:
         st.metric("Correlation Window", "2000ms")

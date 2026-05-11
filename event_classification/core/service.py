@@ -248,6 +248,20 @@ class ECSService:
                 extra={"window_sec": self.config.camera_history_window_sec}
             )
             
+            # Connect clip Redis client (critical for state management now)
+            try:
+                self._clip_redis = redis_lib.Redis(
+                    host=self.config.redis_host,
+                    port=self.config.redis_port,
+                    db=self.config.redis_db or 0,
+                    decode_responses=True,
+                )
+                self._clip_redis.ping()
+                self.logger.info("Internal Redis client connected")
+            except Exception as e:
+                self.logger.warning(f"Internal Redis client failed to connect: {e} — state persistence and clips disabled")
+                self._clip_redis = None
+
             # Initialize Redis stream consumer
             self.stream_consumer = StreamConsumer(
                 stream_name=self.config.input_stream,
@@ -259,8 +273,18 @@ class ECSService:
                 count=self.config.read_count
             )
             
-            # REFINEMENT: Set start ID based on config
-            if self.config.resume_from_latest:
+            # REFINEMENT: Set start ID based on saved state OR config
+            saved_id = None
+            if self._clip_redis:
+                try:
+                    saved_id = self._clip_redis.get("vg:ecs:last_id")
+                except Exception:
+                    pass
+            
+            if saved_id:
+                self.logger.info(f"Resuming from saved stream ID: {saved_id}")
+                self.stream_consumer.set_start_id(saved_id)
+            elif self.config.resume_from_latest:
                 self.stream_consumer.set_start_id("$")  # Start from latest
             else:
                 # Read from beginning (explicit backlog replay)
@@ -286,19 +310,6 @@ class ECSService:
             
             self.logger.info("ECS initialized successfully")
 
-            # Connect clip Redis client (non-critical — failure doesn't block ECS)
-            try:
-                self._clip_redis = redis_lib.Redis(
-                    host=self.config.redis_host,
-                    port=self.config.redis_port,
-                    db=self.config.redis_db or 0,
-                    decode_responses=True,
-                )
-                self._clip_redis.ping()
-                self.logger.info("Clip Redis client connected")
-            except Exception as e:
-                self.logger.warning(f"Clip Redis client failed to connect: {e} — clip publishing disabled")
-                self._clip_redis = None
 
             return True
             
@@ -402,8 +413,15 @@ class ECSService:
                         )
                         # 7. Remove from buffer
                         self.frame_buffer.remove_frame(msg.frame_id)
+
+                    # 8. PERSIST STATE IN REDIS (for Debug UI and Crash Recovery)
+                    if self._clip_redis:
+                        try:
+                            self._clip_redis.set("vg:ecs:last_id", msg.id)
+                        except Exception as e:
+                            self.logger.warning(f"Failed to persist stream state: {e}")
                 
-                # 8. V2 Periodic classification scan
+                # 9. V2 Periodic classification scan
                 current_time = time.time()
                 if current_time - last_classification_scan >= 1.0:
                     aged_frames = (
@@ -448,7 +466,7 @@ class ECSService:
                     
                     last_classification_scan = current_time
                 
-                # 9. Handle expired frames (safety net)
+                # 10. Handle expired frames (safety net)
                 expired_frames = self.frame_buffer.get_expired_frames(
                     self.config.hard_ttl_seconds
                 )
