@@ -627,6 +627,7 @@ class ECSService:
                     "camera_source": camera_source,
                     "timestamp":     str(event.timestamp),
                     "confidence":    str(event.confidence),
+                    "severity":      str(getattr(event, 'severity', 'unknown')),
                 },
                 maxlen=500,  # Cap stream to avoid unbounded growth
                 approximate=True,
