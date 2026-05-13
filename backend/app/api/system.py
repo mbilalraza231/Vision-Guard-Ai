@@ -233,10 +233,11 @@ async def system_metrics(
                     # key format is vg:metrics:service_name:instance_id
                     parts = key.decode('utf-8').split(':')
                     service_name = parts[2] if len(parts) > 2 else "unknown"
+                    instance_id = parts[3] if len(parts) > 3 else "unknown"
                     
                     workers.append({
                         "name": service_name,
-                        "instance": metrics.get("instance"),
+                        "instance": metrics.get("instance", instance_id),
                         "cpu": metrics.get("cpu_percent", 0),
                         "memory": metrics.get("memory_gb", 0),
                         "last_seen": metrics.get("timestamp", 0),
@@ -245,8 +246,11 @@ async def system_metrics(
             except Exception:
                 continue
         r.close()
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error fetching worker metrics: {e}")
         pass
+        
+    print(f"DEBUG WORKERS: {workers}")
     
     return MetricsResponse(
         timestamp=datetime.utcnow().isoformat() + "Z",
