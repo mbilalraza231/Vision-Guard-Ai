@@ -230,6 +230,15 @@ class AIWorker:
                 
                 if task is None:
                     # Timeout - no task available
+                    if time.time() - last_heartbeat >= heartbeat_interval_sec:
+                        base_logger.info(
+                            "AI worker heartbeat (idle)",
+                            extra={
+                                "tasks_consumed": self.task_consumer.tasks_consumed,
+                                "publish_failures": self.result_publisher.publish_failures
+                            }
+                        )
+                        last_heartbeat = time.time()
                     continue
                 
                 # Create fresh adapter from BASE logger (not self.logger!)
