@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Header } from '@/components/layout/Header';
 import { cn } from '@/lib/utils';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/dialog';
 import { Loader2, RefreshCw, Save, RotateCcw, Bell, ShieldCheck, Mail, Phone, Plus, Trash2 } from 'lucide-react';
 import { apiService } from '@/services/api.service';
+import { buildApiUrl } from '@/config/api';
 import type {
   AlertSettings,
   GeneralSettings,
@@ -199,7 +200,6 @@ export default function Settings() {
   } = useQuery({
     queryKey: ['settings-status'],
     queryFn: () => apiService.getData<StatusResponse>('/status'),
-    refetchInterval: 30000,
   });
 
   const {
@@ -210,8 +210,37 @@ export default function Settings() {
   } = useQuery({
     queryKey: ['settings-metrics'],
     queryFn: () => apiService.getData<MetricsResponse>('/metrics'),
-    refetchInterval: 30000,
   });
+
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const sseUrl = buildApiUrl('/stream');
+    const eventSource = new EventSource(sseUrl);
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.status) {
+          queryClient.setQueryData(['settings-status'], data.status);
+        }
+        if (data.metrics) {
+          queryClient.setQueryData(['settings-metrics'], data.metrics);
+        }
+      } catch (err) {
+        console.error("SSE parse error", err);
+      }
+    };
+
+    eventSource.onerror = (error) => {
+      console.error("SSE Connection Error", error);
+      eventSource.close();
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, [queryClient]);
 
   const isSystemLoading = healthLoading || statusLoading || metricsLoading;
   const hasSystemError = healthError || statusError || metricsError;

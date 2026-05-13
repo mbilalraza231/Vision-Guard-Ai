@@ -57,19 +57,16 @@ export default function Analytics() {
   const { data: stats, isLoading: isStatsLoading, error: statsError, refetch: refetchStats } = useQuery({
     queryKey: ['analytics-stats'],
     queryFn: () => apiService.getData<EventsStatsResponse>(API_ENDPOINTS.incidents.stats),
-    refetchInterval: 10000,
   });
 
   const { data: systemStatus, isLoading: isStatusLoading, error: statusError, refetch: refetchStatus } = useQuery({
     queryKey: ['analytics-status'],
     queryFn: () => apiService.getData<StatusResponse>(API_ENDPOINTS.dashboard.systemMetrics),
-    refetchInterval: 5000,
   });
 
   const { data: cameras, refetch: refetchCameras } = useQuery({
     queryKey: ['analytics-cameras'],
     queryFn: () => apiService.getData<CameraItem[]>(API_ENDPOINTS.cameras.list),
-    refetchInterval: 5000,
   });
 
   const isLoading = isStatsLoading || isStatusLoading;

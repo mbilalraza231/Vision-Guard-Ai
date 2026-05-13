@@ -130,7 +130,6 @@ function EvidenceModal({ incident, onClose }: EvidenceModalProps) {
       apiService.getData<EvidenceResponse>(API_ENDPOINTS.incidents.evidence(incident!.id)),
     enabled: open,
     staleTime: 30_000,
-    refetchInterval: 30_000,
   });
 
   // Check if event is recent (< 2 minutes)
@@ -305,7 +304,6 @@ export default function Incidents() {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['incidents', filters],
     queryFn: () => apiService.getData<EventsListResponse>(API_ENDPOINTS.incidents.list, queryParams),
-    refetchInterval: 5000,
   });
 
   const incidents = data?.events?.map(adaptEventToIncident) ?? [];

@@ -105,7 +105,6 @@ export default function Dashboard() {
     useQuery({
       queryKey: ['dashboard-stats'],
       queryFn: () => apiService.getData<EventsStatsResponse>(API_ENDPOINTS.dashboard.stats),
-      refetchInterval: 10000,
     });
 
   // Fetch camera status
@@ -113,7 +112,6 @@ export default function Dashboard() {
     useQuery({
       queryKey: ['dashboard-cameras'],
       queryFn: () => apiService.getData<CameraItem[]>(API_ENDPOINTS.cameras.list),
-      refetchInterval: 10000,
     });
 
   // Fetch system status
@@ -121,7 +119,6 @@ export default function Dashboard() {
     useQuery({
       queryKey: ['dashboard-system'],
       queryFn: () => apiService.getData<StatusResponse>(API_ENDPOINTS.dashboard.systemMetrics),
-      refetchInterval: 10000,
     });
 
   // Fetch recent events
@@ -129,7 +126,6 @@ export default function Dashboard() {
     useQuery({
       queryKey: ['dashboard-recent-events'],
       queryFn: () => apiService.getData<EventsListResponse>(API_ENDPOINTS.dashboard.recentEvents, { limit: '5' }),
-      refetchInterval: 10000,
     });
 
   const handleViewIncident = (incident: Incident) => {

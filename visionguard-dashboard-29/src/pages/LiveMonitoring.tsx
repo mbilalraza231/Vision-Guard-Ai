@@ -52,7 +52,6 @@ function BoundingBoxOverlay({ cameraId }: { cameraId: string }) {
       return apiService.getData<BoxesResponse>(`/detections/boxes`, { camera_id: cameraId, limit: '10' })
         .catch(() => ({ boxes: [], count: 0 }));
     },
-    refetchInterval: 1500,
   });
 
   const boxes = data?.boxes ?? [];
@@ -241,7 +240,6 @@ export default function LiveMonitoring() {
     queryFn: async () => {
       return apiService.getData<CameraItem[]>(API_ENDPOINTS.cameras.list);
     },
-    refetchInterval: 30000, // Refresh camera list every 30s
   });
 
   const enabledCameras = useMemo(() => cameras?.filter(c => c.enabled) ?? [], [cameras]);

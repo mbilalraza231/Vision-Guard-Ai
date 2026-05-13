@@ -15,7 +15,9 @@ from datetime import datetime
 from typing import Dict, Any
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 import redis
+import asyncio
 
 from ..core.config import get_settings, get_redis_config, Settings
 from ..services.ecs_manager import get_ecs_manager, ECSManager
@@ -265,4 +267,37 @@ async def system_metrics(
         },
         redis=redis_status,
         workers=workers
+    )
+
+async def system_event_generator(ecs_manager: ECSManager, camera_manager: CameraManager, settings: Settings):
+    """Generates SSE payload for system status and metrics every 2 seconds."""
+    while True:
+        try:
+            status_data = await system_status(ecs_manager, camera_manager, settings)
+            metrics_data = await system_metrics(ecs_manager, camera_manager, settings)
+            
+            payload = {
+                "status": status_data.dict(),
+                "metrics": metrics_data.dict()
+            }
+            yield f"data: {json.dumps(payload)}\n\n"
+        except Exception as e:
+            logger.error(f"SSE Generation error: {e}")
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        
+        await asyncio.sleep(2)
+
+@router.get("/stream")
+async def system_stream(
+    ecs_manager: ECSManager = Depends(get_ecs_manager),
+    camera_manager: CameraManager = Depends(get_camera_manager),
+    settings: Settings = Depends(get_settings)
+):
+    """
+    Server-Sent Events (SSE) endpoint for real-time dashboard metrics.
+    Pushes combined status and metrics every 2 seconds.
+    """
+    return StreamingResponse(
+        system_event_generator(ecs_manager, camera_manager, settings),
+        media_type="text/event-stream"
     )

@@ -107,7 +107,6 @@ export default function AlertContacts() {
   const { data: alertHistory, isLoading: historyLoading } = useQuery({
     queryKey: ['alert-history'],
     queryFn: () => apiService.getData<any>(API_ENDPOINTS.alerts.list),
-    refetchInterval: 5000,
     enabled: activeTab === 'history'
   });
 

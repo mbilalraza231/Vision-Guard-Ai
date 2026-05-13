@@ -44,7 +44,6 @@ export default function Cameras() {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['cameras'],
     queryFn: () => apiService.getData<BackendCamera[]>(API_ENDPOINTS.cameras.list),
-    refetchInterval: 10000,
   });
 
   const startMutation = useMutation({

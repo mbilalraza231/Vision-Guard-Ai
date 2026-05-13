@@ -2,11 +2,15 @@ import { useEffect } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { useAuth } from '@/contexts/AuthContext';
+import { useGlobalSSE } from '@/hooks/useGlobalSSE';
 import { Loader2 } from 'lucide-react';
 
 export function DashboardLayout() {
   const { isAuthenticated, isLoading } = useAuth();
   const navigate = useNavigate();
+  
+  // Initialize Global Server-Sent Events to populate React Query cache automatically
+  useGlobalSSE();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
