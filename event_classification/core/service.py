@@ -300,7 +300,14 @@ class ECSService:
             if self.config.enable_database:
                 self.database_writer = DatabaseWriter(
                     enabled=True,
-                    db_path=self.config.database_path,
+                    database_url=self.config.database_url,
+                    postgres_config={
+                        "user": self.config.postgres_user,
+                        "password": self.config.postgres_password,
+                        "host": self.config.postgres_host,
+                        "port": self.config.postgres_port,
+                        "db": self.config.postgres_db
+                    },
                     batch_size=self.config.database_batch_size,
                     model_version=self.config.model_version
                 )
