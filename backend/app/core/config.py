@@ -69,11 +69,28 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", description="Logging level")
     log_format: str = Field(default="json", description="Log format: json or text")
     
+    # PostgreSQL
+    postgres_user: str = Field(default="postgres", description="PostgreSQL user")
+    postgres_password: str = Field(default="postgres", description="PostgreSQL password")
+    postgres_db: str = Field(default="visionguard", description="PostgreSQL database")
+    postgres_host: str = Field(default="localhost", description="PostgreSQL host")
+    postgres_port: int = Field(default=5432, description="PostgreSQL port")
+    database_url: Optional[str] = Field(default=None, description="Full database URL")
+
+    # DB Path (Legacy SQLite)
+    db_path: str = Field(default="/data/visionguard/events.db", description="SQLite DB path")
+
     class Config:
         env_prefix = "VG_"
         env_file = ".env"
         case_sensitive = False
         extra = "ignore"
+
+    @property
+    def get_database_url(self) -> str:
+        if self.database_url:
+            return self.database_url
+        return f"postgresql://{self.postgres_user}:{self.postgres_password}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
 
     @property
     def is_production(self) -> bool:

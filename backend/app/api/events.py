@@ -10,7 +10,6 @@ GET /alerts/{id} - Get single alert with event metadata
 
 import os
 import sys
-import aiosqlite
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, Path
@@ -83,7 +82,6 @@ async def get_event_evidence(
     Returns snapshot_url, clip_url (first match each), and full evidence list.
     Never raises 500 — returns error key on exception.
     """
-    db_path = os.getenv("VG_DB_PATH", "/data/visionguard/events.db")
     empty = {
         "event_id": event_id,
         "evidence": [],
@@ -94,32 +92,26 @@ async def get_event_evidence(
     }
 
     try:
-        if not os.path.exists(db_path):
-            return empty
+        from ..core.database import db
 
-        async with aiosqlite.connect(db_path) as db:
-            db.row_factory = aiosqlite.Row
-            
-            async with db.execute(
-                """
-                SELECT id, event_id, evidence_type, storage_provider, public_url, created_at
-                FROM event_evidence
-                WHERE event_id = ?
-                ORDER BY created_at ASC
-                """,
-                (event_id,),
-            ) as cursor:
-                rows = await cursor.fetchall()
+        rows = await db.fetch_all(
+            """
+            SELECT id, event_id, evidence_type, storage_provider, public_url, created_at
+            FROM event_evidence
+            WHERE event_id = $1
+            ORDER BY created_at ASC
+            """,
+            event_id,
+        )
 
-            async with db.execute(
-                """
-                SELECT clip_status, clip_error
-                FROM events
-                WHERE id = ?
-                """,
-                (event_id,),
-            ) as cursor:
-                event_row = await cursor.fetchone()
+        event_row = await db.fetch_one(
+            """
+            SELECT clip_status, clip_error
+            FROM events
+            WHERE id = $1
+            """,
+            event_id,
+        )
 
         evidence = [dict(r) for r in rows]
 
@@ -192,7 +184,7 @@ async def list_alerts(
 ) -> DBAlertListResponse:
     repo = get_alert_repo()
     
-    result = repo.list_alerts(
+    result = await repo.list_alerts(
         limit=limit,
         offset=offset,
         status=status,
@@ -216,7 +208,7 @@ async def get_alert(
 ) -> DBAlert:
     repo = get_alert_repo()
     
-    alert = repo.get_alert_with_event(alert_id)
+    alert = await repo.get_alert_with_event(alert_id)
     
     if alert is None:
         raise HTTPException(

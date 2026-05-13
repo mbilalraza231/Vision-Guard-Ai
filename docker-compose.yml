@@ -27,6 +27,8 @@ volumes:
     name: vg-redis-data
   vg-data:
     name: vg-app-data
+  vg-db-data:
+    name: vg-db-data
   vg-logs:
     name: vg-logs
   vg-frames:
@@ -34,7 +36,49 @@ volumes:
 
 services:
   # ============================================================
-  # PERMISSION INITIALIZER (Auto-fix for Volume permissions)
+  # PostgreSQL - Relational Database
+  # ============================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: vg-postgres
+    restart: unless-stopped
+    networks:
+      - visionguard
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-visionguard}
+    volumes:
+      - vg-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-visionguard}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================
+  # Database Initializer
+  # ============================================================
+  db-init:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: vg-db-init
+    networks:
+      - visionguard
+    environment:
+      - VG_POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - VG_POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - VG_POSTGRES_DB=${POSTGRES_DB:-visionguard}
+      - VG_POSTGRES_HOST=postgres
+      - VG_POSTGRES_PORT=5432
+    command: python db/init_postgres.py
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ============================================================
+  # PERMISSION INITIALIZER
   # ============================================================
   init-perms:
     image: alpine:latest
@@ -44,11 +88,11 @@ services:
       - vg-data:/data/visionguard
       - vg-logs:/var/log/visionguard
     command: >
-      sh -c "mkdir -p /data/visionguard/detections /data/visionguard/clips /data/visionguard/events &&
+      sh -c "mkdir -p /data/visionguard/detections /data/visionguard/clips &&
              chown -R 1000:1000 /data /var/log/visionguard"
 
   # ============================================================
-  # Redis - Message Broker (MANDATORY)
+  # Redis - Message Broker
   # ============================================================
   redis:
     image: redis:7-alpine
@@ -69,7 +113,7 @@ services:
       start_period: 5s
 
   # ============================================================
-  # Backend Supervisor - Control Plane
+  # Backend Supervisor
   # ============================================================
   backend:
     build:
@@ -95,12 +139,20 @@ services:
       - VG_ENVIRONMENT=${VG_ENVIRONMENT:-production}
       - VG_RUNTIME_MODE=docker
       - VG_LOG_LEVEL=${VG_LOG_LEVEL:-INFO}
-      - VG_DB_PATH=/data/visionguard/events.db
+      - VG_POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - VG_POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - VG_POSTGRES_DB=${POSTGRES_DB:-visionguard}
+      - VG_POSTGRES_HOST=postgres
+      - VG_POSTGRES_PORT=5432
       - SHARED_FRAMES_DIR=/shared-frames
       - VG_STORAGE_TOTAL_MB=512000
     depends_on:
       redis:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
       init-perms:
         condition: service_completed_successfully
     healthcheck:
@@ -111,7 +163,7 @@ services:
       start_period: 10s
 
   # ============================================================
-  # Event Classification Service - SINGLETON (DO NOT SCALE)
+  # Event Classification Service
   # ============================================================
   ecs:
     image: visionguardaiantigravity-ecs:latest
@@ -136,30 +188,21 @@ services:
       - ECS_WEAPON_THRESHOLD=0.30
       - ECS_FIRE_THRESHOLD=0.30
       - ECS_FALL_THRESHOLD=0.30
-      - ECS_WEAPON_MIN_DETECTIONS=4
-      - ECS_FIRE_MIN_DETECTIONS=4
-      - ECS_FALL_MIN_DETECTIONS=4
-      - ECS_WEAPON_PERSISTENCE_WINDOW=5.0
-      - ECS_FIRE_PERSISTENCE_WINDOW=8.0
-      - ECS_FALL_PERSISTENCE_WINDOW=6.0
-      - ECS_WEAPON_COOLDOWN_SECONDS=30.0
-      - ECS_FIRE_COOLDOWN_SECONDS=60.0
-      - ECS_FALL_COOLDOWN_SECONDS=30.0
-      - VG_DB_PATH=/data/visionguard/events.db
+      - VG_POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - VG_POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - VG_POSTGRES_DB=${POSTGRES_DB:-visionguard}
+      - VG_POSTGRES_HOST=postgres
+      - VG_POSTGRES_PORT=5432
       - SHARED_FRAMES_DIR=/shared-frames
       - ECS_HARD_TTL_SECONDS=15.0
       - ECS_CORRELATION_WINDOW_MS=2000
     depends_on:
       redis:
         condition: service_healthy
-      init-perms:
+      postgres:
+        condition: service_healthy
+      db-init:
         condition: service_completed_successfully
-    healthcheck:
-      test: [ "CMD", "python", "-c", "import os, sys, redis; r=redis.Redis(host=os.getenv('ECS_REDIS_HOST','redis'), port=int(os.getenv('ECS_REDIS_PORT','6379'))); r.ping(); ok=False; for pid in [p for p in os.listdir('/proc') if p.isdigit()]:     try:         cmd=open(f'/proc/{pid}/cmdline','rb').read().decode('utf-8','ignore')         if 'event_classification.main' in cmd:             ok=True             break     except Exception:         pass sys.exit(0 if ok else 1)" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
     deploy:
       replicas: 1
       resources:
@@ -167,7 +210,7 @@ services:
           memory: 512M
 
   # ============================================================
-  # Clip Recorder - Post-event clip recording + Cloudinary upload
+  # Clip Recorder
   # ============================================================
   clip-recorder:
     build:
@@ -190,17 +233,25 @@ services:
       - CLIP_POST_SECONDS=${CLIP_POST_SECONDS:-10}
       - CLIP_ENABLE_BACKGROUND_BUFFER=${CLIP_ENABLE_BACKGROUND_BUFFER:-false}
       - CAMERA_FPS=${CAMERA_FPS:-5}
-      - VG_DB_PATH=/data/visionguard/events.db
+      - VG_POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - VG_POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - VG_POSTGRES_DB=${POSTGRES_DB:-visionguard}
+      - VG_POSTGRES_HOST=postgres
+      - VG_POSTGRES_PORT=5432
       - LOG_LEVEL=${VG_LOG_LEVEL:-INFO}
       - SNAPSHOT_DIR=/data/visionguard/detections
       - CLIP_DIR=/data/visionguard/clips
       - CAMERA_SOURCE=${CAMERA_SOURCE:-}
-      - BACKEND_URL=http://localhost:${BACKEND_PORT:-8000}
+      - BACKEND_URL=http://vg-backend:8000
     depends_on:
       redis:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
       backend:
         condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
       init-perms:
         condition: service_completed_successfully
 
@@ -280,7 +331,7 @@ services:
       init-perms:
         condition: service_completed_successfully
     healthcheck:
-      test: [ "CMD", "python", "-c", "import os, sys, redis; r=redis.Redis(host=os.getenv('REDIS_HOST','redis'), port=int(os.getenv('REDIS_PORT','6379'))); r.ping(); ok=False; for pid in [p for p in os.listdir('/proc') if p.isdigit()]:     try:         cmd=open(f'/proc/{pid}/cmdline','rb').read().decode('utf-8','ignore')         if 'ai_worker.main' in cmd:             ok=True             break     except Exception:         pass sys.exit(0 if ok else 1)" ]
+      test: [ "CMD", "python", "-c", "import os, sys, redis; r=redis.Redis(host=os.getenv('REDIS_HOST','redis'), port=int(os.getenv('REDIS_PORT','6379'))); r.ping(); ok=any('ai_worker.main' in open(f'/proc/{p}/cmdline','rb').read().decode('utf-8','ignore') for p in os.listdir('/proc') if p.isdigit() and os.path.exists(f'/proc/{p}/cmdline')); sys.exit(0 if ok else 1)" ]
       interval: 30s
       timeout: 30s
       retries: 3
@@ -326,7 +377,7 @@ services:
       init-perms:
         condition: service_completed_successfully
     healthcheck:
-      test: [ "CMD", "python", "-c", "import os, sys, redis; r=redis.Redis(host=os.getenv('REDIS_HOST','redis'), port=int(os.getenv('REDIS_PORT','6379'))); r.ping(); ok=False; for pid in [p for p in os.listdir('/proc') if p.isdigit()]:     try:         cmd=open(f'/proc/{pid}/cmdline','rb').read().decode('utf-8','ignore')         if 'ai_worker.main' in cmd:             ok=True             break     except Exception:         pass sys.exit(0 if ok else 1)" ]
+      test: [ "CMD", "python", "-c", "import os, sys, redis; r=redis.Redis(host=os.getenv('REDIS_HOST','redis'), port=int(os.getenv('REDIS_PORT','6379'))); r.ping(); ok=any('ai_worker.main' in open(f'/proc/{p}/cmdline','rb').read().decode('utf-8','ignore') for p in os.listdir('/proc') if p.isdigit() and os.path.exists(f'/proc/{p}/cmdline')); sys.exit(0 if ok else 1)" ]
       interval: 30s
       timeout: 30s
       retries: 3
@@ -368,7 +419,7 @@ services:
       init-perms:
         condition: service_completed_successfully
     healthcheck:
-      test: [ "CMD", "python", "-c", "import os, sys, redis; r=redis.Redis(host=os.getenv('REDIS_HOST','redis'), port=int(os.getenv('REDIS_PORT','6379'))); r.ping(); ok=False; for pid in [p for p in os.listdir('/proc') if p.isdigit()]:     try:         cmd=open(f'/proc/{pid}/cmdline','rb').read().decode('utf-8','ignore')         if 'ai_worker.main' in cmd:             ok=True             break     except Exception:         pass sys.exit(0 if ok else 1)" ]
+      test: [ "CMD", "python", "-c", "import os, sys, redis; r=redis.Redis(host=os.getenv('REDIS_HOST','redis'), port=int(os.getenv('REDIS_PORT','6379'))); r.ping(); ok=any('ai_worker.main' in open(f'/proc/{p}/cmdline','rb').read().decode('utf-8','ignore') for p in os.listdir('/proc') if p.isdigit() and os.path.exists(f'/proc/{p}/cmdline')); sys.exit(0 if ok else 1)" ]
       interval: 30s
       timeout: 30s
       retries: 3

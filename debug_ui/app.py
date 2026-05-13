@@ -16,7 +16,6 @@ Run with: streamlit run debug_ui/app.py
 
 import streamlit as st
 import redis
-import sqlite3
 import os
 import time
 import json
@@ -138,29 +137,23 @@ def get_redis():
 
 
 def get_db_connection():
-    """Get SQLite connection — try multiple paths."""
-    candidates = [
-        DB_PATH,
-        os.path.expanduser("~/data/visionguard/events.db"),
-        "/var/lib/docker/volumes/vg-app-data/_data/visionguard/events.db",
-    ]
-    try:
-        import subprocess
-        result = subprocess.run(
-            ["docker", "volume", "inspect", "--format", "{{.Mountpoint}}",
-             "vg-app-data"],
-            capture_output=True, text=True, timeout=3
-        )
-        if result.returncode == 0:
-            vol_path = result.stdout.strip()
-            candidates.append(os.path.join(vol_path, "visionguard/events.db"))
-    except Exception:
-        pass
+    """Get PostgreSQL connection."""
+    host = os.environ.get("VG_POSTGRES_HOST", "localhost")
+    user = os.environ.get("VG_POSTGRES_USER", "postgres")
+    db_name = os.environ.get("VG_POSTGRES_DB", "visionguard")
+    password = os.environ.get("VG_POSTGRES_PASSWORD", "postgres")
     
-    for path in candidates:
-        if os.path.exists(path):
-            return sqlite3.connect(path)
-    return None
+    try:
+        import psycopg2
+        return psycopg2.connect(
+            host=host,
+            user=user,
+            password=password,
+            dbname=db_name,
+            connect_timeout=3
+        )
+    except Exception:
+        return None
 
 
 def get_detection_dir():
@@ -303,27 +296,16 @@ def model_emoji(model_type: str) -> str:
 
 
 def clear_database() -> tuple[bool, str]:
-    """Delete all rows from DB tables used during development/testing."""
+    """Truncate DB tables in PostgreSQL."""
     conn = get_db_connection()
     if not conn:
-        return False, "Database not found"
+        return False, "Database connection failed"
 
     try:
         cursor = conn.cursor()
-        tables = ["alerts", "event_evidence", "events"]
-        deleted_total = 0
-
-        for table in tables:
-            try:
-                cursor.execute(f"DELETE FROM {table}")
-                deleted_total += max(cursor.rowcount, 0)
-            except sqlite3.OperationalError:
-                continue
-
+        cursor.execute("TRUNCATE TABLE alerts, event_evidence, events RESTART IDENTITY CASCADE")
         conn.commit()
-        cursor.execute("VACUUM")
-        conn.commit()
-        return True, f"Database cleared (deleted {deleted_total} rows)"
+        return True, "Database cleared successfully (PostgreSQL Truncate)"
     except Exception as e:
         return False, f"Failed to clear database: {e}"
     finally:
@@ -730,7 +712,7 @@ if db:
         # Recent events table
         recent_events = cursor.execute("""
             SELECT event_type, confidence, camera_id, 
-                   datetime(created_at, 'unixepoch', 'localtime') as time,
+                   to_timestamp(created_at) as time,
                    model_version
             FROM events 
             ORDER BY created_at DESC 

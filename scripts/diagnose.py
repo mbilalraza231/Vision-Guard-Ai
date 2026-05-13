@@ -8,7 +8,6 @@ Usage: python scripts/diagnose.py
 
 import os
 import sys
-import sqlite3
 
 # Resolve project root (parent of scripts/)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -90,18 +89,28 @@ def diagnose_cameras() -> bool:
 
 
 def diagnose_database() -> bool:
-    db_path = os.environ.get("VG_DB_PATH", "/tmp/visionguard/events.db")
-    if not os.path.exists(db_path):
-        return check("Database", False, f"file not found ({db_path})")
+    host = os.environ.get("VG_POSTGRES_HOST", "localhost")
+    user = os.environ.get("VG_POSTGRES_USER", "postgres")
+    db_name = os.environ.get("VG_POSTGRES_DB", "visionguard")
+    
     try:
-        conn = sqlite3.connect(db_path)
+        import psycopg2
+        conn = psycopg2.connect(
+            host=host,
+            user=user,
+            password=os.environ.get("VG_POSTGRES_PASSWORD", "postgres"),
+            dbname=db_name,
+            connect_timeout=3
+        )
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM events")
         count = cursor.fetchone()[0]
         conn.close()
-        return check("Database", True, f"{count} events (path: {db_path})")
+        return check("Database (PostgreSQL)", True, f"{count} events (host: {host})")
+    except ImportError:
+        return check_warn("Database (PostgreSQL)", "psycopg2 not installed, checking env vars only")
     except Exception as e:
-        return check("Database", False, f"query failed ({e})")
+        return check("Database (PostgreSQL)", False, f"connection failed ({e})")
 
 
 def diagnose_models() -> int:

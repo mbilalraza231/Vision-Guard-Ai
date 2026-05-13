@@ -1,6 +1,6 @@
 import time
 import logging
-import threading
+import asyncio
 from typing import Optional
 
 from .config import AlertConfig
@@ -17,7 +17,7 @@ class AlertRetryWorker:
         self.repo = AlertRepository(self.config)
         self.dispatcher = AlertDispatcher(self.config)
         self._running = False
-        self._thread: Optional[threading.Thread] = None
+        self._task: Optional[asyncio.Task] = None
         self.processed = 0
         self.sent = 0
         self.failed = 0
@@ -48,35 +48,36 @@ class AlertRetryWorker:
         backoff = self._get_backoff(attempts)
         return time.time() >= (last_attempt + backoff)
     
-    def process_one(self, alert: dict) -> bool:
-        self.repo.increment_attempts(alert["id"])
+    async def process_one(self, alert: dict) -> bool:
+        await self.repo.increment_attempts(alert["id"])
         
-        success, reason = self.dispatcher.dispatch(alert)
+        # Dispatcher is synchronous (urllib), so we run it in a thread 
+        # to avoid blocking the event loop.
+        success, reason = await asyncio.to_thread(self.dispatcher.dispatch, alert)
         
         if success:
-            self.repo.update_status(alert["id"], "sent")
+            await self.repo.update_status(alert["id"], "sent")
             self.sent += 1
             logger.info(f"Alert sent: {alert['id']}")
             return True
         else:
+            await self.repo.update_status(alert["id"], "failed")
             if reason.startswith("terminal"):
-                self.repo.update_status(alert["id"], "failed")
                 logger.warning(f"Alert failed (terminal): {alert['id']} - {reason}")
             else:
-                self.repo.update_status(alert["id"], "failed")
                 logger.warning(f"Alert failed (retriable): {alert['id']} - {reason}")
             self.failed += 1
             return False
     
-    def run_once(self) -> int:
-        pending = self.repo.get_pending_alerts(self.config.max_attempts)
+    async def run_once(self) -> int:
+        pending = await self.repo.get_pending_alerts(self.config.max_attempts)
         processed = 0
         
         for alert in pending:
             if not self._should_retry(alert):
                 continue
             
-            self.process_one(alert)
+            await self.process_one(alert)
             processed += 1
             self.processed += 1
         
@@ -87,28 +88,26 @@ class AlertRetryWorker:
             return
         
         self._running = True
-        self._thread = threading.Thread(
-            target=self._worker_loop,
-            args=(poll_interval,),
-            name="AlertRetryWorker",
-            daemon=True
-        )
-        self._thread.start()
-        logger.info("AlertRetryWorker started")
+        self._task = asyncio.create_task(self._worker_loop(poll_interval))
+        logger.info("AlertRetryWorker task started")
     
-    def _worker_loop(self, poll_interval: float):
+    async def _worker_loop(self, poll_interval: float):
         while self._running:
             try:
-                self.run_once()
+                await self.run_once()
             except Exception as e:
                 logger.error(f"Worker error: {e}")
             
-            time.sleep(poll_interval)
+            await asyncio.sleep(poll_interval)
     
-    def stop(self):
+    async def stop(self):
         self._running = False
-        if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=5.0)
+        if self._task:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
         logger.info("AlertRetryWorker stopped")
     
     def get_stats(self) -> dict:

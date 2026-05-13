@@ -2,21 +2,16 @@
 VisionGuard AI - Database Reader Service
 
 READ-ONLY database access for FastAPI backend.
-Queries events from SQLite.
+Queries events from PostgreSQL.
 """
 
-import aiosqlite
 import os
 import logging
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
+from ..core.database import db
 
 logger = logging.getLogger(__name__)
-
-
-def get_db_path() -> str:
-    """Get database path from environment."""
-    return os.getenv("VG_DB_PATH", "/data/visionguard/events.db")
 
 
 @dataclass
@@ -52,14 +47,10 @@ class DatabaseReader:
     Read-only asynchronous database reader for backend.
     """
     
-    def __init__(self, db_path: str = None):
+    def __init__(self):
         """
         Initialize database reader.
-        
-        Args:
-            db_path: Path to SQLite database file
         """
-        self.db_path = db_path or get_db_path()
         self.logger = logging.getLogger(__name__)
     
     async def list_events(
@@ -72,107 +63,79 @@ class DatabaseReader:
     ) -> Dict[str, Any]:
         """
         List events with pagination and filtering.
-        
-        Args:
-            limit: Max events to return (1-100)
-            offset: Offset for pagination
-            camera_id: Filter by camera ID
-            event_type: Filter by event type
-            severity: Filter by severity
-            
-        Returns:
-            Dictionary with total, limit, offset, and events list
         """
         try:
-            if not os.path.exists(self.db_path):
-                raise FileNotFoundError(f"Database not found: {self.db_path}")
-
-            async with aiosqlite.connect(self.db_path) as db:
-                db.row_factory = aiosqlite.Row
+            # Build query
+            where_clauses = []
+            params = []
+            param_idx = 1
+            
+            if camera_id:
+                where_clauses.append(f"camera_id = ${param_idx}")
+                params.append(camera_id)
+                param_idx += 1
+            
+            if event_type:
+                where_clauses.append(f"event_type = ${param_idx}")
+                params.append(event_type.lower().replace("_detected", ""))
+                param_idx += 1
+            
+            if severity:
+                where_clauses.append(f"severity = ${param_idx}")
+                params.append(severity.lower())
+                param_idx += 1
+            
+            where_sql = ""
+            if where_clauses:
+                where_sql = "WHERE " + " AND ".join(where_clauses)
+            
+            # Get total count
+            count_sql = f"SELECT COUNT(*) FROM events {where_sql}"
+            count_row = await db.fetch_one(count_sql, *params)
+            total = count_row['count'] if count_row else 0
+            
+            # Get events with evidence URLs
+            query_sql = f"""
+                SELECT e.*, 
+                       s.public_url as snapshot_url, 
+                       s.storage_provider as snapshot_provider,
+                       c.public_url as clip_url,
+                       c.storage_provider as clip_provider
+                FROM events e
+                LEFT JOIN event_evidence s ON e.id = s.event_id AND s.evidence_type = 'snapshot'
+                LEFT JOIN event_evidence c ON e.id = c.event_id AND c.evidence_type = 'clip'
+                {where_sql}
+                ORDER BY e.created_at DESC
+                LIMIT ${param_idx} OFFSET ${param_idx + 1}
+            """
+            params.extend([limit, offset])
+            
+            rows = await db.fetch_all(query_sql, *params)
+            
+            events = []
+            for row in rows:
+                ev = dict(row)
                 
-                # Build query
-                where_clauses = []
-                params = []
+                # Translate local paths to API URLs
+                snap_url = ev.get("snapshot_url")
+                if snap_url and snap_url.startswith("/data/visionguard/detections/"):
+                    filename = os.path.basename(snap_url)
+                    ev["snapshot_url"] = f"/detections/images/{filename}"
                 
-                if camera_id:
-                    where_clauses.append("camera_id = ?")
-                    params.append(camera_id)
-                
-                if event_type:
-                    where_clauses.append("event_type = ?")
-                    params.append(event_type.lower().replace("_detected", ""))
-                
-                if severity:
-                    where_clauses.append("severity = ?")
-                    params.append(severity.lower())
-                
-                where_sql = ""
-                if where_clauses:
-                    where_sql = "WHERE " + " AND ".join(where_clauses)
-                
-                # Get total count
-                count_sql = f"SELECT COUNT(*) FROM events {where_sql}"
-                async with db.execute(count_sql, params) as cursor:
-                    row = await cursor.fetchone()
-                    total = row[0]
-                
-                # Get events with evidence URLs
-                query_sql = f"""
-                    SELECT e.*, 
-                           s.public_url as snapshot_url, 
-                           s.storage_provider as snapshot_provider,
-                           c.public_url as clip_url,
-                           c.storage_provider as clip_provider
-                    FROM events e
-                    LEFT JOIN event_evidence s ON e.id = s.event_id AND s.evidence_type = 'snapshot'
-                    LEFT JOIN event_evidence c ON e.id = c.event_id AND c.evidence_type = 'clip'
-                    {where_sql}
-                    ORDER BY e.created_at DESC
-                    LIMIT ? OFFSET ?
-                """
-                params.extend([limit, offset])
-                
-                async with db.execute(query_sql, params) as cursor:
-                    rows = await cursor.fetchall()
-                
-                events = []
-                for row in rows:
-                    ev = dict(row)
-                    
-                    # Translate local paths to API URLs
-                    snap_url = ev.get("snapshot_url")
-                    if snap_url and snap_url.startswith("/data/visionguard/detections/"):
-                        if os.path.exists(snap_url):
-                            filename = os.path.basename(snap_url)
-                            ev["snapshot_url"] = f"/detections/images/{filename}"
-                        else:
-                            ev["snapshot_url"] = None
-                    
-                    c_url = ev.get("clip_url")
-                    if c_url and c_url.startswith("/data/visionguard/clips/"):
-                        if os.path.exists(c_url):
-                            filename = os.path.basename(c_url)
-                            ev["clip_url"] = f"/detections/clips/{filename}"
-                        else:
-                            ev["clip_url"] = None
-                            
-                    events.append(ev)
-                
-                return {
-                    "total": total,
-                    "limit": limit,
-                    "offset": offset,
-                    "events": events
-                }
-                
-        except FileNotFoundError:
-            self.logger.warning("Database not found, returning empty results")
+                c_url = ev.get("clip_url")
+                if c_url and c_url.startswith("/data/visionguard/clips/"):
+                    filename = os.path.basename(c_url)
+                    ev["clip_url"] = f"/detections/clips/{filename}"
+                        
+                events.append(ev)
+            
             return {
-                "total": 0,
+                "total": total,
                 "limit": limit,
                 "offset": offset,
-                "events": []
+                "events": events
             }
+                
         except Exception as e:
             self.logger.error(f"Error listing events: {e}")
             return {
@@ -186,56 +149,38 @@ class DatabaseReader:
     async def get_event(self, event_id: str) -> Optional[Dict[str, Any]]:
         """
         Get a single event by ID.
-        
-        Args:
-            event_id: Event UUID
-            
-        Returns:
-            Event dictionary or None if not found
         """
         try:
-            if not os.path.exists(self.db_path):
+            query_sql = """
+                SELECT e.*, 
+                       s.public_url as snapshot_url, 
+                       s.storage_provider as snapshot_provider,
+                       c.public_url as clip_url,
+                       c.storage_provider as clip_provider
+                FROM events e
+                LEFT JOIN event_evidence s ON e.id = s.event_id AND s.evidence_type = 'snapshot'
+                LEFT JOIN event_evidence c ON e.id = c.event_id AND c.evidence_type = 'clip'
+                WHERE e.id = $1
+            """
+            row = await db.fetch_one(query_sql, event_id)
+            
+            if row is None:
                 return None
-
-            async with aiosqlite.connect(self.db_path) as db:
-                db.row_factory = aiosqlite.Row
-                query_sql = """
-                    SELECT e.*, 
-                           s.public_url as snapshot_url, 
-                           s.storage_provider as snapshot_provider,
-                           c.public_url as clip_url,
-                           c.storage_provider as clip_provider
-                    FROM events e
-                    LEFT JOIN event_evidence s ON e.id = s.event_id AND s.evidence_type = 'snapshot'
-                    LEFT JOIN event_evidence c ON e.id = c.event_id AND c.evidence_type = 'clip'
-                    WHERE e.id = ?
-                """
-                async with db.execute(query_sql, (event_id,)) as cursor:
-                    row = await cursor.fetchone()
-                
-                if row is None:
-                    return None
-                
-                ev = dict(row)
-                
-                # Translate local paths to API URLs
-                snap_url = ev.get("snapshot_url")
-                if snap_url and snap_url.startswith("/data/visionguard/detections/"):
-                    if os.path.exists(snap_url):
-                        filename = os.path.basename(snap_url)
-                        ev["snapshot_url"] = f"/detections/images/{filename}"
-                    else:
-                        ev["snapshot_url"] = None
-                
-                c_url = ev.get("clip_url")
-                if c_url and c_url.startswith("/data/visionguard/clips/"):
-                    if os.path.exists(c_url):
-                        filename = os.path.basename(c_url)
-                        ev["clip_url"] = f"/detections/clips/{filename}"
-                    else:
-                        ev["clip_url"] = None
-                        
-                return ev
+            
+            ev = dict(row)
+            
+            # Translate local paths to API URLs
+            snap_url = ev.get("snapshot_url")
+            if snap_url and snap_url.startswith("/data/visionguard/detections/"):
+                filename = os.path.basename(snap_url)
+                ev["snapshot_url"] = f"/detections/images/{filename}"
+            
+            c_url = ev.get("clip_url")
+            if c_url and c_url.startswith("/data/visionguard/clips/"):
+                filename = os.path.basename(c_url)
+                ev["clip_url"] = f"/detections/clips/{filename}"
+                    
+            return ev
             
         except Exception as e:
             self.logger.error(f"Error getting event: {e}")
@@ -244,26 +189,20 @@ class DatabaseReader:
     async def get_stats(self) -> Dict[str, Any]:
         """Get database statistics."""
         try:
-            if not os.path.exists(self.db_path):
-                return {"error": "Database not found"}
-
-            async with aiosqlite.connect(self.db_path) as db:
-                async with db.execute("SELECT COUNT(*) FROM events") as cursor:
-                    row = await cursor.fetchone()
-                    total_events = row[0]
-                
-                async with db.execute("SELECT event_type, COUNT(*) FROM events GROUP BY event_type") as cursor:
-                    by_type = dict(await cursor.fetchall())
-                
-                async with db.execute("SELECT severity, COUNT(*) FROM events GROUP BY severity") as cursor:
-                    by_severity = dict(await cursor.fetchall())
-                
-                return {
-                    "total_events": total_events,
-                    "by_type": by_type,
-                    "by_severity": by_severity,
-                    "db_path": self.db_path
-                }
+            total_events_row = await db.fetch_one("SELECT COUNT(*) FROM events")
+            total_events = total_events_row['count'] if total_events_row else 0
+            
+            by_type_rows = await db.fetch_all("SELECT event_type, COUNT(*) FROM events GROUP BY event_type")
+            by_type = {r['event_type']: r['count'] for r in by_type_rows}
+            
+            by_severity_rows = await db.fetch_all("SELECT severity, COUNT(*) FROM events GROUP BY severity")
+            by_severity = {r['severity']: r['count'] for r in by_severity_rows}
+            
+            return {
+                "total_events": total_events,
+                "by_type": by_type,
+                "by_severity": by_severity
+            }
             
         except Exception as e:
             return {"error": str(e)}

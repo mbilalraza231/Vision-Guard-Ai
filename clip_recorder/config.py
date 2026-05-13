@@ -54,10 +54,24 @@ class ClipConfig:
         default_factory=lambda: os.getenv("SNAPSHOT_DIR", "/data/visionguard/detections")
     )
 
-    # Database
+    # Database (PostgreSQL)
+    postgres_user: str = field(default_factory=lambda: os.getenv("VG_POSTGRES_USER", "postgres"))
+    postgres_password: str = field(default_factory=lambda: os.getenv("VG_POSTGRES_PASSWORD", "postgres"))
+    postgres_db: str = field(default_factory=lambda: os.getenv("VG_POSTGRES_DB", "visionguard"))
+    postgres_host: str = field(default_factory=lambda: os.getenv("VG_POSTGRES_HOST", "postgres"))
+    postgres_port: int = field(default_factory=lambda: int(os.getenv("VG_POSTGRES_PORT", "5432")))
+    database_url: str = field(default_factory=lambda: os.getenv("VG_DATABASE_URL", ""))
+
+    # Legacy Database (SQLite)
     db_path: str = field(
         default_factory=lambda: os.getenv("VG_DB_PATH", "/data/visionguard/events.db")
     )
+
+    @property
+    def get_database_url(self) -> str:
+        if self.database_url:
+            return self.database_url
+        return f"postgresql://{self.postgres_user}:{self.postgres_password}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
 
     # Camera source (required, no default)
     camera_source: str = field(

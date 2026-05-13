@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && pip install --no-cache-dir --timeout 300 --retries 5 \
     cloudinary>=1.36.0 \
     python-dotenv>=1.0.0 \
-    aiosqlite>=0.20.0
+    asyncpg>=0.29.0
 
 # Copy clip_recorder module into /app
 COPY clip_recorder/ /app/clip_recorder/

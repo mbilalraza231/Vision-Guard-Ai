@@ -1,21 +1,49 @@
-import sqlite3
 import os
+import sys
 
-db_path = '/data/visionguard/events.db'
-if not os.path.exists(db_path):
-    print(f"Database not found at {db_path}")
-    exit(1)
+def main():
+    host = os.environ.get("VG_POSTGRES_HOST", "localhost")
+    user = os.environ.get("VG_POSTGRES_USER", "postgres")
+    db_name = os.environ.get("VG_POSTGRES_DB", "visionguard")
+    password = os.environ.get("VG_POSTGRES_PASSWORD", "postgres")
 
-conn = sqlite3.connect(db_path)
-cur = conn.cursor()
+    print(f"Connecting to PostgreSQL: {host} (DB: {db_name})")
 
-# Fix snapshots
-cur.execute("UPDATE event_evidence SET public_url = REPLACE(public_url, '/data/visionguard/detections/', 'http://localhost:8000/detections/images/') WHERE storage_provider = 'local' AND public_url LIKE '/data/visionguard/detections/%'")
+    try:
+        import psycopg2
+        conn = psycopg2.connect(
+            host=host,
+            user=user,
+            password=password,
+            dbname=db_name
+        )
+        cur = conn.cursor()
 
-# Fix clips
-cur.execute("UPDATE event_evidence SET public_url = REPLACE(public_url, '/data/visionguard/clips/', 'http://localhost:8000/detections/clips/') WHERE storage_provider = 'local' AND public_url LIKE '/data/visionguard/clips/%'")
+        # Fix snapshots
+        cur.execute("""
+            UPDATE event_evidence 
+            SET public_url = REPLACE(public_url, '/data/visionguard/detections/', 'http://localhost:8000/detections/images/') 
+            WHERE storage_provider = 'local' AND public_url LIKE '/data/visionguard/detections/%'
+        """)
+        snapshot_count = cur.rowcount
 
-print(f"✅ Cleanup complete. Fixed {conn.total_changes} old evidence paths.")
+        # Fix clips
+        cur.execute("""
+            UPDATE event_evidence 
+            SET public_url = REPLACE(public_url, '/data/visionguard/clips/', 'http://localhost:8000/detections/clips/') 
+            WHERE storage_provider = 'local' AND public_url LIKE '/data/visionguard/clips/%'
+        """)
+        clip_count = cur.rowcount
 
-conn.commit()
-conn.close()
+        conn.commit()
+        print(f"✅ Cleanup complete. Fixed {snapshot_count} snapshot paths and {clip_count} clip paths.")
+        conn.close()
+    except ImportError:
+        print("ERROR: psycopg2 package not installed.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"ERROR: {e}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

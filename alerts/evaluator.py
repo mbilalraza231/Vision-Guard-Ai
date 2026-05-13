@@ -37,7 +37,7 @@ class AlertEvaluator:
             return self.config.dedup_window_high_sec
         return 0
     
-    def is_duplicate(self, event: Dict[str, Any]) -> bool:
+    async def is_duplicate(self, event: Dict[str, Any]) -> bool:
         camera_id = event.get("camera_id")
         event_type = event.get("event_type")
         severity = event.get("severity", "").lower()
@@ -48,7 +48,7 @@ class AlertEvaluator:
             return True
         
         since_ts = time.time() - dedup_window
-        recent = self.repo.find_recent_alerts(camera_id, event_type, severity, since_ts)
+        recent = await self.repo.find_recent_alerts(camera_id, event_type, severity, since_ts)
         
         if not recent:
             return False
@@ -67,16 +67,16 @@ class AlertEvaluator:
         
         return True
     
-    def evaluate(self, event: Dict[str, Any]) -> Optional[str]:
+    async def evaluate(self, event: Dict[str, Any]) -> Optional[str]:
         if not self.is_eligible(event):
             logger.debug(f"Event not eligible: severity={event.get('severity')}")
             return None
         
-        if self.is_duplicate(event):
+        if await self.is_duplicate(event):
             logger.debug(f"Event suppressed (duplicate): {event.get('id')}")
             return None
         
-        alert_id = self.repo.create(event["id"], channel="webhook")
+        alert_id = await self.repo.create(event["id"], channel="webhook")
         
         if alert_id:
             logger.info(f"Alert created: {alert_id} for event {event['id']}")

@@ -151,8 +151,18 @@ class ECSConfig(BaseModel):
     enable_database: bool = Field(default=True, description="Enable database writing")
     database_path: str = Field(
         default=None,
-        description="SQLite database path (defaults to VG_DB_PATH env or /data/visionguard/events.db)"
+        description="Legacy SQLite database path"
     )
+    database_url: Optional[str] = Field(
+        default=None,
+        description="PostgreSQL connection URL"
+    )
+    postgres_user: str = Field(default="postgres")
+    postgres_password: str = Field(default="postgres")
+    postgres_db: str = Field(default="visionguard")
+    postgres_host: str = Field(default="postgres")
+    postgres_port: int = Field(default=5432)
+    
     database_batch_size: int = Field(default=10, ge=1, le=100, description="Events per batch write")
     model_version: str = Field(default="1.0.0", description="Model version for DB records")
     

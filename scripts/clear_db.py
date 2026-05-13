@@ -11,63 +11,65 @@ Usage:
 """
 
 import os
-import sqlite3
 import sys
 
 
 def main():
-    db_path = os.environ.get("VG_DB_PATH", "/data/visionguard/events.db")
+    host = os.environ.get("VG_POSTGRES_HOST", "localhost")
+    user = os.environ.get("VG_POSTGRES_USER", "postgres")
+    db_name = os.environ.get("VG_POSTGRES_DB", "visionguard")
+    password = os.environ.get("VG_POSTGRES_PASSWORD", "postgres")
 
-    print(f"Database path: {db_path}")
+    print(f"Connecting to PostgreSQL: {host} (DB: {db_name})")
 
-    if not os.path.exists(db_path):
-        print(f"ERROR: Database file does not exist: {db_path}")
+    try:
+        import psycopg2
+        conn = psycopg2.connect(
+            host=host,
+            user=user,
+            password=password,
+            dbname=db_name
+        )
+        cursor = conn.cursor()
+
+        tables = ["alerts", "event_evidence", "events"]
+
+        # --- Before counts ---
+        print("\n--- Before cleanup ---")
+        for table in tables:
+            try:
+                cursor.execute(f"SELECT COUNT(*) FROM {table}")
+                count = cursor.fetchone()[0]
+                print(f"  {table}: {count} rows")
+            except Exception as e:
+                print(f"  {table}: error ({e})")
+
+        # --- Truncate (FK handling: CASCADE or specific order) ---
+        print("\n--- Truncating tables ---")
+        # In Postgres, TRUNCATE ... CASCADE is safest for related tables
+        cursor.execute("TRUNCATE TABLE alerts, event_evidence, events RESTART IDENTITY CASCADE")
+        print("  Truncate command executed.")
+
+        conn.commit()
+
+        # --- After counts ---
+        print("\n--- After cleanup ---")
+        for table in tables:
+            try:
+                cursor.execute(f"SELECT COUNT(*) FROM {table}")
+                count = cursor.fetchone()[0]
+                print(f"  {table}: {count} rows")
+            except Exception as e:
+                print(f"  {table}: error")
+
+        conn.close()
+        print("\nDatabase cleared successfully.")
+    except ImportError:
+        print("ERROR: psycopg2 package not installed.")
         sys.exit(1)
-
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-
-    tables = ["alerts", "event_evidence", "events"]
-
-    # --- Before counts ---
-    print("\n--- Before cleanup ---")
-    for table in tables:
-        try:
-            cursor.execute(f"SELECT COUNT(*) FROM {table}")
-            count = cursor.fetchone()[0]
-            print(f"  {table}: {count} rows")
-        except sqlite3.OperationalError:
-            print(f"  {table}: table does not exist (skipping)")
-
-    # --- Delete rows (FK order: alerts, event_evidence, then events) ---
-    print("\n--- Deleting rows ---")
-    for table in tables:
-        try:
-            cursor.execute(f"DELETE FROM {table}")
-            deleted = cursor.rowcount
-            print(f"  {table}: deleted {deleted} rows")
-        except sqlite3.OperationalError:
-            print(f"  {table}: table does not exist (skipping)")
-
-    conn.commit()
-
-    # --- Vacuum ---
-    print("\n--- Vacuuming database ---")
-    cursor.execute("VACUUM")
-    print("  Done")
-
-    # --- After counts ---
-    print("\n--- After cleanup ---")
-    for table in tables:
-        try:
-            cursor.execute(f"SELECT COUNT(*) FROM {table}")
-            count = cursor.fetchone()[0]
-            print(f"  {table}: {count} rows")
-        except sqlite3.OperationalError:
-            print(f"  {table}: table does not exist")
-
-    conn.close()
-    print("\nDatabase cleared successfully.")
+    except Exception as e:
+        print(f"ERROR: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
