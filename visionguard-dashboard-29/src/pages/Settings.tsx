@@ -14,7 +14,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2, RefreshCw, Save, RotateCcw } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Loader2, RefreshCw, Save, RotateCcw, Bell, ShieldCheck, Mail, Phone, Plus, Trash2 } from 'lucide-react';
 import { apiService } from '@/services/api.service';
 import type {
   AlertSettings,
@@ -26,7 +33,7 @@ import type {
   SystemSettings,
 } from '@/types';
 
-type SettingsTab = 'general' | 'alerts' | 'storage' | 'models' | 'privacy' | 'system';
+type SettingsTab = 'general' | 'alerts' | 'notifications' | 'storage' | 'models' | 'privacy' | 'system';
 
 interface TabItem {
   id: SettingsTab;
@@ -35,7 +42,8 @@ interface TabItem {
 
 const tabs: TabItem[] = [
   { id: 'general', label: 'General' },
-  { id: 'alerts', label: 'Alerts' },
+  { id: 'alerts', label: 'Alert Rules' },
+  { id: 'notifications', label: 'Notifications' },
   { id: 'storage', label: 'Storage' },
   { id: 'models', label: 'Models' },
   { id: 'privacy', label: 'Privacy' },
@@ -76,6 +84,11 @@ const defaultSettings: SystemSettings = {
     build: '-',
     uptime: '-',
   },
+  notifications: {
+    recipients: [],
+    twilio: { sid: '', token: '', from: '' },
+    gmail: { server: 'smtp.gmail.com', user: '', pass: '' }
+  }
 };
 
 interface HealthResponse {
@@ -112,6 +125,14 @@ interface MetricsResponse {
     status?: string;
     version?: string;
   };
+  workers?: Array<{
+    name: string;
+    instance: string;
+    cpu: number;
+    memory: number;
+    last_seen: number;
+    status: 'online' | 'offline';
+  }>;
 }
 
 function formatDuration(seconds: number | undefined): string {
@@ -141,6 +162,13 @@ function readStoredSettings(): SystemSettings {
       models: { ...defaultSettings.models, ...(parsed.models ?? {}) },
       privacy: { ...defaultSettings.privacy, ...(parsed.privacy ?? {}) },
       system: { ...defaultSettings.system, ...(parsed.system ?? {}) },
+      notifications: {
+        recipients: (parsed as any).notifications?.recipients ?? [
+          { id: '1', name: 'Main Admin', phone: '+1 234 567 890', email: 'admin@visionguard.ai', whatsapp: true, emailAlert: true },
+        ],
+        twilio: (parsed as any).notifications?.twilio ?? { sid: '', token: '', from: '' },
+        gmail: (parsed as any).notifications?.gmail ?? { server: 'smtp.gmail.com', user: '', pass: '' },
+      }
     };
   } catch {
     return defaultSettings;
@@ -149,7 +177,7 @@ function readStoredSettings(): SystemSettings {
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('system');
-  const [settings, setSettings] = useState<SystemSettings>(() => readStoredSettings());
+  const [settings, setSettings] = useState<any>(() => readStoredSettings());
   const [saveMessage, setSaveMessage] = useState<string>('');
 
   const {
@@ -227,7 +255,21 @@ export default function Settings() {
   };
 
   const updatePrivacy = (patch: Partial<PrivacySettings>) => {
-    setSettings((prev) => ({ ...prev, privacy: { ...prev.privacy, ...patch } }));
+    setSettings((prev: any) => ({ ...prev, privacy: { ...prev.privacy, ...patch } }));
+  };
+
+  const updateTwilio = (patch: any) => {
+    setSettings((prev: any) => ({ 
+      ...prev, 
+      notifications: { ...prev.notifications, twilio: { ...prev.notifications.twilio, ...patch } } 
+    }));
+  };
+
+  const updateGmail = (patch: any) => {
+    setSettings((prev: any) => ({ 
+      ...prev, 
+      notifications: { ...prev.notifications, gmail: { ...prev.notifications.gmail, ...patch } } 
+    }));
   };
 
   return (
@@ -343,6 +385,53 @@ export default function Settings() {
                         <div className="rounded-xl bg-secondary/30 p-4">
                           <p className="text-sm text-muted-foreground mb-2">Redis</p>
                           <p className="font-semibold">{metrics?.redis?.status ?? '-'}</p>
+                        </div>
+                      </div>
+
+                      {/* AI Workers Heartbeats */}
+                      <div className="mt-8">
+                        <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                          <ShieldCheck className="h-5 w-5 text-primary" />
+                          AI Worker Heartbeats
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {metrics?.workers?.map((w) => (
+                            <div key={w.name + w.instance} className="rounded-xl border border-white/5 bg-secondary/20 p-4">
+                              <div className="flex items-center justify-between mb-3">
+                                <span className="font-bold capitalize">{w.name.replace('_', ' ')}</span>
+                                <div className={cn(
+                                  "flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase",
+                                  w.status === 'online' ? "bg-status-online/10 text-status-online" : "bg-severity-critical/10 text-severity-critical"
+                                )}>
+                                  <div className={cn("h-1.5 w-1.5 rounded-full animate-pulse", w.status === 'online' ? "bg-status-online" : "bg-severity-critical")} />
+                                  {w.status}
+                                </div>
+                              </div>
+                              <div className="space-y-1 text-xs text-muted-foreground">
+                                <div className="flex justify-between">
+                                  <span>Instance</span>
+                                  <span className="font-mono">{w.instance.slice(0, 12)}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>CPU Usage</span>
+                                  <span>{w.cpu}%</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>Memory</span>
+                                  <span>{(w.memory * 1024).toFixed(0)} MB</span>
+                                </div>
+                                <div className="flex justify-between pt-1 border-t border-white/5 mt-1">
+                                  <span>Last Seen</span>
+                                  <span>{new Date(w.last_seen * 1000).toLocaleTimeString()}</span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                          {(!metrics?.workers || metrics.workers.length === 0) && (
+                            <div className="col-span-full py-8 text-center rounded-xl border border-dashed border-white/10 text-muted-foreground text-sm">
+                              No AI workers detected in the last 60 seconds.
+                            </div>
+                          )}
                         </div>
                       </div>
                     </>
@@ -582,6 +671,92 @@ export default function Settings() {
                         checked={settings.privacy.gdprCompliant}
                         onCheckedChange={(checked) => updatePrivacy({ gdprCompliant: checked })}
                       />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'notifications' && (
+                <div className="animate-fade-in space-y-8">
+                  <div className="pt-2">
+                    <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+                      <ShieldCheck className="h-5 w-5 text-primary" />
+                      Alert Credentials
+                    </h2>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      {/* Twilio Config */}
+                      <div className="space-y-4 rounded-xl border border-white/5 bg-secondary/10 p-5">
+                        <div className="flex items-center gap-2 font-semibold text-status-online">
+                          Twilio (WhatsApp)
+                        </div>
+                        <div className="space-y-3">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-muted-foreground">Account SID</Label>
+                            <Input 
+                              placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" 
+                              className="bg-background/50" 
+                              value={settings.notifications.twilio.sid}
+                              onChange={(e) => updateTwilio({ sid: e.target.value })}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-muted-foreground">Auth Token</Label>
+                            <Input 
+                              type="password" 
+                              placeholder="••••••••••••••••••••••••••••••••" 
+                              className="bg-background/50" 
+                              value={settings.notifications.twilio.token}
+                              onChange={(e) => updateTwilio({ token: e.target.value })}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-muted-foreground">From Number</Label>
+                            <Input 
+                              placeholder="whatsapp:+14155238886" 
+                              className="bg-background/50" 
+                              value={settings.notifications.twilio.from}
+                              onChange={(e) => updateTwilio({ from: e.target.value })}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Gmail Config */}
+                      <div className="space-y-4 rounded-xl border border-white/5 bg-secondary/10 p-5">
+                        <div className="flex items-center gap-2 font-semibold text-primary">
+                          Gmail (SMTP)
+                        </div>
+                        <div className="space-y-3">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-muted-foreground">SMTP Server</Label>
+                            <Input 
+                              className="bg-background/50" 
+                              value={settings.notifications.gmail.server}
+                              onChange={(e) => updateGmail({ server: e.target.value })}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-muted-foreground">Sender Email</Label>
+                            <Input 
+                              placeholder="your-email@gmail.com" 
+                              className="bg-background/50" 
+                              value={settings.notifications.gmail.user}
+                              onChange={(e) => updateGmail({ user: e.target.value })}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-muted-foreground">App Password</Label>
+                            <Input 
+                              type="password" 
+                              placeholder="xxxx xxxx xxxx xxxx" 
+                              className="bg-background/50" 
+                              value={settings.notifications.gmail.pass}
+                              onChange={(e) => updateGmail({ pass: e.target.value })}
+                            />
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>

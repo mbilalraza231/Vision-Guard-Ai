@@ -9,6 +9,7 @@ GET  /metrics
 
 import time
 import os
+import json
 import psutil
 from datetime import datetime
 from typing import Dict, Any
@@ -216,6 +217,35 @@ async def system_metrics(
     camera_status = camera_manager.get_all_status()
     redis_status = check_redis_health()
     
+    # Fetch worker heartbeats from Redis (vg:metrics:*)
+    workers = []
+    try:
+        redis_config = get_redis_config()
+        r = redis.Redis(**redis_config)
+        keys = r.keys("vg:metrics:*")
+        for key in keys:
+            try:
+                data = r.get(key)
+                if data:
+                    metrics = json.loads(data)
+                    # key format is vg:metrics:service_name:instance_id
+                    parts = key.decode('utf-8').split(':')
+                    service_name = parts[2] if len(parts) > 2 else "unknown"
+                    
+                    workers.append({
+                        "name": service_name,
+                        "instance": metrics.get("instance"),
+                        "cpu": metrics.get("cpu_percent", 0),
+                        "memory": metrics.get("memory_gb", 0),
+                        "last_seen": metrics.get("timestamp", 0),
+                        "status": "online" if (time.time() - metrics.get("timestamp", 0)) < 20 else "offline"
+                    })
+            except Exception:
+                continue
+        r.close()
+    except Exception:
+        pass
+    
     return MetricsResponse(
         timestamp=datetime.utcnow().isoformat() + "Z",
         system={
@@ -233,5 +263,6 @@ async def system_metrics(
             "running": camera_status["running"],
             "stopped": camera_status["stopped"],
         },
-        redis=redis_status
+        redis=redis_status,
+        workers=workers
     )

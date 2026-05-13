@@ -67,3 +67,4 @@ class MetricsResponse(BaseModel):
     ecs: Optional[Dict[str, Any]] = None
     cameras: Optional[Dict[str, Any]] = None
     redis: Optional[Dict[str, Any]] = None
+    workers: Optional[List[Dict[str, Any]]] = None

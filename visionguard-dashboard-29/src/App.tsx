@@ -22,6 +22,7 @@ import Analytics from "@/pages/Analytics";
 import Cameras from "@/pages/Cameras";
 import Zones from "@/pages/Zones";
 import Users from "@/pages/Users";
+import AlertContacts from "@/pages/AlertContacts";
 import Settings from "@/pages/Settings";
 import Profile from "@/pages/Profile";
 import IncidentDetails from "@/pages/IncidentDetails";
@@ -79,6 +80,7 @@ const App = () => (
                 } 
               />
               <Route path="/users" element={<ProtectedRoute requiredRoles={['admin']}><Users /></ProtectedRoute>} />
+              <Route path="/alert-contacts" element={<ProtectedRoute requiredRoles={['admin']}><AlertContacts /></ProtectedRoute>} />
               <Route path="/settings" element={<ProtectedRoute requiredRoles={['admin']}><Settings /></ProtectedRoute>} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/incidents/:id" element={<IncidentDetails />} />

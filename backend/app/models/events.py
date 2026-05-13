@@ -142,7 +142,9 @@ class DBAlert(BaseModel):
     id: str
     event_id: str
     channel: str
+    recipient: Optional[str] = None
     status: str
+    error_message: Optional[str] = None
     attempts: int
     last_attempt_ts: Optional[float] = None
     created_at: float

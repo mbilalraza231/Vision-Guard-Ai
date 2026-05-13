@@ -11,6 +11,7 @@ import {
   Settings,
   Menu,
   X,
+  Bell,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -30,6 +31,7 @@ const navItems: NavItem[] = [
   { label: 'Analytics', path: '/analytics', icon: BarChart3, requiredRoles: ['admin', 'manager'] },
   { label: 'Cameras', path: '/cameras', icon: Camera, requiredRoles: ['admin', 'manager'] },
   { label: 'Zones', path: '/zones', icon: MapPin, requiredRoles: ['admin', 'manager'] },
+  { label: 'Alerts', path: '/alert-contacts', icon: Bell, requiredRoles: ['admin'] },
   { label: 'Users', path: '/users', icon: Users, requiredRoles: ['admin'] },
   { label: 'Settings', path: '/settings', icon: Settings, requiredRoles: ['admin'] },
 ];

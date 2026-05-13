@@ -158,6 +158,7 @@ export interface SystemSettings {
   models: ModelSettings;
   privacy: PrivacySettings;
   system: SystemInfo;
+  notifications: NotificationSettings;
 }
 
 export interface GeneralSettings {
@@ -195,6 +196,28 @@ export interface SystemInfo {
   version: string;
   build: string;
   uptime: string;
+}
+
+export interface NotificationSettings {
+  recipients: Array<{
+    id: string;
+    name: string;
+    phone: string;
+    email: string;
+    whatsapp: boolean;
+    emailAlert: boolean;
+    minSeverity: 'critical' | 'high' | 'medium' | 'low';
+  }>;
+  twilio: {
+    sid: string;
+    token: string;
+    from: string;
+  };
+  gmail: {
+    server: string;
+    user: string;
+    pass: string;
+  };
 }
 
 // WebSocket Event Types

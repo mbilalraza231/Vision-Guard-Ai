@@ -42,7 +42,9 @@ CREATE TABLE IF NOT EXISTS alerts (
     id TEXT PRIMARY KEY,
     event_id TEXT NOT NULL,
     channel TEXT NOT NULL,               -- webhook | email | sms
+    recipient TEXT,                      -- e.g. "John Doe" or "+123456789"
     status TEXT NOT NULL,                -- pending | sent | failed
+    error_message TEXT,                  -- detail on failure
     attempts INTEGER NOT NULL DEFAULT 0,
     last_attempt_ts DOUBLE PRECISION,
     created_at DOUBLE PRECISION NOT NULL,
