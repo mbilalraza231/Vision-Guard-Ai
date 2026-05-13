@@ -13,7 +13,7 @@ import os
 import time
 import uuid
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Tuple
 
 import threading
 from collections import deque
@@ -26,6 +26,16 @@ from .uploader import CloudinaryUploader
 from .database import Database
 
 logger = logging.getLogger(__name__)
+
+
+class ClipError:
+    """Centralized intuitive error messages for clip recording."""
+    OFFLINE = "Camera Stream Offline"
+    NO_SIGNAL = "Capture Failed (No Signal)"
+    BUFFER_EMPTY = "Memory Buffer Empty"
+    TOO_OLD = "Event Too Old (Buffer Expired)"
+    INTERNAL = "Recording Error (Hardware/IO)"
+    TRANSCODE = "Transcoding Failed (FFmpeg)"
 
 
 class ClipRecorder:
@@ -223,8 +233,9 @@ class ClipRecorder:
 
         # Step 2 — Record latency-aware post-event clip (This takes 10-15 seconds)
         # Recording uses OpenCV/FFMPEG, must be in a thread
-        clip_path = await asyncio.to_thread(self._record_clip, event_id, event_type, camera_source, detection_ts)
+        clip_path, error_msg = await asyncio.to_thread(self._record_clip, event_id, event_type, camera_source, detection_ts)
         result["clip_local"] = clip_path
+        
         if clip_path:
             logger.info(f"Clip recorded: {clip_path}")
             # WRITE CLIP TO DB IMMEDIATELY (Available before Cloud upload)
@@ -234,9 +245,11 @@ class ClipRecorder:
                 logger.error(f"Failed to write clip evidence for {event_id}: {e}")
             await self._update_clip_status(event_id, "ready", None)
         else:
-            result["clip_error"] = "clip_record_failed"
-            await self._update_clip_status(event_id, "failed", "clip_record_failed")
-            logger.warning(f"Clip recording failed or skipped for event {event_id}")
+            # Use the intuitive error message from the recording attempt
+            error_msg = error_msg or "Unknown Error"
+            result["clip_error"] = error_msg
+            await self._update_clip_status(event_id, "failed", error_msg)
+            logger.warning(f"Clip recording failed for event {event_id}: {error_msg}")
 
         # Step 3 — Start background task for Cloudinary upload
         if self.config.cloudinary_configured:
@@ -299,7 +312,7 @@ class ClipRecorder:
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _transcode_to_h264(self, filepath: str) -> None:
+    def _transcode_to_h264(self, filepath: str) -> bool:
         """Convert the mp4v file to a web-playable H.264 mp4 file."""
         temp_path = filepath + ".temp.mp4"
         try:
@@ -314,10 +327,12 @@ class ClipRecorder:
             
             os.replace(temp_path, filepath)
             logger.info(f"Successfully transcoded {filepath} to H.264")
+            return True
         except Exception as e:
             logger.error(f"Failed to transcode {filepath} to H.264: {e}")
             if os.path.exists(temp_path):
                 os.remove(temp_path)
+            return False
 
     def _find_snapshot(
         self,
@@ -408,7 +423,7 @@ class ClipRecorder:
         event_type: str,
         camera_source: str,
         detection_ts: float,
-    ) -> Optional[str]:
+    ) -> Tuple[Optional[str], Optional[str]]:
         """
         Record a post-event video clip using the Latency-Aware Ring Buffer.
 
@@ -446,6 +461,7 @@ class ClipRecorder:
                 
             if not buffer_snapshot:
                 logger.warning(f"Ring buffer is empty for {camera_source} — falling back to direct recording")
+                # We try direct recording, but if it's because the camera is offline, _record_clip_direct will tell us
                 return self._record_clip_direct(event_id, event_type, camera_source, detection_ts)
                 
             # Define exact temporal window
@@ -461,8 +477,12 @@ class ClipRecorder:
             if not valid_frames:
                 logger.warning(
                     f"No frames matched time window [{start_ts:.1f}, {end_ts:.1f}] "
-                    f"(buffer has {len(buffer_snapshot)} frames) — falling back to direct recording"
+                    f"(buffer has {len(buffer_snapshot)} frames) — Event might be too old"
                 )
+                # If frames exist in buffer but none match, the event is likely a backlog catch-up
+                if len(buffer_snapshot) > 0:
+                    return None, ClipError.TOO_OLD
+                
                 return self._record_clip_direct(event_id, event_type, camera_source, detection_ts)
 
             height, width = valid_frames[0].shape[:2]
@@ -485,17 +505,15 @@ class ClipRecorder:
                 writer.write(frame)
             writer.release()
             
-            self._transcode_to_h264(out_path)
-            return out_path
+            if not self._transcode_to_h264(out_path):
+                return out_path, ClipError.TRANSCODE
+                
+            return out_path, None
             
         except Exception as e:
             logger.error(f"Error recording latency-aware clip: {e}", exc_info=True)
             logger.warning(f"Falling back to direct recording after exception for event {event_id}")
-            try:
-                return self._record_clip_direct(event_id, event_type, camera_source, detection_ts)
-            except Exception as e2:
-                logger.error(f"Direct recording fallback also failed: {e2}")
-                return None
+            return self._record_clip_direct(event_id, event_type, camera_source, detection_ts)
 
     def _record_clip_direct(
         self,
@@ -503,7 +521,7 @@ class ClipRecorder:
         event_type: str,
         camera_source: str,
         detection_ts: float,
-    ) -> Optional[str]:
+    ) -> Tuple[Optional[str], Optional[str]]:
         """Record a clip directly from source without persistent background buffer."""
         cap = None
         writer = None
@@ -513,12 +531,12 @@ class ClipRecorder:
 
             if not cap.isOpened():
                 logger.error(f"Direct clip capture failed to open source: {camera_source}")
-                return None
+                return None, ClipError.OFFLINE
 
             ok, first_frame = cap.read()
             if not ok or first_frame is None:
                 logger.error(f"Direct clip capture could not read first frame: {camera_source}")
-                return None
+                return None, ClipError.NO_SIGNAL
 
             height, width = first_frame.shape[:2]
             fps = self.config.camera_fps
@@ -558,12 +576,14 @@ class ClipRecorder:
                 cap.release()
                 cap = None
                 
-            self._transcode_to_h264(out_path)
-            return out_path
+            if not self._transcode_to_h264(out_path):
+                return out_path, ClipError.TRANSCODE
+
+            return out_path, None
 
         except Exception as e:
             logger.error(f"Error in direct clip recording: {e}", exc_info=True)
-            return None
+            return None, ClipError.INTERNAL
         finally:
             if writer:
                 writer.release()
