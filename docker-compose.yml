@@ -222,6 +222,7 @@ services:
     networks:
       - visionguard
     volumes:
+      - .:/app:rw
       - vg-data:/data/visionguard
       - vg-logs:/var/log/visionguard
     environment:

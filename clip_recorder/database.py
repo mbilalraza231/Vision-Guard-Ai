@@ -13,7 +13,7 @@ class Database:
     def __init__(self, config: ClipConfig):
         self._pool: Optional[asyncpg.Pool] = None
         self.config = config
-        self.url = self.config.get_database_url()
+        self.url = self.config.get_database_url
         
     async def connect(self):
         if self._pool is not None:

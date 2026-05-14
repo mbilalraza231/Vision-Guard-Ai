@@ -69,9 +69,8 @@ class AlertWorker:
 
     def get_predictable_url(self, event_id: str, event_type: str) -> str:
         """Construct the predictable Cloudinary URL."""
-        # Folder pattern from uploader.py
-        etype_folder = event_type.split('_')[0] if '_' in event_type else event_type
-        return f"https://res.cloudinary.com/{self.config.cloudinary_cloud_name}/image/upload/visionguard/snapshots/{etype_folder}/snapshot_{event_id}.jpg"
+        # Must match CloudinaryUploader.upload_snapshot folder structure exactly
+        return f"https://res.cloudinary.com/{self.config.cloudinary_cloud_name}/image/upload/visionguard/snapshots/{event_type}/snapshot_{event_id}.jpg"
 
     def format_message(self, event: Dict[str, Any], url: str) -> str:
         """Format the alert message for SMS/WhatsApp."""
@@ -92,6 +91,10 @@ class AlertWorker:
             f"Evidence: {url}"
         )
 
+    def get_predictable_video_url(self, event_id: str, event_type: str) -> str:
+        """Construct the predictable Cloudinary Video URL."""
+        return f"https://res.cloudinary.com/{self.config.cloudinary_cloud_name}/video/upload/visionguard/clips/{event_type}/clip_{event_id}.mp4"
+
     async def process_event(self, event: Dict[str, Any]):
         """Evaluate event and dispatch notifications to matched contacts."""
         await self.update_contact_cache()
@@ -100,8 +103,9 @@ class AlertWorker:
         event_type = event.get('event_type')
         severity = event.get('severity', 'medium').lower()
         
-        url = self.get_predictable_url(event_id, event_type)
-        message = self.format_message(event, url)
+        snap_url = self.get_predictable_url(event_id, event_type)
+        video_url = self.get_predictable_video_url(event_id, event_type)
+        whatsapp_msg = self.format_message(event, snap_url)
         
         rank = {"critical": 3, "high": 2, "medium": 1, "low": 0}
         event_rank = rank.get(severity, 0)
@@ -116,25 +120,43 @@ class AlertWorker:
             if contact.get('phone') and contact.get('whatsapp'):
                 phone = contact['phone']
                 to = f"whatsapp:{phone}" if not phone.startswith('whatsapp:') else phone
-                tasks.append(self.notifier.send_twilio(to, message, media_url=url))
+                tasks.append(self.notifier.send_twilio(to, whatsapp_msg, media_url=snap_url))
             elif contact.get('phone'):
-                tasks.append(self.notifier.send_twilio(contact['phone'], message))
+                tasks.append(self.notifier.send_twilio(contact['phone'], whatsapp_msg))
                 
-            # Send Email
+            # Send Premium Email
             if contact.get('email') and contact.get('email_alert'):
-                subject = f"VisionGuard Alert: {severity.upper()} {event_type.replace('_', ' ').title()}"
+                color = "#ff4b2b" if severity == "critical" else "#ffa502" if severity == "high" else "#2ed573"
+                subject = f"⚠️ VisionGuard: {severity.upper()} {event_type.replace('_', ' ').title()}"
                 body = f"""
-                <html>
-                <body>
-                    <h2>VisionGuard AI Security Alert</h2>
-                    <p><strong>Type:</strong> {event_type.replace('_', ' ').title()}</p>
-                    <p><strong>Severity:</strong> {severity.upper()}</p>
-                    <p><strong>Camera:</strong> {event.get('camera_id')}</p>
-                    <p><strong>Confidence:</strong> {float(event.get('confidence', 0))*100:.1f}%</p>
-                    <p><a href="{url}"><img src="{url}" width="600" style="max-width:100%;" /></a></p>
-                    <p><a href="{url}">View Full Evidence Snapshot</a></p>
-                </body>
-                </html>
+                <div style="background-color: #0f172a; color: #f8fafc; font-family: sans-serif; padding: 40px 20px; max-width: 600px; margin: auto; border-radius: 16px;">
+                    <div style="text-align: center; margin-bottom: 30px;">
+                        <h1 style="color: #3b82f6; margin: 0; font-size: 28px;">VisionGuard AI</h1>
+                        <p style="color: #94a3b8; font-size: 14px; margin-top: 5px;">Real-time Security Intelligence</p>
+                    </div>
+                    
+                    <div style="background-color: #1e293b; border-left: 4px solid {color}; padding: 20px; border-radius: 8px; margin-bottom: 25px;">
+                        <h2 style="margin: 0 0 10px 0; color: {color}; text-transform: uppercase; font-size: 18px;">{severity.upper()} ALERT DETECTED</h2>
+                        <p style="margin: 5px 0;"><strong>Incident:</strong> {event_type.replace('_', ' ').title()}</p>
+                        <p style="margin: 5px 0;"><strong>Camera:</strong> {event.get('camera_id')}</p>
+                        <p style="margin: 5px 0;"><strong>Confidence:</strong> {float(event.get('confidence', 0))*100:.1f}%</p>
+                    </div>
+
+                    <div style="margin-bottom: 25px;">
+                        <a href="{snap_url}">
+                            <img src="{snap_url}" width="100%" style="border-radius: 12px; border: 1px solid #334155; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);" />
+                        </a>
+                    </div>
+
+                    <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
+                        <a href="{video_url}" style="background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">▶ Watch Video Clip</a>
+                        <a href="{snap_url}" style="background-color: transparent; color: #94a3b8; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; border: 1px solid #334155; display: inline-block; margin-left: 10px;">Full Snapshot</a>
+                    </div>
+
+                    <div style="margin-top: 40px; text-align: center; border-top: 1px solid #334155; padding-top: 20px;">
+                        <p style="color: #64748b; font-size: 12px;">This is an automated security alert from your VisionGuard AI system.</p>
+                    </div>
+                </div>
                 """
                 tasks.append(self.notifier.send_gmail(contact['email'], subject, body))
 

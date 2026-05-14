@@ -47,11 +47,7 @@ CREATE TABLE IF NOT EXISTS alerts (
     error_message TEXT,                  -- detail on failure
     attempts INTEGER NOT NULL DEFAULT 0,
     last_attempt_ts DOUBLE PRECISION,
-    created_at DOUBLE PRECISION NOT NULL,
-    CONSTRAINT fk_alert_event
-        FOREIGN KEY(event_id) 
-        REFERENCES events(id)
-        ON DELETE CASCADE
+    created_at DOUBLE PRECISION NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_alerts_event_id ON alerts(event_id);
