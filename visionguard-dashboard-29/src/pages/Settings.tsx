@@ -331,7 +331,7 @@ export default function Settings() {
             <div className="flex-1 p-6">
               <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
                 <div className="text-sm text-muted-foreground">
-                  Changes are stored locally in this browser.
+                  Settings are synced with the VisionGuard backend.
                 </div>
                 <div className="flex items-center gap-2">
                   <Button

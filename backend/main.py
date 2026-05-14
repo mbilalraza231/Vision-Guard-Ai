@@ -37,7 +37,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.core.lifecycle import lifespan
-from app.api import system, ecs, cameras, events, detections, stream
+from app.api import system, ecs, cameras, events, detections, stream, alerts
 from app.utils.logging import setup_logging, get_logger
 
 # Initialize logging early
@@ -97,6 +97,7 @@ This backend supervises external services - it does NOT perform:
     app.include_router(events.router)
     app.include_router(detections.router)
     app.include_router(stream.router)
+    app.include_router(alerts.router)
     
     return app
 

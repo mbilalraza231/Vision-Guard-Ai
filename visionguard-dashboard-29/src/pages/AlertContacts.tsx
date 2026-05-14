@@ -31,7 +31,6 @@ const STORAGE_KEY = 'vg:dashboard:settings';
 
 export default function AlertContacts() {
   const [activeTab, setActiveTab] = useState<'contacts' | 'history'>('contacts');
-  const [recipients, setRecipients] = useState<any[]>([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newRecipient, setNewRecipient] = useState({
     name: '',
@@ -43,64 +42,73 @@ export default function AlertContacts() {
   });
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Load from localStorage
-  useEffect(() => {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (parsed.notifications?.recipients) {
-          setRecipients(parsed.notifications.recipients);
-        }
-      } catch (e) {
-        console.error('Failed to load recipients', e);
-      }
-    }
-  }, []);
+  // Fetch contacts from backend
+  const { data: contactsResponse, refetch: refetchContacts, isLoading: contactsLoading } = useQuery({
+    queryKey: ['alert-contacts'],
+    queryFn: () => apiService.getData<any>(API_ENDPOINTS.alerts.contacts.list),
+  });
 
-  // Save to localStorage
-  const saveToStorage = (updatedRecipients: any[]) => {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    let settings = raw ? JSON.parse(raw) : {};
+  const recipients = contactsResponse?.contacts ?? [];
 
-    if (!settings.notifications) settings.notifications = {};
-    settings.notifications.recipients = updatedRecipients;
-
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-    setRecipients(updatedRecipients);
-  };
-
-  const addRecipient = () => {
+  const addRecipient = async () => {
     if (!newRecipient.name || !newRecipient.phone) return;
-    const recipient = { ...newRecipient, id: Math.random().toString(36).substr(2, 9) };
-    const updated = [...recipients, recipient];
-    saveToStorage(updated);
-    setNewRecipient({ name: '', phone: '', email: '', whatsapp: true, emailAlert: true, minSeverity: 'medium' });
-    setIsAddModalOpen(false);
+    try {
+      await apiService.postData(API_ENDPOINTS.alerts.contacts.create, {
+        name: newRecipient.name,
+        phone: newRecipient.phone,
+        email: newRecipient.email,
+        whatsapp: newRecipient.whatsapp,
+        email_alert: newRecipient.emailAlert,
+        min_severity: newRecipient.minSeverity,
+        is_active: true
+      });
+      refetchContacts();
+      setNewRecipient({ name: '', phone: '', email: '', whatsapp: true, emailAlert: true, minSeverity: 'medium' });
+      setIsAddModalOpen(false);
+    } catch (e) {
+      console.error('Failed to add contact', e);
+    }
   };
 
-  const deleteRecipient = (id: string) => {
-    const updated = recipients.filter((r) => r.id !== id);
-    saveToStorage(updated);
+  const deleteRecipient = async (id: string) => {
+    try {
+      await apiService.deleteData(API_ENDPOINTS.alerts.contacts.delete(id));
+      refetchContacts();
+    } catch (e) {
+      console.error('Failed to delete contact', e);
+    }
   };
 
-  const updateRecipient = (id: string, patch: any) => {
-    const updated = recipients.map((r) =>
-      r.id === id ? { ...r, ...patch } : r
-    );
-    saveToStorage(updated);
+  const updateRecipient = async (id: string, patch: any) => {
+    try {
+      // Map frontend field names to backend snake_case if necessary
+      const backendPatch = { ...patch };
+      if (patch.minSeverity) {
+        backendPatch.min_severity = patch.minSeverity;
+        delete backendPatch.minSeverity;
+      }
+      if (patch.emailAlert !== undefined) {
+        backendPatch.email_alert = patch.emailAlert;
+        delete backendPatch.emailAlert;
+      }
+
+      await apiService.putData(API_ENDPOINTS.alerts.contacts.update(id), backendPatch);
+      refetchContacts();
+    } catch (e) {
+      console.error('Failed to update contact', e);
+    }
   };
 
   const toggleAlert = (id: string, type: 'whatsapp' | 'emailAlert') => {
-    const updated = recipients.map((r) =>
-      r.id === id ? { ...r, [type]: !r[type] } : r
-    );
-    saveToStorage(updated);
+    const contact = recipients.find(r => r.id === id);
+    if (!contact) return;
+    
+    updateRecipient(id, { [type]: !contact[type === 'emailAlert' ? 'email_alert' : type] });
   };
 
-  const filteredRecipients = recipients.filter(r =>
+  const filteredRecipients = recipients.filter((r: any) =>
     r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    r.phone.includes(searchQuery)
+    (r.phone && r.phone.includes(searchQuery))
   );
 
   // Load Alert History from Backend
@@ -213,8 +221,8 @@ export default function AlertContacts() {
                         <Filter className="h-2 w-2" /> Min Severity
                       </span>
                       <Select
-                        value={r.minSeverity || 'medium'}
-                        onValueChange={(val) => updateRecipient(r.id, { minSeverity: val })}
+                        value={r.min_severity || 'medium'}
+                        onValueChange={(val) => updateRecipient(r.id, { min_severity: val })}
                       >
                         <SelectTrigger className="h-7 w-28 text-[10px] bg-white/5 border-none">
                           <SelectValue />
@@ -238,7 +246,7 @@ export default function AlertContacts() {
                       <div className="flex flex-col gap-1">
                         <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Email</span>
                         <Switch
-                          checked={r.emailAlert}
+                          checked={r.email_alert}
                           onCheckedChange={() => toggleAlert(r.id, 'emailAlert')}
                         />
                       </div>

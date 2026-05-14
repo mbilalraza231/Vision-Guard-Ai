@@ -103,6 +103,17 @@ class AlertRepository:
         except Exception as e:
             logger.error(f"Find recent alerts failed: {e}")
             return []
+
+    async def get_active_contacts(self) -> List[Dict[str, Any]]:
+        """Fetch all active alert contacts."""
+        try:
+            rows = await db.fetch_all(
+                "SELECT * FROM alert_contacts WHERE is_active = TRUE"
+            )
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error(f"Get active contacts failed: {e}")
+            return []
     
     async def list_alerts(
         self,

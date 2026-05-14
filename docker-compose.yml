@@ -452,3 +452,34 @@ services:
         condition: service_healthy
     profiles:
       - debug
+
+  alert-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.alerts
+    container_name: vg-alert-worker
+    restart: unless-stopped
+    networks:
+      - visionguard
+    volumes:
+      - vg-data:/data/visionguard
+      - vg-logs:/var/log/visionguard
+    environment:
+      - VG_REDIS_HOST=redis
+      - VG_REDIS_PORT=6379
+      - VG_POSTGRES_HOST=postgres
+      - VG_POSTGRES_PORT=5432
+      - VG_POSTGRES_DB=visionguard
+      - VG_POSTGRES_USER=postgres
+      - VG_POSTGRES_PASSWORD=postgres
+      - VG_TWILIO_SID=${VG_TWILIO_SID}
+      - VG_TWILIO_AUTH_TOKEN=${VG_TWILIO_AUTH_TOKEN}
+      - VG_TWILIO_FROM=${VG_TWILIO_FROM}
+      - VG_GMAIL_USER=${VG_GMAIL_USER}
+      - VG_GMAIL_PASSWORD=${VG_GMAIL_PASSWORD}
+      - VG_CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy

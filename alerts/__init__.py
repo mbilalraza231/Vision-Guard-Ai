@@ -1,13 +1,13 @@
 from .config import AlertConfig
 from .evaluator import AlertEvaluator
 from .repository import AlertRepository
-from .dispatcher import AlertDispatcher
-from .worker import AlertRetryWorker
+from .notifier import AlertNotifier
+from .worker import AlertWorker
 
 __all__ = [
     "AlertConfig",
     "AlertEvaluator", 
     "AlertRepository",
-    "AlertDispatcher",
-    "AlertRetryWorker"
+    "AlertNotifier",
+    "AlertWorker"
 ]

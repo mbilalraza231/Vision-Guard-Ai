@@ -55,3 +55,18 @@ CREATE TABLE IF NOT EXISTS alerts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_alerts_event_id ON alerts(event_id);
+
+-- Alert Contacts Table
+CREATE TABLE IF NOT EXISTS alert_contacts (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    phone TEXT,
+    email TEXT,
+    whatsapp BOOLEAN DEFAULT TRUE,
+    email_alert BOOLEAN DEFAULT TRUE,
+    min_severity TEXT DEFAULT 'medium',
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at DOUBLE PRECISION NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_contacts_active ON alert_contacts(is_active);

@@ -56,6 +56,12 @@ export const API_ENDPOINTS = {
   // Alerts endpoints
   alerts: {
     list: '/alerts',
+    contacts: {
+      list: '/alerts/contacts',
+      create: '/alerts/contacts',
+      update: (id: string) => `/alerts/contacts/${id}`,
+      delete: (id: string) => `/alerts/contacts/${id}`,
+    },
   },
 
   // Detection images endpoints
