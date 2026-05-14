@@ -57,10 +57,10 @@ export const API_ENDPOINTS = {
   alerts: {
     list: '/alerts',
     contacts: {
-      list: '/alerts/contacts',
-      create: '/alerts/contacts',
-      update: (id: string) => `/alerts/contacts/${id}`,
-      delete: (id: string) => `/alerts/contacts/${id}`,
+      list: '/api/v1/alert-recipients',
+      create: '/api/v1/alert-recipients',
+      update: (id: string) => `/api/v1/alert-recipients/${id}`,
+      delete: (id: string) => `/api/v1/alert-recipients/${id}`,
     },
   },
 

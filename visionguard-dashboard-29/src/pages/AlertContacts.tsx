@@ -51,7 +51,15 @@ export default function AlertContacts() {
   const recipients = contactsResponse?.contacts ?? [];
 
   const addRecipient = async () => {
-    if (!newRecipient.name || !newRecipient.phone) return;
+    if (!newRecipient.name) {
+      alert("Please enter a name.");
+      return;
+    }
+    if (!newRecipient.phone && !newRecipient.email) {
+      alert("Please enter at least a phone number or an email.");
+      return;
+    }
+
     try {
       await apiService.postData(API_ENDPOINTS.alerts.contacts.create, {
         name: newRecipient.name,
@@ -65,8 +73,9 @@ export default function AlertContacts() {
       refetchContacts();
       setNewRecipient({ name: '', phone: '', email: '', whatsapp: true, emailAlert: true, minSeverity: 'medium' });
       setIsAddModalOpen(false);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to add contact', e);
+      alert(`Error: ${e.message || "Failed to save contact. Please try again."}`);
     }
   };
 

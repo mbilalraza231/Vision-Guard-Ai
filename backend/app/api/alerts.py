@@ -9,7 +9,7 @@ from ..models.alerts import (
 from ..core.database import db
 from ..utils.logging import get_logger
 
-router = APIRouter(prefix="/alerts/contacts", tags=["Alert Contacts"])
+router = APIRouter(prefix="/api/v1/alert-recipients", tags=["Alert Recipients"])
 logger = get_logger(__name__)
 
 @router.get("", response_model=AlertContactListResponse)
