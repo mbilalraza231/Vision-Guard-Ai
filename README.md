@@ -1,10 +1,10 @@
 # VisionGuard AI
 
-Real-time AI surveillance system that detects fire, weapons, and fallen persons from video feeds using CPU-based ONNX inference. Events are stored in SQLite and displayed on a React dashboard.
+Real-time AI surveillance system that detects fire, weapons, and fallen persons from video feeds using CPU-based ONNX inference. Events are stored in PostgreSQL and delivered via a real-time notification pipeline.
 
 ## Architecture Diagram
 
-Below is the text-based data flow and architecture of the VisionGuard AI system:
+Below is the enterprise data flow of the VisionGuard AI system:
 
 ```text
 +----------------+      +-------------------+      +----------------+
@@ -15,64 +15,53 @@ Below is the text-based data flow and architecture of the VisionGuard AI system:
                                  v                         v
                         +-------------------+      +----------------+
                         | Redis Message Bus | <--- |   AI Workers   |
-                        | (Task Queues)     |      | (Weapon/Fire)  |
+                        | (Stream / Queue)  |      | (Weapon/Fire)  |
                         +-------------------+      +----------------+
                                  |
-                                 v
-                        +-------------------+
-                        |       ECS         |
-                        | (Event Filter)    |
-                        +-------------------+
-                                 |
            +---------------------+---------------------+
-           |                                           |
-           v                                           v
-  +----------------+                          +----------------+
-  | SQLite Database| <----------------------- | Clip Recorder  |
-  | (events.db)    |                          | (Saves Video)  |
-  +----------------+                          +----------------+
-           |
-           v
-  +----------------+                          +----------------+
-  | FastAPI Backend|                          |  Web Dashboard |
-  | (Control Plane)| <----------------------- | (React / Vite) |
-  +----------------+                          +----------------+
+           |                     |                     |
+           v                     v                     v
++-------------------+  +-------------------+  +-------------------+
+|       ECS         |  |   Clip Recorder   |  |   Alert Worker    |
+| (Event Filter)    |  | (Local + Cloud)   |  | (Twilio + Gmail)  |
++-------------------+  +-------------------+  +-------------------+
+           |                     |                     |
+           +----------+----------+----------+----------+
+                      |                    |
+                      v                    v
+            +-------------------+   +-------------------+
+            | PostgreSQL DB     |   | Cloudinary        |
+            | (Persistence)     |   | (Evidence Storage)|
+            +-------------------+   +-------------------+
+                      |
+                      v
+            +-------------------+   +-------------------+
+            | FastAPI Backend   |   |  Web Dashboard    |
+            | (Control Plane)   | < | (React / Vite)    |
+            +-------------------+   +-------------------+
 ```
+
+## System Features
+
+- **Multi-Worker AI**: Dedicated workers for Fire, Weapon, and Fall detection.
+- **Hybrid Storage**: PostgreSQL for structured data; Cloudinary for media evidence storage.
+- **Real-time Notifications**: Premium HTML emails (Gmail) and WhatsApp alerts (Twilio) with working evidence links.
+- **Latency-Aware Recording**: High-fidelity post-event clips captured using ring-buffer technology.
+- **Enterprise Dashboard**: Modern React interface for CRUD management of alert contacts and forensic incident review.
 
 ## System Requirements
 
 - Python 3.10+
 - Redis 6+
-- OpenCV (`opencv-python-headless`)
-- ONNX Runtime (`onnxruntime`)
+- PostgreSQL 15+
 - Node.js 18+ (for dashboard)
 
 ## Quick Start
 
-```bash
-# Install Python dependencies
-pip install -r requirements.txt
-
-# Download ONNX models
-bash scripts/setup_models.sh
-
-# Configure cameras
-# Edit cameras.json — set source URLs and enabled: true/false
-
-# Start all services
-bash scripts/start.sh
-
-# Start the React dashboard
-cd visionguard-dashboard-29
-npm install
-npm run dev
-
-# Open dashboard
-# http://localhost:5173
-
-# API docs
-# http://localhost:8000/docs
-```
+1. **Configuration**: Set your credentials in `.env` (Twilio, Gmail, Cloudinary, PostgreSQL).
+2. **Deploy**: Run `docker-compose up -d --build` to start the full containerized stack.
+3. **Dashboard**: Navigate to `http://localhost:5173` to manage alert recipients.
+4. **Monitor**: Watch live logs with `docker-compose logs -f alert-worker`.
 
 ## Project Structure
 
@@ -82,34 +71,16 @@ npm run dev
 ├── event_classification/    # Event classification service (ECS)
 ├── backend/                 # FastAPI control plane + REST API
 ├── visionguard-dashboard-29/  # React dashboard (TypeScript + Tailwind)
-├── db/                      # Database schema + initialization
-├── alerts/                  # Alert dispatch (webhook/email)
-├── models/                  # ONNX model files (not in git)
-├── scripts/                 # Utility scripts
-├── docs/                    # Documentation
-├── tests/                   # Test suite
-├── docker/                  # Dockerfiles + supervisor configs
-├── cameras.json             # Camera configuration
-├── docker-compose.yml       # Docker deployment
-└── requirements.txt         # Python dependencies
+├── db/                      # PostgreSQL schema + initialization
+├── alerts/                  # Alert dispatch engine (Twilio/Gmail)
+├── clip_recorder/           # H.264 transcoding + Cloudinary uploader
+├── docker-compose.yml       # Full stack deployment
+└── .env                     # Environment configuration (secrets)
 ```
-
-## Scripts Reference
-
-| Script | Description |
-|--------|-------------|
-| `scripts/start.sh` | Start all backend services |
-| `scripts/stop.sh` | Stop all services |
-| `scripts/diagnose.py` | Check system health |
-| `scripts/clear_db.py` | Clear event database |
-| `scripts/check_confidence.py` | Inspect model confidence scores |
-| `scripts/setup_models.sh` | Download ONNX models |
-| `scripts/run_tests.sh` | Run test suite |
 
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md) — system design and pipeline flow
 - [API Reference](docs/API_REFERENCE.md) — all backend endpoints
 - [Threshold Tuning](docs/THRESHOLD_TUNING.md) — confidence threshold adjustment
-- [ECS V2 Specification](docs/ECS_V2_SPECIFICATION.md) — event classification rules
 - [Docker Deployment](docs/deployment_docker.md) — container setup
