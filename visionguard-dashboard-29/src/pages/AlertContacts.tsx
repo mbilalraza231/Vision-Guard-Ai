@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/select';
 import {
   Bell, Mail, Phone, Plus, Trash2, Search, UserCheck, Shield, History,
-  ExternalLink, CheckCircle2, Clock, XCircle, AlertCircle, Filter
+  ExternalLink, CheckCircle2, Clock, XCircle, AlertCircle, Filter, Edit2
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { apiService } from '@/services/api.service';
@@ -32,6 +32,7 @@ const STORAGE_KEY = 'vg:dashboard:settings';
 export default function AlertContacts() {
   const [activeTab, setActiveTab] = useState<'contacts' | 'history'>('contacts');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [selectedRecipientId, setSelectedRecipientId] = useState<string | null>(null);
   const [newRecipient, setNewRecipient] = useState({
     name: '',
     phone: '',
@@ -61,20 +62,32 @@ export default function AlertContacts() {
     }
 
     try {
-      await apiService.postData(API_ENDPOINTS.alerts.contacts.create, {
-        name: newRecipient.name,
-        phone: newRecipient.phone,
-        email: newRecipient.email,
-        whatsapp: newRecipient.whatsapp,
-        email_alert: newRecipient.emailAlert,
-        min_severity: newRecipient.minSeverity,
-        is_active: true
-      });
+      if (selectedRecipientId) {
+        await updateRecipient(selectedRecipientId, {
+          name: newRecipient.name,
+          phone: newRecipient.phone,
+          email: newRecipient.email,
+          whatsapp: newRecipient.whatsapp,
+          emailAlert: newRecipient.emailAlert,
+          minSeverity: newRecipient.minSeverity
+        });
+      } else {
+        await apiService.postData(API_ENDPOINTS.alerts.contacts.create, {
+          name: newRecipient.name,
+          phone: newRecipient.phone,
+          email: newRecipient.email,
+          whatsapp: newRecipient.whatsapp,
+          email_alert: newRecipient.emailAlert,
+          min_severity: newRecipient.minSeverity,
+          is_active: true
+        });
+      }
       refetchContacts();
       setNewRecipient({ name: '', phone: '', email: '', whatsapp: true, emailAlert: true, minSeverity: 'medium' });
+      setSelectedRecipientId(null);
       setIsAddModalOpen(false);
     } catch (e: any) {
-      console.error('Failed to add contact', e);
+      console.error('Failed to save contact', e);
       alert(`Error: ${e.message || "Failed to save contact. Please try again."}`);
     }
   };
@@ -170,7 +183,7 @@ export default function AlertContacts() {
                 />
               </div>
 
-              <Button className="w-full md:w-auto gap-2" onClick={() => setIsAddModalOpen(true)}>
+              <Button className="w-full md:w-auto gap-2" onClick={() => { setSelectedRecipientId(null); setIsAddModalOpen(true); }}>
                 <Plus className="h-4 w-4" /> Add New Contact
               </Button>
             </div>
@@ -205,14 +218,35 @@ export default function AlertContacts() {
                         </div>
                       </div>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-muted-foreground hover:text-severity-critical opacity-0 group-hover:opacity-100 transition-all"
-                      onClick={() => deleteRecipient(r.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-primary"
+                        onClick={() => {
+                          setNewRecipient({
+                            name: r.name,
+                            phone: r.phone || '',
+                            email: r.email || '',
+                            whatsapp: r.whatsapp,
+                            emailAlert: r.email_alert,
+                            minSeverity: r.min_severity as any
+                          });
+                          setSelectedRecipientId(r.id);
+                          setIsAddModalOpen(true);
+                        }}
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-severity-critical"
+                        onClick={() => deleteRecipient(r.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
 
                   <div className="space-y-3 mb-6">
@@ -359,7 +393,9 @@ export default function AlertContacts() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="relative w-full max-w-md bg-card border border-border rounded-2xl p-6">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-lg font-bold">Add New Contact</h2>
+              <h2 className="text-lg font-bold">
+                {selectedRecipientId ? 'Edit Alert Recipient' : 'Add New Alert Recipient'}
+              </h2>
               <button onClick={() => setIsAddModalOpen(false)} className="h-8 w-8 hover:bg-secondary rounded-lg flex items-center justify-center">
                 <XCircle className="h-4 w-4" />
               </button>

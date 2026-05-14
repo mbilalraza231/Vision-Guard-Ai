@@ -127,6 +127,7 @@ services:
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
+      - .:/app:rw
       - vg-data:/data/visionguard
       - vg-logs:/var/log/visionguard
       - ./cameras.json:/app/cameras.json:ro
@@ -462,6 +463,7 @@ services:
     networks:
       - visionguard
     volumes:
+      - .:/app:rw
       - vg-data:/data/visionguard
       - vg-logs:/var/log/visionguard
     environment:
