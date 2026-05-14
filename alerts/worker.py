@@ -140,9 +140,22 @@ class AlertWorker:
 
         if tasks:
             logger.info(f"Dispatching {len(tasks)} notifications for event {event_id}")
+            # Collect recipient names for logging
+            recipient_names = [c.get('name', 'User') for c in self.contacts if c.get('id')]
+            recipient_summary = ", ".join(recipient_names[:2])
+            if len(recipient_names) > 2:
+                recipient_summary += f" +{len(recipient_names) - 2} others"
+            
+            # Create alert record as 'sent'
+            await self.repo.create(
+                event_id, 
+                channel="multi-channel", 
+                recipient=recipient_summary, 
+                status="sent"
+            )
+            
+            # Execute dispatches
             await asyncio.gather(*tasks, return_exceptions=True)
-            # Log the alert record
-            await self.repo.create(event_id, channel="multi-channel")
 
     async def run(self):
         """Main loop listening to Redis stream."""

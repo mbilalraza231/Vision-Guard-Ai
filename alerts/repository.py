@@ -14,15 +14,21 @@ class AlertRepository:
     def __init__(self, config: AlertConfig = None):
         self.config = config or AlertConfig()
     
-    async def create(self, event_id: str, channel: str = "webhook") -> Optional[str]:
+    async def create(
+        self, 
+        event_id: str, 
+        channel: str = "webhook", 
+        recipient: str = None, 
+        status: str = "pending"
+    ) -> Optional[str]:
         alert_id = str(uuid.uuid4())
         try:
             await db.execute(
                 """
-                INSERT INTO alerts (id, event_id, channel, status, attempts, last_attempt_ts, created_at)
-                VALUES ($1, $2, $3, 'pending', 0, NULL, $4)
+                INSERT INTO alerts (id, event_id, channel, recipient, status, attempts, last_attempt_ts, created_at)
+                VALUES ($1, $2, $3, $4, $5, 0, NULL, $6)
                 """,
-                alert_id, event_id, channel, time.time()
+                alert_id, event_id, channel, recipient, status, time.time()
             )
             return alert_id
         except Exception as e:
