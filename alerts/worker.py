@@ -116,13 +116,11 @@ class AlertWorker:
             if event_rank < rank.get(min_sev, 0):
                 continue
             
-            # Send WhatsApp/SMS
+            # Send WhatsApp
             if contact.get('phone') and contact.get('whatsapp'):
                 phone = contact['phone']
                 to = f"whatsapp:{phone}" if not phone.startswith('whatsapp:') else phone
                 tasks.append(self.notifier.send_twilio(to, whatsapp_msg, media_url=snap_url))
-            elif contact.get('phone'):
-                tasks.append(self.notifier.send_twilio(contact['phone'], whatsapp_msg))
                 
             # Send Premium Email
             if contact.get('email') and contact.get('email_alert'):
@@ -174,17 +172,25 @@ class AlertWorker:
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             # Map results back to channels for granular UI display
-            details = {}
+            # Initialize as False so that disabled/failed channels show Red in UI
+            details = {"whatsapp": False, "email": False}
+            
             task_idx = 0
             for contact in self.contacts:
                 min_sev = contact.get('min_severity', 'medium').lower()
                 if event_rank < rank.get(min_sev, 0):
                     continue
-                if contact.get('phone') and (contact.get('whatsapp') or contact.get('sms')):
-                    details['whatsapp'] = results[task_idx] is True
+                
+                if contact.get('phone') and contact.get('whatsapp'):
+                    # If any contact succeeds on this channel, mark as True
+                    if task_idx < len(results) and results[task_idx] is True:
+                        details['whatsapp'] = True
                     task_idx += 1
+                
                 if contact.get('email') and contact.get('email_alert'):
-                    details['email'] = results[task_idx] is True
+                    # If any contact succeeds on this channel, mark as True
+                    if task_idx < len(results) and results[task_idx] is True:
+                        details['email'] = True
                     task_idx += 1
 
             # Determine final status: 'failed' only if ALL channels failed
