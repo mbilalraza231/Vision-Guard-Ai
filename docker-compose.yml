@@ -195,8 +195,8 @@ services:
       - VG_POSTGRES_HOST=postgres
       - VG_POSTGRES_PORT=5432
       - SHARED_FRAMES_DIR=/shared-frames
-      - ECS_HARD_TTL_SECONDS=15.0
-      - ECS_CORRELATION_WINDOW_MS=2000
+      - ECS_HARD_TTL_SECONDS=30.0
+      - ECS_CORRELATION_WINDOW_MS=500
     depends_on:
       redis:
         condition: service_healthy

@@ -385,29 +385,29 @@ class ECSService:
                         )
                     
                     if should_classify:
-                        # 4. Classify with camera history (v2)
-                        camera_history = self.camera_history_manager.get(
-                            frame_state.camera_id
-                        )
-                        frame_state.classification_attempted = True
-                        event = self.rule_engine.classify(
-                            frame_state, camera_history
-                        )
+                        # 4. Classify with camera history (v2) only once
+                        if not frame_state.classification_attempted:
+                            camera_history = self.camera_history_manager.get(
+                                frame_state.camera_id
+                            )
+                            frame_state.classification_attempted = True
+                            event = self.rule_engine.classify(
+                                frame_state, camera_history
+                            )
+                            
+                            if event:
+                                # 5. Dispatch outputs
+                                if self.database_writer:
+                                    self.database_writer.write(event)
+                                self._publish_clip_request(event)
                         
-                        if event:
-                            # 5. Dispatch outputs
-                            if self.alert_dispatcher:
-                                self.alert_dispatcher.dispatch(event)
-                            if self.database_writer:
-                                self.database_writer.write(event)
-                            self._publish_clip_request(event)
-                        
-                        # 6. Cleanup shared memory
-                        self.cleanup_manager.cleanup_frame(
-                            frame_state.shared_memory_key
-                        )
-                        # 7. Remove from buffer
-                        self.frame_buffer.remove_frame(msg.frame_id)
+                        # 6. Cleanup shared memory ONLY if all models reported
+                        if frame_state.has_all_models():
+                            self.cleanup_manager.cleanup_frame(
+                                frame_state.shared_memory_key
+                            )
+                            # 7. Remove from buffer
+                            self.frame_buffer.remove_frame(msg.frame_id)
 
                     # 8. PERSIST STATE IN REDIS (for Debug UI and Crash Recovery)
                     if self._clip_redis:
@@ -426,36 +426,36 @@ class ECSService:
                     )
                     
                     for frame_state in aged_frames:
-                        frame_state.classification_attempted = True
-                        camera_history = self.camera_history_manager.get(
-                            frame_state.camera_id
-                        )
-                        event = self.rule_engine.classify(
-                            frame_state, camera_history
-                        )
-                        
-                        if event:
-                            self.logger.info(
-                                f"Classified aged frame: {event.event_type}",
-                                extra={
-                                    "frame_id": frame_state.frame_id,
-                                    "event_type": event.event_type,
-                                    "confidence": event.confidence,
-                                    "age_ms": frame_state.get_age_ms()
-                                }
+                        if not frame_state.classification_attempted:
+                            frame_state.classification_attempted = True
+                            camera_history = self.camera_history_manager.get(
+                                frame_state.camera_id
                             )
-                            if self.alert_dispatcher:
-                                self.alert_dispatcher.dispatch(event)
-                            if self.database_writer:
-                                self.database_writer.write(event)
-                            self._publish_clip_request(event)
+                            event = self.rule_engine.classify(
+                                frame_state, camera_history
+                            )
+                            
+                            if event:
+                                self.logger.info(
+                                    f"Classified aged frame: {event.event_type}",
+                                    extra={
+                                        "frame_id": frame_state.frame_id,
+                                        "event_type": event.event_type,
+                                        "confidence": event.confidence,
+                                        "age_ms": frame_state.get_age_ms()
+                                    }
+                                )
+                                if self.database_writer:
+                                    self.database_writer.write(event)
+                                self._publish_clip_request(event)
                         
-                        self.cleanup_manager.cleanup_frame(
-                            frame_state.shared_memory_key
-                        )
-                        self.frame_buffer.remove_frame(
-                            frame_state.frame_id
-                        )
+                        if frame_state.has_all_models():
+                            self.cleanup_manager.cleanup_frame(
+                                frame_state.shared_memory_key
+                            )
+                            self.frame_buffer.remove_frame(
+                                frame_state.frame_id
+                            )
                     
                     last_classification_scan = current_time
                 
@@ -484,8 +484,6 @@ class ECSService:
                                     "confidence": event.confidence,
                                 }
                             )
-                            if self.alert_dispatcher:
-                                self.alert_dispatcher.dispatch(event)
                             if self.database_writer:
                                 self.database_writer.write(event)
                             self._publish_clip_request(event)
