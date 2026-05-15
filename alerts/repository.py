@@ -19,16 +19,18 @@ class AlertRepository:
         event_id: str, 
         channel: str = "webhook", 
         recipient: str = None, 
-        status: str = "pending"
+        status: str = "pending",
+        details: Dict[str, Any] = None
     ) -> Optional[str]:
         alert_id = str(uuid.uuid4())
         try:
+            import json
             await db.execute(
                 """
-                INSERT INTO alerts (id, event_id, channel, recipient, status, attempts, last_attempt_ts, created_at)
-                VALUES ($1, $2, $3, $4, $5, 0, NULL, $6)
+                INSERT INTO alerts (id, event_id, channel, recipient, status, attempts, last_attempt_ts, created_at, details)
+                VALUES ($1, $2, $3, $4, $5, 0, NULL, $6, $7)
                 """,
-                alert_id, event_id, channel, recipient, status, time.time()
+                alert_id, event_id, channel, recipient, status, time.time(), json.dumps(details) if details else None
             )
             return alert_id
         except Exception as e:
@@ -62,12 +64,19 @@ class AlertRepository:
             logger.error(f"Get pending alerts failed: {e}")
             return []
     
-    async def update_status(self, alert_id: str, status: str) -> bool:
+    async def update_status(self, alert_id: str, status: str, details: Dict[str, Any] = None) -> bool:
         try:
-            await db.execute(
-                "UPDATE alerts SET status = $1, last_attempt_ts = $2 WHERE id = $3",
-                status, time.time(), alert_id
-            )
+            import json
+            if details:
+                await db.execute(
+                    "UPDATE alerts SET status = $1, last_attempt_ts = $2, details = $3 WHERE id = $4",
+                    status, time.time(), json.dumps(details), alert_id
+                )
+            else:
+                await db.execute(
+                    "UPDATE alerts SET status = $1, last_attempt_ts = $2 WHERE id = $3",
+                    status, time.time(), alert_id
+                )
             return True
         except Exception as e:
             logger.error(f"Update status failed: {e}")

@@ -333,19 +333,31 @@ export default function AlertContacts() {
                       <td className="p-4">
                         {alert.channel === 'multi-channel' ? (
                           <div className="flex items-center gap-3">
-                            <div className="flex items-center gap-1 text-status-online">
+                            <div className={cn(
+                              "flex items-center gap-1",
+                              alert.details?.whatsapp === false ? "text-severity-critical" : "text-status-online"
+                            )}>
                               <Phone className="h-3.5 w-3.5" /> <span className="text-[10px]">WA</span>
                             </div>
-                            <div className="flex items-center gap-1 text-primary">
+                            <div className={cn(
+                              "flex items-center gap-1",
+                              alert.details?.email === false ? "text-severity-critical" : "text-primary"
+                            )}>
                               <Mail className="h-3.5 w-3.5" /> <span className="text-[10px]">Email</span>
                             </div>
                           </div>
                         ) : alert.channel === 'whatsapp' || alert.channel === 'sms' ? (
-                          <div className="flex items-center gap-2 text-status-online">
+                          <div className={cn(
+                            "flex items-center gap-2",
+                            alert.status === 'failed' ? "text-severity-critical" : "text-status-online"
+                          )}>
                             <Phone className="h-4 w-4" /> <span className="text-xs">WhatsApp</span>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-2 text-primary">
+                          <div className={cn(
+                            "flex items-center gap-2",
+                            alert.status === 'failed' ? "text-severity-critical" : "text-primary"
+                          )}>
                             <Mail className="h-4 w-4" /> <span className="text-xs">Email</span>
                           </div>
                         )}
