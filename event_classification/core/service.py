@@ -23,7 +23,6 @@ from ..buffer.camera_history import CameraHistoryManager
 from ..classification.rule_engine import RuleEngine
 from ..redis_client.stream_consumer import StreamConsumer
 from ..cleanup.cleanup_manager import CleanupManager
-from ..output.alert_dispatcher import AlertDispatcher
 from ..output.database_writer import DatabaseWriter
 
 
@@ -63,7 +62,6 @@ class ECSService:
         self.rule_engine: Optional[RuleEngine] = None
         self.stream_consumer: Optional[StreamConsumer] = None
         self.cleanup_manager: Optional[CleanupManager] = None
-        self.alert_dispatcher: Optional[AlertDispatcher] = None
         self.database_writer: Optional[DatabaseWriter] = None
         # V2: Camera history manager
         self.camera_history_manager: Optional[CameraHistoryManager] = None
@@ -292,9 +290,6 @@ class ECSService:
             self.cleanup_manager = CleanupManager()
             
             # Initialize output dispatchers
-            if self.config.enable_alerts:
-                self.alert_dispatcher = AlertDispatcher()
-            
             if self.config.enable_database:
                 self.database_writer = DatabaseWriter(
                     enabled=True,

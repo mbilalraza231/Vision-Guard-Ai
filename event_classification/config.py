@@ -141,13 +141,6 @@ class ECSConfig(BaseModel):
     )
     
     # Output configuration (all outputs are async, non-blocking)
-    enable_alerts: bool = Field(default=True, description="Enable alert dispatching")
-    alert_webhook_url: Optional[str] = Field(
-        default=None, 
-        description="Webhook URL for alerts (None = log only)"
-    )
-    alert_timeout_sec: float = Field(default=5.0, ge=1.0, le=30.0, description="Webhook timeout")
-    
     enable_database: bool = Field(default=True, description="Enable database writing")
     database_path: str = Field(
         default=None,
