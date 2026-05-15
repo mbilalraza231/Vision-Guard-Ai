@@ -331,7 +331,16 @@ export default function AlertContacts() {
                         <div className="text-[10px] text-muted-foreground font-mono">#{alert.id.slice(0, 8)}</div>
                       </td>
                       <td className="p-4">
-                        {alert.channel === 'whatsapp' || alert.channel === 'sms' ? (
+                        {alert.channel === 'multi-channel' ? (
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-1 text-status-online">
+                              <Phone className="h-3.5 w-3.5" /> <span className="text-[10px]">WA</span>
+                            </div>
+                            <div className="flex items-center gap-1 text-primary">
+                              <Mail className="h-3.5 w-3.5" /> <span className="text-[10px]">Email</span>
+                            </div>
+                          </div>
+                        ) : alert.channel === 'whatsapp' || alert.channel === 'sms' ? (
                           <div className="flex items-center gap-2 text-status-online">
                             <Phone className="h-4 w-4" /> <span className="text-xs">WhatsApp</span>
                           </div>
