@@ -27,12 +27,15 @@ class AlertNotifier:
 
         url = f"https://api.twilio.com/2010-04-01/Accounts/{self.config.twilio_sid}/Messages.json"
         
-        # WhatsApp numbers must be prefixed with 'whatsapp:'
+        # Both From and To must have 'whatsapp:' prefix for WhatsApp messages
         is_whatsapp = to.startswith("whatsapp:")
-        
+        from_number = self.config.twilio_from
+        if is_whatsapp and from_number and not from_number.startswith("whatsapp:"):
+            from_number = f"whatsapp:{from_number}"
+            
         data = {
             "To": to,
-            "From": self.config.twilio_from,
+            "From": from_number,
             "Body": message
         }
         if media_url:
