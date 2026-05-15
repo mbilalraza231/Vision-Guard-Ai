@@ -329,7 +329,7 @@ export default function AlertContacts() {
                     <th className="p-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">Recipient</th>
                     <th className="p-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">Channel</th>
                     <th className="p-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">Status</th>
-                    <th className="p-4 text-xs font-bold uppercase tracking-wider text-right text-muted-foreground">Details</th>
+                    <th className="p-4 text-xs font-bold uppercase tracking-wider text-right text-muted-foreground">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
@@ -393,7 +393,12 @@ export default function AlertContacts() {
                         )}
                       </td>
                       <td className="p-4 text-right">
-                        <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={() => window.location.href = `/incidents/${alert.event_id}`}
+                        >
                           <ExternalLink className="h-4 w-4 text-muted-foreground" />
                         </Button>
                       </td>
@@ -401,7 +406,7 @@ export default function AlertContacts() {
                   ))}
                   {alerts.length === 0 && !historyLoading && (
                     <tr>
-                      <td colSpan={5} className="p-20 text-center text-muted-foreground">
+                      <td colSpan={6} className="p-20 text-center text-muted-foreground">
                         <History className="h-12 w-12 mx-auto mb-4 opacity-10" />
                         No alert history recorded yet.
                       </td>
