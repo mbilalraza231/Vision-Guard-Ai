@@ -162,33 +162,24 @@ class AlertWorker:
 
         if tasks:
             logger.info(f"Dispatching {len(tasks)} notifications for event {event_id}")
+
             # Collect recipient names for logging
             recipient_names = [c.get('name', 'User') for c in self.contacts if c.get('id')]
             recipient_summary = ", ".join(recipient_names[:2])
             if len(recipient_names) > 2:
                 recipient_summary += f" +{len(recipient_names) - 2} others"
-            
-            # Create alert record as 'pending' initially
-            alert_id = await self.repo.create(
-                event_id, 
-                channel="multi-channel", 
-                recipient=recipient_summary, 
-                status="pending"
-            )
-            
-            if not alert_id:
-                return
 
-            # Execute dispatches
+            # --- OPTIMIZED: Send first, write ONCE to DB with final result ---
+            # Execute all dispatches simultaneously
             results = await asyncio.gather(*tasks, return_exceptions=True)
-            
+
             # Map results back to channels for granular UI display
             details = {}
             task_idx = 0
             for contact in self.contacts:
                 min_sev = contact.get('min_severity', 'medium').lower()
-                if event_rank < rank.get(min_sev, 0): continue
-                
+                if event_rank < rank.get(min_sev, 0):
+                    continue
                 if contact.get('phone') and (contact.get('whatsapp') or contact.get('sms')):
                     details['whatsapp'] = results[task_idx] is True
                     task_idx += 1
@@ -196,20 +187,25 @@ class AlertWorker:
                     details['email'] = results[task_idx] is True
                     task_idx += 1
 
-            # Determine overall status: 'failed' only if EVERYTHING failed. 
-            # If at least one worked, we call it 'sent' (partial success).
+            # Determine final status: 'failed' only if ALL channels failed
             any_success = any(r is True for r in results)
             final_status = "sent" if any_success else "failed"
-            
-            # Update the record with final result and granular details
-            await self.repo.update_status(alert_id, final_status, details=details)
-            
+
+            # Single DB write with complete final state (no pending ghost row)
+            await self.repo.create(
+                event_id,
+                channel="multi-channel",
+                recipient=recipient_summary,
+                status=final_status,
+                details=details
+            )
+
             if not any_success:
-                logger.warning(f"ALL notifications failed for event {event_id}. Status set to failed.")
+                logger.warning(f"ALL notifications failed for event {event_id}. Status: failed.")
             elif not all(r is True for r in results):
                 logger.info(f"Partial success for event {event_id}. Some channels failed.")
             else:
-                logger.info(f"All notifications successfully dispatched for event {event_id}")
+                logger.info(f"All notifications dispatched successfully for event {event_id}.")
 
     async def run(self):
         """Main loop listening to Redis stream."""

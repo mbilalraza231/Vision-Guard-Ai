@@ -133,11 +133,13 @@ export default function AlertContacts() {
     (r.phone && r.phone.includes(searchQuery))
   );
 
-  // Load Alert History from Backend
+  // Load Alert History from Backend — auto-refresh every 5s
   const { data: alertHistory, isLoading: historyLoading } = useQuery({
     queryKey: ['alert-history'],
     queryFn: () => apiService.getData<any>(API_ENDPOINTS.alerts.list),
-    enabled: activeTab === 'history'
+    enabled: activeTab === 'history',
+    refetchInterval: 5000,          // Poll every 5 seconds
+    refetchIntervalInBackground: false, // Only poll when tab is active
   });
 
   const alerts = alertHistory?.alerts ?? [];
