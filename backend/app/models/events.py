@@ -148,6 +148,7 @@ class DBAlert(BaseModel):
     attempts: int
     last_attempt_ts: Optional[float] = None
     created_at: float
+    details: Optional[dict] = None
     camera_id: Optional[str] = None
     event_type: Optional[str] = None
     severity: Optional[str] = None
