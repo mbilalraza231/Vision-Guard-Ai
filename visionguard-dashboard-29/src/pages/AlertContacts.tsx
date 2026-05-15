@@ -309,6 +309,18 @@ export default function AlertContacts() {
           </div>
         ) : (
           <div className="animate-fade-in">
+            <div className="flex justify-end mb-3 px-2">
+              <div className="flex items-center gap-4 text-[10px] uppercase font-bold tracking-widest text-muted-foreground/60">
+                <div className="flex items-center gap-1.5">
+                  <div className="h-2 w-2 rounded-full bg-status-online shadow-[0_0_8px_rgba(46,213,115,0.4)]"></div>
+                  <span>Sent</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="h-2 w-2 rounded-full bg-severity-critical shadow-[0_0_8px_rgba(255,75,43,0.4)]"></div>
+                  <span>Failed</span>
+                </div>
+              </div>
+            </div>
             <div className="rounded-2xl border border-white/5 bg-secondary/10 overflow-hidden shadow-2xl">
               <table className="w-full text-left border-collapse">
                 <thead className="bg-white/5 border-b border-white/5">
