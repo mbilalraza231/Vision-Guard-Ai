@@ -25,7 +25,6 @@ from ..redis_client.stream_consumer import StreamConsumer
 from ..cleanup.cleanup_manager import CleanupManager
 from ..output.alert_dispatcher import AlertDispatcher
 from ..output.database_writer import DatabaseWriter
-from ..output.frontend_publisher import FrontendPublisher
 
 
 class ECSService:
@@ -66,7 +65,6 @@ class ECSService:
         self.cleanup_manager: Optional[CleanupManager] = None
         self.alert_dispatcher: Optional[AlertDispatcher] = None
         self.database_writer: Optional[DatabaseWriter] = None
-        self.frontend_publisher: Optional[FrontendPublisher] = None
         # V2: Camera history manager
         self.camera_history_manager: Optional[CameraHistoryManager] = None
         # Clip request publisher
@@ -312,9 +310,6 @@ class ECSService:
                     model_version=self.config.model_version
                 )
             
-            if self.config.enable_frontend:
-                self.frontend_publisher = FrontendPublisher()
-            
             self.logger.info("ECS initialized successfully")
 
 
@@ -410,8 +405,6 @@ class ECSService:
                                 self.alert_dispatcher.dispatch(event)
                             if self.database_writer:
                                 self.database_writer.write(event)
-                            if self.frontend_publisher:
-                                self.frontend_publisher.publish(event)
                             self._publish_clip_request(event)
                         
                         # 6. Cleanup shared memory
@@ -460,8 +453,6 @@ class ECSService:
                                 self.alert_dispatcher.dispatch(event)
                             if self.database_writer:
                                 self.database_writer.write(event)
-                            if self.frontend_publisher:
-                                self.frontend_publisher.publish(event)
                             self._publish_clip_request(event)
                         
                         self.cleanup_manager.cleanup_frame(
@@ -502,8 +493,6 @@ class ECSService:
                                 self.alert_dispatcher.dispatch(event)
                             if self.database_writer:
                                 self.database_writer.write(event)
-                            if self.frontend_publisher:
-                                self.frontend_publisher.publish(event)
                             self._publish_clip_request(event)
                     
                     self.logger.warning(
@@ -586,12 +575,6 @@ class ECSService:
             self.logger.info(
                 "Database writer stats",
                 extra=self.database_writer.get_stats()
-            )
-        
-        if self.frontend_publisher:
-            self.logger.info(
-                "Frontend publisher stats",
-                extra=self.frontend_publisher.get_stats()
             )
         
         self.logger.info("ECS shutdown complete")
