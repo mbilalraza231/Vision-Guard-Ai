@@ -60,6 +60,11 @@ export function useGlobalSSE() {
           queryClient.setQueryData(['live-boxes'], payload.boxes);
         }
 
+        // 6. Alert History (Used by AlertContacts)
+        if (payload.alerts) {
+          queryClient.setQueryData(['alert-history'], payload.alerts);
+        }
+
       } catch (err) {
         console.error('[Global SSE] Parse error:', err);
       }

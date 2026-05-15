@@ -18,6 +18,7 @@ from ..services.camera_manager import get_camera_manager, CameraManager
 from ..services.db_reader import get_db_reader
 from ..core.config import get_settings, Settings
 from .detections import get_live_boxes
+from alerts.repository import AlertRepository
 
 router = APIRouter(prefix="/stream", tags=["Stream"])
 
@@ -51,6 +52,10 @@ async def global_event_generator(
             # 5. Live Bounding Boxes
             boxes_data = await get_live_boxes(limit=50)
 
+            # 6. Alert History
+            alert_repo = AlertRepository()
+            alerts_data = await alert_repo.list_alerts(limit=50)
+
             # Combine everything
             payload = {
                 "status": status_data.dict(),
@@ -58,7 +63,8 @@ async def global_event_generator(
                 "cameras": cameras_data,
                 "stats": stats_data,
                 "recentEvents": recent_events_data,
-                "boxes": boxes_data
+                "boxes": boxes_data,
+                "alerts": alerts_data
             }
             
             yield f"data: {json.dumps(payload)}\n\n"
