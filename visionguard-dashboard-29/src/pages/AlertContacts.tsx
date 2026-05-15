@@ -406,7 +406,7 @@ export default function AlertContacts() {
                   ))}
                   {alerts.length === 0 && !historyLoading && (
                     <tr>
-                      <td colSpan={6} className="p-20 text-center text-muted-foreground">
+                      <td colSpan={5} className="p-20 text-center text-muted-foreground">
                         <History className="h-12 w-12 mx-auto mb-4 opacity-10" />
                         No alert history recorded yet.
                       </td>
