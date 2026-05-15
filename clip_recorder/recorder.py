@@ -608,8 +608,7 @@ class ClipRecorder:
             final_snapshot = snapshot_url
             provider_snap = "cloudinary"
         elif snapshot_local:
-            filename = os.path.basename(snapshot_local)
-            final_snapshot = f"{self.config.backend_url}/detections/images/{filename}"
+            final_snapshot = snapshot_local
             provider_snap = "local"
         else:
             final_snapshot = None
@@ -620,8 +619,7 @@ class ClipRecorder:
             final_clip = clip_url
             provider_clip = "cloudinary"
         elif clip_local:
-            filename = os.path.basename(clip_local)
-            final_clip = f"{self.config.backend_url}/detections/clips/{filename}"
+            final_clip = clip_local
             provider_clip = "local"
         else:
             final_clip = None
