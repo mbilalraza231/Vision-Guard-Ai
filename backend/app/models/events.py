@@ -6,8 +6,9 @@ Request/response models for /events and /alerts endpoints.
 
 from typing import Optional, Dict, Any, List
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from enum import Enum
+import json
 
 
 class EventType(str, Enum):
@@ -148,13 +149,23 @@ class DBAlert(BaseModel):
     attempts: int
     last_attempt_ts: Optional[float] = None
     created_at: float
-    details: Optional[dict] = None
+    details: Optional[Any] = None
     camera_id: Optional[str] = None
     event_type: Optional[str] = None
     severity: Optional[str] = None
     confidence: Optional[float] = None
     start_ts: Optional[float] = None
     end_ts: Optional[float] = None
+
+    @field_validator('details', mode='before')
+    @classmethod
+    def parse_details(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except Exception:
+                return v
+        return v
 
 
 class DBAlertListResponse(BaseModel):
