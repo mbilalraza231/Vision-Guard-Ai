@@ -353,7 +353,7 @@ export default function AlertContacts() {
                             </div>
                             <div className={cn(
                               "flex items-center gap-1",
-                              alert.details?.email === false ? "text-severity-critical" : "text-primary"
+                              alert.details?.email === false ? "text-severity-critical" : "text-status-online"
                             )}>
                               <Mail className="h-3.5 w-3.5" /> <span className="text-[10px]">Email</span>
                             </div>
@@ -368,7 +368,7 @@ export default function AlertContacts() {
                         ) : (
                           <div className={cn(
                             "flex items-center gap-2",
-                            alert.status === 'failed' ? "text-severity-critical" : "text-primary"
+                            alert.status === 'failed' ? "text-severity-critical" : "text-status-online"
                           )}>
                             <Mail className="h-4 w-4" /> <span className="text-xs">Email</span>
                           </div>
