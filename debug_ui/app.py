@@ -376,7 +376,7 @@ def clear_redis_queues_and_streams(rconn) -> tuple[bool, str]:
         "vg:high",
         "vg:medium",
         "vg:ai:results",
-        "vg:clip:requests",
+        "vg:events:finalized",
     ]
 
     removed = 0

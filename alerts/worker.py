@@ -227,8 +227,8 @@ class AlertWorker:
 
         await self.update_contact_cache()
 
-        logger.info("Alert Worker active. Listening to vg:clip:requests...")
-        stream_key = "vg:clip:requests"
+        logger.info("Alert Worker active. Listening to vg:events:finalized...")
+        stream_key = "vg:events:finalized"
         last_id = "$" 
 
         while not self._stop.is_set():

@@ -13,7 +13,7 @@ load_dotenv()
 
 
 # Redis stream name for clip recording requests
-CLIP_REQUEST_STREAM = "vg:clip:requests"
+CLIP_REQUEST_STREAM = "vg:events:finalized"
 
 
 @dataclass

@@ -598,7 +598,7 @@ class ECSService:
 
     def _publish_clip_request(self, event) -> None:
         """
-        Publish a clip recording request to the vg:clip:requests Redis stream.
+        Publish a final event broadcast to the vg:events:finalized Redis stream.
 
         Non-blocking — any failure is logged as a warning and never raised.
         Only called inside `if event:` blocks, so event is always valid.
@@ -619,7 +619,7 @@ class ECSService:
                 pass
 
             self._clip_redis.xadd(
-                "vg:clip:requests",
+                "vg:events:finalized",
                 {
                     "event_id":      str(event.event_id),
                     "event_type":    str(event.event_type),

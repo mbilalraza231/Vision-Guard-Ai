@@ -1,7 +1,7 @@
 """
 VisionGuard AI - Clip Recorder Entry Point
 
-Standalone service that subscribes to the vg:clip:requests Redis stream
+Standalone service that subscribes to the vg:events:finalized Redis stream
 and processes clip recording + Cloudinary upload requests.
 
 Usage:
