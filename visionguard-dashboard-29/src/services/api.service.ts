@@ -90,10 +90,21 @@ class ApiService {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        let errorMessage = errorData.message || `HTTP Error: ${response.status}`;
+        
+        if (Array.isArray(errorData.detail)) {
+          errorMessage = errorData.detail.map((err: any) => {
+            const loc = Array.isArray(err.loc) ? err.loc.join('.') : err.loc;
+            return `${loc}: ${err.msg}`;
+          }).join(', ');
+        } else if (typeof errorData.detail === 'string') {
+          errorMessage = errorData.detail;
+        }
+
         return {
           data: null as T,
           success: false,
-          error: errorData.message || `HTTP Error: ${response.status}`,
+          error: errorMessage,
         };
       }
 
