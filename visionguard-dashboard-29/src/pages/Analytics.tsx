@@ -8,6 +8,8 @@ import { API_ENDPOINTS } from '@/config/api';
 import { apiService } from '@/services/api.service';
 import { useMemo } from 'react';
 import {
+  LineChart,
+  Line,
   BarChart,
   Bar,
   XAxis,
@@ -18,10 +20,19 @@ import {
 } from 'recharts';
 
 // Backend response types
+interface ConfidenceHistoryItem {
+  id: string;
+  event_type: string;
+  confidence: number;
+  created_at: number;
+}
+
 interface EventsStatsResponse {
   total_events: number;
   by_type: Record<string, number>;
   by_severity: Record<string, number>;
+  avg_confidence?: number;
+  confidence_history?: ConfidenceHistoryItem[];
 }
 
 interface CameraItem {
@@ -85,6 +96,20 @@ export default function Analytics() {
       type: type.charAt(0).toUpperCase() + type.slice(1),
       count,
     }));
+  }, [stats]);
+
+  // Transform confidence history to chart data
+  const accuracyChartData = useMemo(() => {
+    if (!stats?.confidence_history) return [];
+    return stats.confidence_history.map((item, index) => {
+      const date = new Date(item.created_at * 1000);
+      return {
+        name: `D${index + 1}`,
+        confidence: Math.round(item.confidence * 100),
+        type: item.event_type.charAt(0).toUpperCase() + item.event_type.slice(1),
+        time: date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      };
+    });
   }, [stats]);
 
   // Calculate real performance metrics
@@ -205,15 +230,61 @@ export default function Analytics() {
 
             {/* Charts Row */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-              {/* Detection Accuracy — Coming Soon */}
+              {/* Detection Accuracy */}
               <div className="dashboard-card p-6">
-                <h3 className="text-lg font-semibold mb-4">Detection Accuracy</h3>
-                <div className="h-64 flex flex-col items-center justify-center text-muted-foreground">
-                  <div className="h-12 w-12 rounded-full bg-secondary/50 flex items-center justify-center mb-3">
-                    <Target className="h-6 w-6" />
-                  </div>
-                  <p className="text-sm font-medium">Coming Soon</p>
-                  <p className="text-xs mt-1">Accuracy tracking requires historical analysis endpoint</p>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold">Detection Accuracy</h3>
+                  {stats?.avg_confidence !== undefined && stats.avg_confidence > 0 && (
+                    <div className="text-right">
+                      <span className="text-xs text-muted-foreground mr-1">Avg Confidence:</span>
+                      <span className="text-sm font-semibold text-primary">
+                        {Math.round(stats.avg_confidence * 100)}%
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <div className="h-64">
+                  {accuracyChartData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={accuracyChartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                        <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                        <YAxis 
+                          domain={[0, 100]} 
+                          tickFormatter={(value) => `${value}%`}
+                          stroke="hsl(var(--muted-foreground))" 
+                          fontSize={12} 
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: 'hsl(var(--card))',
+                            border: '1px solid hsl(var(--border))',
+                            borderRadius: '8px',
+                          }}
+                          labelStyle={{ color: 'hsl(var(--foreground))' }}
+                          formatter={(value: any, name: any, props: any) => {
+                            if (name === 'confidence') {
+                              return [`${value}%`, `Confidence (${props.payload.type})`];
+                            }
+                            return [value, name];
+                          }}
+                        />
+                        <Line 
+                          type="monotone" 
+                          dataKey="confidence" 
+                          stroke="hsl(var(--primary))" 
+                          strokeWidth={2}
+                          activeDot={{ r: 6 }} 
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+                      <Target className="h-8 w-8 mb-2 opacity-50 text-muted-foreground" />
+                      <p className="text-sm font-medium">No Historical Events Available</p>
+                      <p className="text-xs mt-1 text-center">Accuracy trends will appear here once the AI records detection incidents.</p>
+                    </div>
+                  )}
                 </div>
               </div>
 

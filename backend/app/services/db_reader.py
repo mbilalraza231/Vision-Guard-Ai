@@ -198,10 +198,30 @@ class DatabaseReader:
             by_severity_rows = await db.fetch_all("SELECT severity, COUNT(*) FROM events GROUP BY severity")
             by_severity = {r['severity']: r['count'] for r in by_severity_rows}
             
+            # Calculate average confidence
+            avg_conf_row = await db.fetch_one("SELECT AVG(confidence) FROM events")
+            avg_confidence = avg_conf_row['avg'] if avg_conf_row and avg_conf_row['avg'] is not None else 0.0
+            
+            # Fetch recent confidence trend (last 15 events)
+            trend_rows = await db.fetch_all(
+                "SELECT id, event_type, confidence, created_at FROM events ORDER BY created_at DESC LIMIT 15"
+            )
+            confidence_history = [
+                {
+                    "id": r["id"],
+                    "event_type": r["event_type"],
+                    "confidence": r["confidence"],
+                    "created_at": r["created_at"]
+                }
+                for r in reversed(trend_rows)
+            ]
+            
             return {
                 "total_events": total_events,
                 "by_type": by_type,
-                "by_severity": by_severity
+                "by_severity": by_severity,
+                "avg_confidence": avg_confidence,
+                "confidence_history": confidence_history
             }
             
         except Exception as e:
