@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Play, Square, Loader2, RefreshCw, Trash2 } from 'lucide-react';
+import { Plus, Play, Square, Loader2, RefreshCw, Trash2, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { API_ENDPOINTS } from '@/config/api';
@@ -29,12 +29,13 @@ interface BackendCamera {
   fps: number;
   priority: string;
   enabled: boolean;
+  motion_threshold: number;
   status: 'running' | 'stopped' | 'unknown';
   pid: number | null;
 }
 
 // Map backend camera to frontend Camera type
-function adaptCamera(cam: BackendCamera): Camera & { enabled: boolean; source: string; priority: string } {
+function adaptCamera(cam: BackendCamera): Camera & { enabled: boolean; source: string; priority: string; motionThreshold: number; fps: number } {
   const isOnline = cam.enabled && cam.status === 'running';
   return {
     id: cam.id,
@@ -47,21 +48,24 @@ function adaptCamera(cam: BackendCamera): Camera & { enabled: boolean; source: s
     enabled: cam.enabled,
     source: cam.source,
     priority: cam.priority,
+    motionThreshold: cam.motion_threshold,
+    fps: cam.fps,
   };
 }
 
 export default function Cameras() {
   const queryClient = useQueryClient();
 
-  // Add Camera Form States
+  // Add/Edit Camera Form States
   const [isOpen, setIsOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [cameraId, setCameraId] = useState('');
   const [name, setName] = useState('');
   const [source, setSource] = useState('');
   const [fps, setFps] = useState(5);
   const [priority, setPriority] = useState('medium');
   const [motionThreshold, setMotionThreshold] = useState(0.02);
-  const [enabled, setEnabled] = useState(true);
+  const [enabled, setEnabled] = useState(false); // Default to false (stopped on add)
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['cameras'],
@@ -81,15 +85,22 @@ export default function Cameras() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cameras'] });
       setIsOpen(false);
-      toast.success('Camera registered successfully');
+      const isEditing = editingId !== null;
+      toast.success(isEditing ? 'Camera settings updated' : 'Camera registered successfully');
+      if (isEditing) {
+        toast.info('Restart the camera service to apply configuration updates.', {
+          duration: 5000,
+        });
+      }
       // Reset form
+      setEditingId(null);
       setCameraId('');
       setName('');
       setSource('');
       setFps(5);
       setPriority('medium');
       setMotionThreshold(0.02);
-      setEnabled(true);
+      setEnabled(false);
     },
     onError: (err: any) => {
       toast.error(err.message || 'Failed to register camera');
@@ -162,18 +173,34 @@ export default function Cameras() {
             </p>
           </div>
           
-          <Dialog open={isOpen} onOpenChange={setIsOpen}>
-            <DialogTrigger asChild>
-              <Button className="gap-2">
-                <Plus className="h-4 w-4" />
-                Add Camera
-              </Button>
-            </DialogTrigger>
+          <Dialog open={isOpen} onOpenChange={(open) => {
+            setIsOpen(open);
+            if (!open) {
+              setEditingId(null);
+            }
+          }}>
+            <Button
+              className="gap-2"
+              onClick={() => {
+                setEditingId(null);
+                setCameraId('');
+                setName('');
+                setSource('');
+                setFps(5);
+                setPriority('medium');
+                setMotionThreshold(0.02);
+                setEnabled(false); // Default false for new camera
+                setIsOpen(true);
+              }}
+            >
+              <Plus className="h-4 w-4" />
+              Add Camera
+            </Button>
             <DialogContent className="sm:max-w-[425px] max-h-[85vh] p-0 flex flex-col overflow-hidden">
               <DialogHeader className="p-6 pb-3 border-b">
-                <DialogTitle>Add New Camera</DialogTitle>
+                <DialogTitle>{editingId ? 'Edit Camera Settings' : 'Add New Camera'}</DialogTitle>
                 <DialogDescription>
-                  Configure a new camera source for VisionGuard AI monitoring.
+                  {editingId ? 'Modify configuration options for this camera source.' : 'Configure a new camera source for VisionGuard AI monitoring.'}
                 </DialogDescription>
               </DialogHeader>
               <form
@@ -201,6 +228,7 @@ export default function Cameras() {
                       value={cameraId}
                       onChange={(e) => setCameraId(e.target.value)}
                       required
+                      disabled={editingId !== null}
                     />
                   </div>
                   <div className="space-y-2">
@@ -272,7 +300,7 @@ export default function Cameras() {
                       onChange={(e) => setEnabled(e.target.checked)}
                       className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
                     />
-                    <Label htmlFor="enabled">Enable camera immediately</Label>
+                    <Label htmlFor="enabled">Enable camera stream</Label>
                   </div>
                 </div>
                 
@@ -289,7 +317,7 @@ export default function Cameras() {
                         Saving...
                       </>
                     ) : (
-                      'Save Camera'
+                      editingId ? 'Save Changes' : 'Save Camera'
                     )}
                   </Button>
                 </div>
@@ -317,6 +345,17 @@ export default function Cameras() {
                 startMutation={startMutation}
                 stopMutation={stopMutation}
                 deleteMutation={deleteMutation}
+                onEdit={(cam) => {
+                  setEditingId(cam.id);
+                  setCameraId(cam.id);
+                  setName(cam.name);
+                  setSource(cam.source);
+                  setFps(cam.fps);
+                  setPriority(cam.priority);
+                  setMotionThreshold(cam.motionThreshold);
+                  setEnabled(cam.enabled);
+                  setIsOpen(true);
+                }}
               />
             ))}
           </div>
@@ -327,13 +366,14 @@ export default function Cameras() {
 }
 
 interface CameraCardProps {
-  camera: Camera & { enabled: boolean; source: string; priority: string };
+  camera: Camera & { enabled: boolean; source: string; priority: string; motionThreshold: number; fps: number };
   startMutation: any;
   stopMutation: any;
   deleteMutation: any;
+  onEdit: (camera: any) => void;
 }
 
-function CameraCard({ camera, startMutation, stopMutation, deleteMutation }: CameraCardProps) {
+function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdit }: CameraCardProps) {
   const [imageError, setImageError] = useState(false);
   const isHttpStream = camera.status === 'online' && camera.source.startsWith('http');
 
@@ -446,44 +486,50 @@ function CameraCard({ camera, startMutation, stopMutation, deleteMutation }: Cam
       {/* Bottom Row Actions - Separated cleanly to prevent overlap */}
       <div className="flex items-center justify-between border-t border-border pt-4 mt-auto">
         <div className="flex items-center gap-2">
-          {camera.enabled ? (
-            camera.status === 'online' ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5 text-xs h-8 text-severity-critical border-severity-critical/30 hover:bg-severity-critical/10"
-                onClick={() => stopMutation.mutate(camera.id)}
-                disabled={stopMutation.isPending}
-              >
-                {stopMutation.isPending ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Square className="h-3 w-3 fill-current" />
-                )}
-                Stop Stream
-              </Button>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5 text-xs h-8 text-status-online border-status-online/30 hover:bg-status-online/10"
-                onClick={() => startMutation.mutate(camera.id)}
-                disabled={startMutation.isPending}
-              >
-                {startMutation.isPending ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Play className="h-3 w-3 fill-current" />
-                )}
-                Start Stream
-              </Button>
-            )
+          {camera.enabled && camera.status === 'online' ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-xs h-8 text-severity-critical border-severity-critical/30 hover:bg-severity-critical/10"
+              onClick={() => stopMutation.mutate(camera.id)}
+              disabled={stopMutation.isPending}
+            >
+              {stopMutation.isPending ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Square className="h-3 w-3 fill-current" />
+              )}
+              Stop Stream
+            </Button>
           ) : (
-            <span className="text-xs text-muted-foreground italic font-medium">Camera Disabled</span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-xs h-8 text-status-online border-status-online/30 hover:bg-status-online/10"
+              onClick={() => startMutation.mutate(camera.id)}
+              disabled={startMutation.isPending}
+            >
+              {startMutation.isPending ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Play className="h-3 w-3 fill-current" />
+              )}
+              Start Stream
+            </Button>
           )}
         </div>
 
         <div className="flex items-center gap-1.5">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md transition-colors"
+            title="Edit Camera Settings"
+            onClick={() => onEdit(camera)}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+
           <Button
             variant="ghost"
             size="icon"

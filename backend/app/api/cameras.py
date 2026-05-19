@@ -118,6 +118,7 @@ async def list_cameras(
             "fps": cam.get("fps", 5),
             "priority": cam.get("priority", "medium"),
             "enabled": cam.get("enabled", True),
+            "motion_threshold": cam.get("motion_threshold", 0.02),
             "status": status,
             "pid": pid,
         })
