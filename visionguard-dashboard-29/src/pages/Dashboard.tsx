@@ -133,7 +133,7 @@ export default function Dashboard() {
   };
 
   const isLoading = statsLoading || camerasLoading || systemLoading || eventsLoading;
-  const runningCameras = cameraList?.filter((c) => c.status === 'running').length ?? 0;
+  const runningCameras = cameraList?.filter((c) => c.status === 'online' || c.status === 'running').length ?? 0;
   const totalCameras = cameraList?.length ?? 0;
 
   // Map system status to SystemMetrics shape for the existing component
