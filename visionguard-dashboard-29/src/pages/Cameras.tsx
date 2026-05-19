@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -375,7 +375,26 @@ interface CameraCardProps {
 
 function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdit }: CameraCardProps) {
   const [imageError, setImageError] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
   const isHttpStream = camera.status === 'online' && camera.source.startsWith('http');
+
+  // Force-kill MJPEG connection when camera goes offline
+  useEffect(() => {
+    if (!isHttpStream && imgRef.current) {
+      // Explicitly clear src to sever the TCP connection
+      imgRef.current.src = "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
+    }
+    // Reset error state when status changes
+    if (isHttpStream) {
+      setImageError(false);
+    }
+    return () => {
+      // On unmount, forcefully kill any active connection
+      if (imgRef.current) {
+        imgRef.current.src = "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
+      }
+    };
+  }, [isHttpStream]);
 
   return (
     <div className="dashboard-card p-5 flex flex-col justify-between h-full min-h-[390px]">
@@ -414,15 +433,16 @@ function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdi
 
         {/* Camera Preview / Video Feed - Flex Centered */}
         <div className="mb-4 h-40 border border-border bg-black/20 rounded-lg overflow-hidden relative flex items-center justify-center bg-black/40">
-          <img
-            src={isHttpStream && !imageError ? camera.source : "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs="}
-            alt={`${camera.name} feed`}
-            className={cn(
-              "w-full h-full object-contain absolute inset-0 z-0",
-              (!isHttpStream || imageError) && "hidden"
-            )}
-            onError={() => setImageError(true)}
-          />
+          {/* Only mount the img element when streaming — removing from DOM guarantees browser drops the TCP socket */}
+          {isHttpStream && !imageError ? (
+            <img
+              ref={imgRef}
+              src={camera.source}
+              alt={`${camera.name} feed`}
+              className="w-full h-full object-contain absolute inset-0 z-0"
+              onError={() => setImageError(true)}
+            />
+          ) : null}
           
           {(!isHttpStream || imageError) && (
             <div className="text-center z-10 flex flex-col items-center justify-center">
