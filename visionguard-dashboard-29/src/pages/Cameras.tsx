@@ -414,14 +414,15 @@ function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdi
 
         {/* Camera Preview / Video Feed - Flex Centered */}
         <div className="mb-4 h-40 border border-border bg-black/20 rounded-lg overflow-hidden relative flex items-center justify-center bg-black/40">
-          {isHttpStream && !imageError ? (
-            <img
-              src={camera.source}
-              alt={`${camera.name} feed`}
-              className="w-full h-full object-contain absolute inset-0 z-0"
-              onError={() => setImageError(true)}
-            />
-          ) : null}
+          <img
+            src={isHttpStream && !imageError ? camera.source : ""}
+            alt={`${camera.name} feed`}
+            className={cn(
+              "w-full h-full object-contain absolute inset-0 z-0",
+              (!isHttpStream || imageError) && "hidden"
+            )}
+            onError={() => setImageError(true)}
+          />
           
           {(!isHttpStream || imageError) && (
             <div className="text-center z-10 flex flex-col items-center justify-center">

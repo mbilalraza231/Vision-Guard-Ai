@@ -131,10 +131,16 @@ function CameraFeed({
   const [isExpanded, setIsExpanded] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
 
-  // Reset error when camera changes
+  // Reset error when camera changes and cleanup active connection on unmount
   useEffect(() => {
     setHasError(false);
     onLoadStateChange(false);
+    
+    return () => {
+      if (imgRef.current) {
+        imgRef.current.src = "";
+      }
+    };
   }, [camera.source]);
 
   return (
