@@ -415,7 +415,7 @@ function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdi
         {/* Camera Preview / Video Feed - Flex Centered */}
         <div className="mb-4 h-40 border border-border bg-black/20 rounded-lg overflow-hidden relative flex items-center justify-center bg-black/40">
           <img
-            src={isHttpStream && !imageError ? camera.source : ""}
+            src={isHttpStream && !imageError ? camera.source : "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs="}
             alt={`${camera.name} feed`}
             className={cn(
               "w-full h-full object-contain absolute inset-0 z-0",
