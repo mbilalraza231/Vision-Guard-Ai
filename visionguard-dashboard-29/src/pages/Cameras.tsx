@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { toast } from 'sonner';
 
 // Backend camera from GET /cameras
 interface BackendCamera {
@@ -80,6 +81,7 @@ export default function Cameras() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cameras'] });
       setIsOpen(false);
+      toast.success('Camera registered successfully');
       // Reset form
       setCameraId('');
       setName('');
@@ -89,21 +91,42 @@ export default function Cameras() {
       setMotionThreshold(0.02);
       setEnabled(true);
     },
+    onError: (err: any) => {
+      toast.error(err.message || 'Failed to register camera');
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiService.deleteData(API_ENDPOINTS.cameras.delete(id)),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['cameras'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cameras'] });
+      toast.success('Camera deleted successfully');
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Failed to delete camera');
+    },
   });
 
   const startMutation = useMutation({
     mutationFn: (id: string) => apiService.postData(API_ENDPOINTS.cameras.start(id)),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['cameras'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cameras'] });
+      toast.success('Camera stream started');
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Failed to start stream');
+    },
   });
 
   const stopMutation = useMutation({
     mutationFn: (id: string) => apiService.postData(API_ENDPOINTS.cameras.stop(id)),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['cameras'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cameras'] });
+      toast.success('Camera stream stopped');
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Failed to stop stream');
+    },
   });
 
   const cameras = data?.map(adaptCamera) ?? [];
