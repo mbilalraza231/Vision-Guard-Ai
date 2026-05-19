@@ -97,18 +97,18 @@ async def list_cameras(
 
         if runtime is not None:
             # Local process manager knows about it
-            status = "running" if runtime.get("is_running") else "stopped"
+            status = "online" if runtime.get("is_running") else "offline"
             pid = runtime.get("pid")
         elif cam_id in redis_active_cameras:
             # Docker camera container is actively streaming this camera
-            status = "running"
+            status = "online"
             pid = None
         elif camera_service_alive and cam.get("enabled", True):
             # Camera service is alive but this cam isn't in sources — stopped/failed
-            status = "stopped"
+            status = "offline"
             pid = None
         else:
-            status = "unknown"
+            status = "offline"
             pid = None
 
         result.append({
