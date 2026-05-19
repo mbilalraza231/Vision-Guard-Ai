@@ -137,9 +137,6 @@ class CaptureConfig(BaseModel):
     
     @validator('cameras')
     def validate_cameras(cls, v):
-        if not v:
-            raise ValueError('At least one camera must be configured')
-        
         # Check for duplicate camera IDs
         camera_ids = [cam.camera_id for cam in v]
         if len(camera_ids) != len(set(camera_ids)):

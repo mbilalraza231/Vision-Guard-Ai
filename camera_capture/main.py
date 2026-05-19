@@ -123,10 +123,7 @@ def main():
     cameras, global_config = load_cameras_from_json(config_path)
     
     if not cameras:
-        logger.error("No cameras configured!")
-        sys.exit(1)
-    
-    logger.info(f"Loaded {len(cameras)} cameras")
+        logger.warning("No enabled cameras configured initially.")
     
     config = CaptureConfig(
         cameras=cameras,
@@ -190,10 +187,123 @@ def main():
     
     try:
         manager = start_cameras(config)
+        logger.info("Camera Capture Service running. Watching config file for changes...")
         
-        logger.info("Camera Capture Service running. Press Ctrl+C to stop.")
-        signal.pause()
-        
+        last_mtime = 0.0
+        if os.path.exists(config_path):
+            last_mtime = os.path.getmtime(config_path)
+            
+        while True:
+            time.sleep(2)
+            if os.path.exists(config_path):
+                try:
+                    mtime = os.path.getmtime(config_path)
+                except OSError:
+                    continue
+                    
+                if mtime > last_mtime:
+                    logger.info("Config file change detected! Reloading cameras...")
+                    last_mtime = mtime
+                    
+                    try:
+                        # Load new camera list from cameras.json
+                        new_cameras, new_global_config = load_cameras_from_json(config_path)
+                        should_run_ids = {cam.camera_id for cam in new_cameras}
+                        
+                        # 1. Stop any running cameras that are no longer enabled or removed
+                        active_ids = list(manager.processes.keys())
+                        for cam_id in active_ids:
+                            if cam_id not in should_run_ids:
+                                logger.info(f"Camera '{cam_id}' has been disabled or removed. Stopping stream...")
+                                try:
+                                    manager.processes[cam_id].stop(timeout=5.0)
+                                    manager.status[cam_id] = "stopped"
+                                    
+                                    # Deregister from Redis sources hash
+                                    try:
+                                        _r = _redis.Redis(
+                                            host=os.getenv("REDIS_HOST", "localhost"),
+                                            port=int(os.getenv("REDIS_PORT", "6379")),
+                                            decode_responses=True,
+                                        )
+                                        _r.hdel("vg:camera:sources", cam_id)
+                                        _r.close()
+                                    except Exception as redis_err:
+                                        logger.warning(f"Could not remove camera '{cam_id}' from Redis sources: {redis_err}")
+                                except Exception as err:
+                                    logger.error(f"Failed to stop camera '{cam_id}': {err}")
+                                manager.processes.pop(cam_id, None)
+                        
+                        # 2. Update config object in manager.config.cameras
+                        manager.config.cameras = new_cameras
+                        
+                        # 3. Start or update any enabled cameras
+                        for camera_config in new_cameras:
+                            cam_id = camera_config.camera_id
+                            
+                            # Check if the camera is already running
+                            existing_process = manager.processes.get(cam_id)
+                            if existing_process and existing_process.is_alive():
+                                # Check if config actually changed (RTSP URL, FPS, etc.)
+                                curr_config = existing_process.camera_config
+                                if (curr_config.rtsp_url != camera_config.rtsp_url or
+                                    curr_config.fps != camera_config.fps or
+                                    curr_config.motion_threshold != camera_config.motion_threshold or
+                                    curr_config.motion_enabled != camera_config.motion_enabled):
+                                    
+                                    logger.info(f"Camera '{cam_id}' configuration updated. Restarting process...")
+                                    manager.restart_camera(cam_id)
+                                    
+                                    # Update Redis source URL
+                                    try:
+                                        _r = _redis.Redis(
+                                            host=os.getenv("REDIS_HOST", "localhost"),
+                                            port=int(os.getenv("REDIS_PORT", "6379")),
+                                            decode_responses=True,
+                                        )
+                                        _r.hset("vg:camera:sources", cam_id, camera_config.rtsp_url)
+                                        _r.close()
+                                    except Exception as redis_err:
+                                        logger.warning(f"Could not update Redis source URL: {redis_err}")
+                            else:
+                                # Not running, start it
+                                logger.info(f"Camera '{cam_id}' is enabled but not running. Starting process...")
+                                try:
+                                    # Create camera process
+                                    from camera_capture.core.camera_process import CameraProcess
+                                    process = CameraProcess(
+                                        camera_config=camera_config,
+                                        redis_config=manager.config.redis,
+                                        buffer_config=manager.config.buffer,
+                                        retry_config=manager.config.retry,
+                                        shared_memory_config=manager.config.shared_memory,
+                                        log_level=manager.config.logging.level,
+                                        log_format=manager.config.logging.format
+                                    )
+                                    if process.start():
+                                        manager.processes[cam_id] = process
+                                        manager.status[cam_id] = "alive"
+                                        
+                                        # Register in Redis sources
+                                        try:
+                                            _r = _redis.Redis(
+                                                host=os.getenv("REDIS_HOST", "localhost"),
+                                                port=int(os.getenv("REDIS_PORT", "6379")),
+                                                decode_responses=True,
+                                            )
+                                            _r.hset("vg:camera:sources", cam_id, camera_config.rtsp_url)
+                                            _r.close()
+                                        except Exception as redis_err:
+                                            logger.warning(f"Could not register Redis source URL: {redis_err}")
+                                    else:
+                                        manager.status[cam_id] = "failed_to_start"
+                                except Exception as err:
+                                    manager.status[cam_id] = "error"
+                                    logger.error(f"Error starting camera process '{cam_id}': {err}")
+                                    
+                    except Exception as reload_err:
+                        logger.error(f"Failed to reload cameras config: {reload_err}")
+                        
     except Exception as e:
         logger.error(f"Camera Capture failed: {e}")
         sys.exit(1)
