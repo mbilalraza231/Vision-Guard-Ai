@@ -132,6 +132,12 @@ export default function Cameras() {
   const stopMutation = useMutation({
     mutationFn: (id: string) => apiService.postData(API_ENDPOINTS.cameras.stop(id)),
     onSuccess: () => {
+      // Force-kill ALL pending HTTP connections (including the persistent MJPEG stream).
+      // This is the only reliable way to sever a chunked-transfer MJPEG connection
+      // that the browser's TCP pool keeps alive even after the <img> is removed from DOM.
+      window.stop();
+
+      // Re-fetch camera list (the window.stop() killed the previous in-flight fetch too)
       queryClient.invalidateQueries({ queryKey: ['cameras'] });
       toast.success('Camera stream stopped');
     },
