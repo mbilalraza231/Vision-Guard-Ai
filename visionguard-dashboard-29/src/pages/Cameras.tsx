@@ -146,8 +146,8 @@ export default function Cameras() {
                 Add Camera
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px] max-h-[85vh] flex flex-col">
-              <DialogHeader>
+            <DialogContent className="sm:max-w-[425px] max-h-[85vh] p-0 flex flex-col overflow-hidden">
+              <DialogHeader className="p-6 pb-3 border-b">
                 <DialogTitle>Add New Camera</DialogTitle>
                 <DialogDescription>
                   Configure a new camera source for VisionGuard AI monitoring.
@@ -166,95 +166,99 @@ export default function Cameras() {
                     enabled,
                   });
                 }}
-                className="flex-1 overflow-y-auto pr-2 space-y-4 py-2"
+                className="flex-1 flex flex-col overflow-hidden"
               >
-                <div className="space-y-2">
-                  <Label htmlFor="id">Camera ID (Slug)</Label>
-                  <Input
-                    id="id"
-                    placeholder="e.g. cam_front"
-                    value={cameraId}
-                    onChange={(e) => setCameraId(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="name">Camera Name</Label>
-                  <Input
-                    id="name"
-                    placeholder="e.g. Front Gate"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="source">Source (RTSP / HTTP / Path)</Label>
-                  <Input
-                    id="source"
-                    placeholder="rtsp://... or /app/video.mp4"
-                    value={source}
-                    onChange={(e) => setSource(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
+                {/* Scrollable Form Fields */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-4 max-h-[50vh]">
                   <div className="space-y-2">
-                    <Label htmlFor="fps">FPS (1 - 30)</Label>
+                    <Label htmlFor="id">Camera ID (Slug)</Label>
                     <Input
-                      id="fps"
-                      type="number"
-                      min={1}
-                      max={30}
-                      value={fps}
-                      onChange={(e) => setFps(parseInt(e.target.value))}
+                      id="id"
+                      placeholder="e.g. cam_front"
+                      value={cameraId}
+                      onChange={(e) => setCameraId(e.target.value)}
+                      required
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="priority">Priority</Label>
-                    <select
-                      id="priority"
-                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 text-foreground"
-                      value={priority}
-                      onChange={(e) => setPriority(e.target.value)}
-                    >
-                      <option value="critical">Critical</option>
-                      <option value="high">High</option>
-                      <option value="medium">Medium</option>
-                      <option value="low">Low</option>
-                    </select>
+                    <Label htmlFor="name">Camera Name</Label>
+                    <Input
+                      id="name"
+                      placeholder="e.g. Front Gate"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="source">Source (RTSP / HTTP / Path)</Label>
+                    <Input
+                      id="source"
+                      placeholder="rtsp://... or /app/video.mp4"
+                      value={source}
+                      onChange={(e) => setSource(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="fps">FPS (1 - 30)</Label>
+                      <Input
+                        id="fps"
+                        type="number"
+                        min={1}
+                        max={30}
+                        value={fps}
+                        onChange={(e) => setFps(parseInt(e.target.value))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="priority">Priority</Label>
+                      <select
+                        id="priority"
+                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 text-foreground"
+                        value={priority}
+                        onChange={(e) => setPriority(e.target.value)}
+                      >
+                        <option value="critical">Critical</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="motion">Motion Threshold (0.01 - 1.0)</Label>
+                    <Input
+                      id="motion"
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      max="1.0"
+                      value={motionThreshold}
+                      onChange={(e) => setMotionThreshold(parseFloat(e.target.value))}
+                    />
+                  </div>
+                  
+                  <div className="flex items-center space-x-2 pt-2">
+                    <input
+                      type="checkbox"
+                      id="enabled"
+                      checked={enabled}
+                      onChange={(e) => setEnabled(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                    />
+                    <Label htmlFor="enabled">Enable camera immediately</Label>
                   </div>
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="motion">Motion Threshold (0.01 - 1.0)</Label>
-                  <Input
-                    id="motion"
-                    type="number"
-                    step="0.01"
-                    min="0.01"
-                    max="1.0"
-                    value={motionThreshold}
-                    onChange={(e) => setMotionThreshold(parseFloat(e.target.value))}
-                  />
-                </div>
                 
-                <div className="flex items-center space-x-2 pt-2">
-                  <input
-                    type="checkbox"
-                    id="enabled"
-                    checked={enabled}
-                    onChange={(e) => setEnabled(e.target.checked)}
-                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
-                  />
-                  <Label htmlFor="enabled">Enable camera immediately</Label>
-                </div>
-                
-                <DialogFooter className="pt-4">
+                {/* Fixed Footer */}
+                <div className="p-6 border-t bg-muted/30">
                   <Button
                     type="submit"
                     disabled={registerMutation.isPending}
-                    className="w-full"
+                    className="w-full font-semibold"
                   >
                     {registerMutation.isPending ? (
                       <>
@@ -265,7 +269,7 @@ export default function Cameras() {
                       'Save Camera'
                     )}
                   </Button>
-                </DialogFooter>
+                </div>
               </form>
             </DialogContent>
           </Dialog>
