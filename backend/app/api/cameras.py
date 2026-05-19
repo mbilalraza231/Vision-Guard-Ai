@@ -237,6 +237,11 @@ async def start_camera(
         from ..core.database import db
         await db.execute("UPDATE cameras SET enabled = TRUE WHERE id = $1", camera_id)
         await camera_manager.sync_db_to_json()
+        
+        # Also update in-memory state so metrics immediately reflect the change
+        if camera_id in camera_manager._cameras:
+            camera_manager._cameras[camera_id].enabled = True
+            
     except Exception as e:
         logger.error(f"Failed to enable camera in DB: {e}")
         
@@ -275,6 +280,11 @@ async def stop_camera(
         from ..core.database import db
         await db.execute("UPDATE cameras SET enabled = FALSE WHERE id = $1", camera_id)
         await camera_manager.sync_db_to_json()
+        
+        # Also update in-memory state so metrics immediately reflect the change
+        if camera_id in camera_manager._cameras:
+            camera_manager._cameras[camera_id].enabled = False
+            
     except Exception as e:
         logger.error(f"Failed to disable camera in DB: {e}")
         
