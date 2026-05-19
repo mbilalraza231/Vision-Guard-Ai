@@ -30,13 +30,13 @@ interface BackendCamera {
   priority: string;
   enabled: boolean;
   motion_threshold: number;
-  status: 'running' | 'stopped' | 'unknown';
+  status: 'running' | 'stopped' | 'unknown' | 'online' | 'offline';
   pid: number | null;
 }
 
 // Map backend camera to frontend Camera type
 function adaptCamera(cam: BackendCamera): Camera & { enabled: boolean; source: string; priority: string; motionThreshold: number; fps: number } {
-  const isOnline = cam.enabled && cam.status === 'running';
+  const isOnline = cam.enabled && (cam.status === 'running' || cam.status === 'online');
   return {
     id: cam.id,
     name: cam.name,

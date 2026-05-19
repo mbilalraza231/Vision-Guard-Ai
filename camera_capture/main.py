@@ -151,6 +151,8 @@ def main():
             port=int(os.getenv("REDIS_PORT", "6379")),
             decode_responses=True,
         )
+        # Clear the old hash to prevent stale/deleted cameras from persisting across restarts!
+        _r.delete("vg:camera:sources")
         for cam in cameras:
             _r.hset("vg:camera:sources", cam.camera_id, cam.rtsp_url)
         logger.info(
