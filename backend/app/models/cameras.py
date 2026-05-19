@@ -42,6 +42,27 @@ class CameraRegisterRequest(BaseModel):
         description="Motion detection threshold"
     )
 
+    @field_validator("rtsp_url")
+    @classmethod
+    def validate_rtsp_url(cls, v: str) -> str:
+        import re
+        from urllib.parse import urlparse, urlunparse
+        
+        v = v.strip()
+        # 1. Correct IP address with dot-port typo, e.g., 192.168.0.101.8080 -> 192.168.0.101:8080
+        v = re.sub(r'(\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\.(\d+)\b', r'\1:\2', v)
+        
+        # 2. If it is http/https URL and has no path, auto-append /video
+        if v.startswith(('http://', 'https://')):
+            try:
+                parsed = urlparse(v)
+                if not parsed.path or parsed.path == '/':
+                    parsed = parsed._replace(path='/video')
+                    v = urlunparse(parsed)
+            except Exception:
+                pass
+        return v
+
 
 
 class CameraResponse(BaseModel):
