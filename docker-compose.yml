@@ -147,6 +147,7 @@ services:
       - VG_POSTGRES_PORT=5432
       - SHARED_FRAMES_DIR=/shared-frames
       - VG_STORAGE_TOTAL_MB=512000
+      - CAMERA_CONFIG_PATH=/app/cameras.json
     depends_on:
       redis:
         condition: service_healthy
