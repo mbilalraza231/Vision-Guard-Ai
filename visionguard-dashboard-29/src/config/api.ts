@@ -44,6 +44,7 @@ export const API_ENDPOINTS = {
     start: (id: string) => `/cameras/${id}/start`,
     stop: (id: string) => `/cameras/${id}/stop`,
     register: '/cameras/register',
+    delete: (id: string) => `/cameras/${id}`,
   },
 
   // ECS endpoints

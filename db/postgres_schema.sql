@@ -66,3 +66,16 @@ CREATE TABLE IF NOT EXISTS alert_contacts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_contacts_active ON alert_contacts(is_active);
+
+-- Cameras Table
+CREATE TABLE IF NOT EXISTS cameras (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    source TEXT NOT NULL,
+    fps INTEGER NOT NULL DEFAULT 5,
+    motion_threshold DOUBLE PRECISION NOT NULL DEFAULT 0.02,
+    priority TEXT NOT NULL DEFAULT 'medium',
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at DOUBLE PRECISION NOT NULL
+);
+

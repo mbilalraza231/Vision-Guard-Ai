@@ -130,7 +130,7 @@ services:
       - .:/app:rw
       - vg-data:/data/visionguard
       - vg-logs:/var/log/visionguard
-      - ./cameras.json:/app/cameras.json:ro
+      - ./cameras.json:/app/cameras.json:rw
       - vg-frames:/shared-frames
     environment:
       - VG_HOST=0.0.0.0
@@ -273,7 +273,7 @@ services:
       - vg-logs:/var/log/visionguard
       - vg-frames:/shared-frames
       - ./test-video.mp4:/app/test-video.mp4:ro
-      - ./cameras.json:/app/cameras.json:ro
+      - ./cameras.json:/app/cameras.json:rw
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379

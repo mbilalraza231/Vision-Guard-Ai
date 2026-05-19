@@ -16,8 +16,20 @@ class CameraRegisterRequest(BaseModel):
         description="Unique camera identifier"
     )
     rtsp_url: str = Field(
-        min_length=10,
-        description="RTSP stream URL"
+        min_length=3,
+        description="Camera stream URL or source path"
+    )
+    name: Optional[str] = Field(
+        default=None,
+        description="Friendly name of the camera"
+    )
+    priority: Optional[str] = Field(
+        default="medium",
+        description="Camera priority (critical | high | medium | low)"
+    )
+    enabled: Optional[bool] = Field(
+        default=True,
+        description="Whether the camera is enabled"
     )
     fps: Optional[int] = Field(
         default=5,
@@ -29,13 +41,7 @@ class CameraRegisterRequest(BaseModel):
         ge=0.0, le=1.0,
         description="Motion detection threshold"
     )
-    
-    @field_validator('rtsp_url')
-    @classmethod
-    def validate_rtsp_url(cls, v: str) -> str:
-        if not v.startswith(('rtsp://', 'rtsps://')):
-            raise ValueError('URL must start with rtsp:// or rtsps://')
-        return v
+
 
 
 class CameraResponse(BaseModel):

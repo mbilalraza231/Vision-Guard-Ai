@@ -38,25 +38,31 @@ async def list_cameras(
     camera_manager: CameraManager = Depends(get_camera_manager)
 ) -> List[dict]:
     """
-    Get all cameras from cameras.json merged with runtime status.
-
-    Returns camera config (name, source, fps, priority, enabled) merged
-    with runtime state (running/stopped/unknown, pid).
-    In Docker mode, also checks Redis vg:camera:sources to detect
-    which cameras the camera container is actively streaming.
+    Get all cameras from PostgreSQL merged with runtime status.
+    
+    If the database is empty, it seeds it from cameras.json first.
     """
-    # Read cameras.json
+    # Seed database if empty
+    await camera_manager.seed_from_json_if_empty()
+
+    # Read from database
     cameras_config = []
     try:
-        if CAMERAS_JSON_PATH.exists():
-            with open(CAMERAS_JSON_PATH, "r") as f:
-                data = json.load(f)
-                cameras_config = data.get("cameras", [])
-        else:
-            logger.warning(f"cameras.json not found at {CAMERAS_JSON_PATH}")
-    except (json.JSONDecodeError, OSError) as e:
-        logger.error(f"Failed to read cameras.json: {e}")
-        return []
+        from ..core.database import db
+        cameras_config = await db.fetch_all("SELECT id, name, source, fps, priority, enabled FROM cameras ORDER BY id ASC")
+    except Exception as e:
+        logger.error(f"Failed to fetch cameras from database: {e}")
+        # Fallback to loading from cameras.json
+        try:
+            if CAMERAS_JSON_PATH.exists():
+                with open(CAMERAS_JSON_PATH, "r") as f:
+                    data = json.load(f)
+                    cameras_config = data.get("cameras", [])
+            else:
+                logger.warning(f"cameras.json not found at {CAMERAS_JSON_PATH}")
+        except (json.JSONDecodeError, OSError) as err:
+            logger.error(f"Failed to read cameras.json: {err}")
+            return []
 
     # Get runtime status from camera_manager (local process mode)
     runtime_status = camera_manager.get_all_status()
@@ -86,7 +92,7 @@ async def list_cameras(
     # Merge config with runtime status
     result = []
     for cam in cameras_config:
-        cam_id = cam.get("id", "")
+        cam_id = cam.get("id") or cam.get("camera_id") or ""
         runtime = runtime_cameras.get(cam_id)
 
         if runtime is not None:
@@ -108,7 +114,7 @@ async def list_cameras(
         result.append({
             "id": cam_id,
             "name": cam.get("name", cam_id),
-            "source": cam.get("source", ""),
+            "source": cam.get("source", cam.get("rtsp_url", "")),
             "fps": cam.get("fps", 5),
             "priority": cam.get("priority", "medium"),
             "enabled": cam.get("enabled", True),
@@ -125,28 +131,62 @@ async def register_camera(
     camera_manager: CameraManager = Depends(get_camera_manager)
 ) -> CameraResponse:
     """
-    Register a new camera.
-    
-    Camera must be registered before it can be started.
-    Registration validates the camera configuration but does not
-    connect to the stream.
+    Register a new camera in the database.
     """
-    logger.info(f"Registering camera: {request.camera_id}")
+    logger.info(f"Registering camera in database: {request.camera_id}")
     
-    result = camera_manager.register(
-        camera_id=request.camera_id,
-        rtsp_url=request.rtsp_url,
-        fps=request.fps,
-        motion_threshold=request.motion_threshold
-    )
-    
-    if not result["success"]:
-        raise HTTPException(
-            status_code=400,
-            detail=result["message"]
+    try:
+        from ..core.database import db
+        import time
+        await db.execute(
+            """
+            INSERT INTO cameras (id, name, source, fps, motion_threshold, priority, enabled, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (id) DO UPDATE 
+            SET name = EXCLUDED.name, source = EXCLUDED.source, fps = EXCLUDED.fps, 
+                motion_threshold = EXCLUDED.motion_threshold, priority = EXCLUDED.priority, 
+                enabled = EXCLUDED.enabled
+            """,
+            request.camera_id,
+            request.name or request.camera_id,
+            request.rtsp_url,
+            request.fps or 5,
+            request.motion_threshold or 0.02,
+            request.priority or "medium",
+            request.enabled if request.enabled is not None else True,
+            time.time()
         )
-    
-    return CameraResponse(**result)
+        
+        # Sync database to cameras.json
+        await camera_manager.sync_db_to_json()
+        
+        # Also register in local memory config of camera_manager for runtime
+        camera_manager.register(
+            camera_id=request.camera_id,
+            rtsp_url=request.rtsp_url,
+            fps=request.fps,
+            motion_threshold=request.motion_threshold
+        )
+        
+        return CameraResponse(
+            success=True,
+            message=f"Camera {request.camera_id} registered successfully",
+            camera={
+                "id": request.camera_id,
+                "name": request.name or request.camera_id,
+                "source": request.rtsp_url,
+                "fps": request.fps or 5,
+                "motion_threshold": request.motion_threshold or 0.02,
+                "priority": request.priority or "medium",
+                "enabled": request.enabled if request.enabled is not None else True
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to register camera: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error: {e}"
+        )
 
 
 @router.delete("/{camera_id}", response_model=CameraResponse)
@@ -155,21 +195,30 @@ async def unregister_camera(
     camera_manager: CameraManager = Depends(get_camera_manager)
 ) -> CameraResponse:
     """
-    Unregister a camera.
-    
-    Camera must be stopped before unregistering.
+    Unregister/delete a camera from the database.
     """
-    logger.info(f"Unregistering camera: {camera_id}")
+    logger.info(f"Unregistering camera from database: {camera_id}")
     
-    result = camera_manager.unregister(camera_id)
-    
-    if not result["success"]:
-        raise HTTPException(
-            status_code=400,
-            detail=result["message"]
+    try:
+        from ..core.database import db
+        await db.execute("DELETE FROM cameras WHERE id = $1", camera_id)
+        
+        # Sync database to cameras.json
+        await camera_manager.sync_db_to_json()
+        
+        # Also unregister in-memory
+        camera_manager.unregister(camera_id)
+        
+        return CameraResponse(
+            success=True,
+            message=f"Camera {camera_id} deleted successfully"
         )
-    
-    return CameraResponse(**result)
+    except Exception as e:
+        logger.error(f"Failed to delete camera: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error: {e}"
+        )
 
 
 @router.post("/{camera_id}/start", response_model=CameraResponse)
@@ -178,19 +227,32 @@ async def start_camera(
     camera_manager: CameraManager = Depends(get_camera_manager)
 ) -> CameraResponse:
     """
-    Start a registered camera.
-    
-    Begins capturing frames from the RTSP stream and processing
-    through the motion detection pipeline.
+    Start a registered camera (enables it in DB and starts capture process).
     """
-    logger.info(f"Starting camera: {camera_id}")
+    logger.info(f"Starting/Enabling camera: {camera_id}")
     
+    # Update enabled status in Postgres
+    try:
+        from ..core.database import db
+        await db.execute("UPDATE cameras SET enabled = TRUE WHERE id = $1", camera_id)
+        await camera_manager.sync_db_to_json()
+    except Exception as e:
+        logger.error(f"Failed to enable camera in DB: {e}")
+        
     result = await camera_manager.start_camera(camera_id)
     
+    # If starting via local processes is disabled (Docker mode), we return success anyway
+    # because we successfully enabled it in the configuration (cameras.json)
+    if not result["success"] and "disabled in docker" in result["message"].lower():
+        return CameraResponse(
+            success=True,
+            message=f"Camera {camera_id} enabled for Docker runtime. Restart the camera service to apply.",
+            camera={"id": camera_id, "enabled": True}
+        )
+    
     if not result["success"]:
-        status_code = 409 if "disabled in docker runtime mode" in result["message"].lower() else 500
         raise HTTPException(
-            status_code=status_code,
+            status_code=500,
             detail=result["message"]
         )
     
@@ -203,18 +265,32 @@ async def stop_camera(
     camera_manager: CameraManager = Depends(get_camera_manager)
 ) -> CameraResponse:
     """
-    Stop a running camera.
-    
-    Gracefully stops the camera capture process.
+    Stop a running camera (disables it in DB and stops capture process).
     """
-    logger.info(f"Stopping camera: {camera_id}")
+    logger.info(f"Stopping/Disabling camera: {camera_id}")
     
+    # Update enabled status in Postgres
+    try:
+        from ..core.database import db
+        await db.execute("UPDATE cameras SET enabled = FALSE WHERE id = $1", camera_id)
+        await camera_manager.sync_db_to_json()
+    except Exception as e:
+        logger.error(f"Failed to disable camera in DB: {e}")
+        
     result = await camera_manager.stop_camera(camera_id)
     
+    # If stopping via local processes is disabled (Docker mode), we return success anyway
+    # because we successfully disabled it in the configuration (cameras.json)
+    if not result["success"] and "disabled in docker" in result["message"].lower():
+        return CameraResponse(
+            success=True,
+            message=f"Camera {camera_id} disabled for Docker runtime. Restart the camera service to apply.",
+            camera={"id": camera_id, "enabled": False}
+        )
+    
     if not result["success"]:
-        status_code = 409 if "disabled in docker runtime mode" in result["message"].lower() else 500
         raise HTTPException(
-            status_code=status_code,
+            status_code=500,
             detail=result["message"]
         )
     

@@ -78,8 +78,8 @@ export function Sidebar() {
       >
         {/* Logo */}
         <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-4">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-            <Camera className="h-5 w-5 text-primary" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg overflow-hidden">
+            <img src="/favicon.png" alt="VisionGuard AI Logo" className="h-full w-full object-cover" />
           </div>
           {!isCollapsed && (
             <div className="flex flex-col">

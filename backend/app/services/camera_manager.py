@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
 from ..core.config import get_settings
+from ..core.database import db
 from ..utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -444,6 +445,99 @@ class CameraManager:
             "service_alive": is_service_alive if settings.is_docker_runtime else None
         }
     
+    async def sync_db_to_json(self) -> None:
+        """Write all cameras in the database to cameras.json to keep them in sync."""
+        import json
+        config_path = os.environ.get("CAMERA_CONFIG_PATH", "cameras.json")
+        if not os.path.isabs(config_path):
+            config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), config_path)
+            
+        try:
+            # Fetch all cameras from database
+            rows = await db.fetch_all("SELECT id, name, source, fps, motion_threshold, priority, enabled FROM cameras ORDER BY id ASC")
+            cameras_list = []
+            for r in rows:
+                cameras_list.append({
+                    "id": r["id"],
+                    "name": r["name"],
+                    "source": r["source"],
+                    "fps": r["fps"],
+                    "motion_threshold": r["motion_threshold"],
+                    "priority": r["priority"],
+                    "enabled": r["enabled"]
+                })
+            
+            # Read current cameras.json to preserve global and ip_camera sections
+            global_conf = {"motion_detection": True, "default_fps": 5, "reconnect_delay_sec": 5}
+            ip_camera_conf = {"username": "YOUR_USERNAME", "password": "YOUR_PASSWORD", "ip_address": "192.168.X.X", "port": 554}
+            
+            if os.path.exists(config_path):
+                try:
+                    with open(config_path, "r") as f:
+                        curr = json.load(f)
+                        if "global" in curr:
+                            global_conf = curr["global"]
+                        if "ip_camera" in curr:
+                            ip_camera_conf = curr["ip_camera"]
+                except Exception:
+                    pass
+                    
+            output_data = {
+                "cameras": cameras_list,
+                "global": global_conf,
+                "ip_camera": ip_camera_conf
+            }
+            
+            with open(config_path, "w") as f:
+                json.dump(output_data, f, indent=4)
+            self.logger.info(f"Synchronized database cameras to {config_path}")
+        except Exception as e:
+            self.logger.error(f"Failed to sync database to cameras.json: {e}")
+
+    async def seed_from_json_if_empty(self) -> None:
+        """If database cameras are empty, seed them from cameras.json."""
+        try:
+            # Seed from JSON
+            import json
+            import time
+            config_path = os.environ.get("CAMERA_CONFIG_PATH", "cameras.json")
+            if not os.path.isabs(config_path):
+                config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), config_path)
+                
+            if os.path.exists(config_path):
+                # Check if actually empty
+                existing = await db.fetch_all("SELECT id FROM cameras LIMIT 1")
+                if existing:
+                    return
+                    
+                self.logger.info(f"Seeding cameras table from {config_path}...")
+                with open(config_path, "r") as f:
+                    data = json.load(f)
+                    cameras_data = data.get("cameras", [])
+                        
+                    for c in cameras_data:
+                        cid = c.get("id") or c.get("camera_id")
+                        if not cid:
+                            continue
+                        await db.execute(
+                            """
+                            INSERT INTO cameras (id, name, source, fps, motion_threshold, priority, enabled, created_at)
+                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                            ON CONFLICT (id) DO NOTHING
+                            """,
+                            cid,
+                            c.get("name", cid),
+                            c.get("source", c.get("rtsp_url", "")),
+                            c.get("fps", 5),
+                            c.get("motion_threshold", 0.02),
+                            c.get("priority", "medium"),
+                            c.get("enabled", True),
+                            time.time()
+                        )
+                self.logger.info("Database seeding completed.")
+        except Exception as e:
+            self.logger.error(f"Failed to seed database from cameras.json: {e}")
+
     def list_cameras(self) -> List[str]:
         """Get list of registered camera IDs."""
         return list(self._cameras.keys())
