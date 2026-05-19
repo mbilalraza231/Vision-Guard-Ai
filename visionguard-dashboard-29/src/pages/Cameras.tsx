@@ -166,10 +166,10 @@ export default function Cameras() {
                     enabled,
                   });
                 }}
-                className="flex-1 flex flex-col overflow-hidden"
+                className="flex-1 flex flex-col min-h-0 overflow-hidden"
               >
                 {/* Scrollable Form Fields */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-4 max-h-[50vh]">
+                <div className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0">
                   <div className="space-y-2">
                     <Label htmlFor="id">Camera ID (Slug)</Label>
                     <Input
