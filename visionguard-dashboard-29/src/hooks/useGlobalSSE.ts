@@ -56,14 +56,43 @@ export function useGlobalSSE() {
         if (payload.recentEvents) {
           queryClient.setQueryData(['dashboard-recent-events'], payload.recentEvents);
 
-          // SSE-driven Incidents page refresh:
-          // If the total event count has grown since last SSE tick, a new incident
-          // has arrived. Invalidate the Incidents query so it silently re-fetches
-          // with the user's current filters still intact (HTTP GET, stateless).
           const newTotal: number = payload.recentEvents?.total ?? 0;
-          if (lastEventTotal.current !== null && newTotal > lastEventTotal.current) {
-            console.log(`[Global SSE] New event detected (${lastEventTotal.current} → ${newTotal}). Refreshing Incidents table.`);
-            queryClient.invalidateQueries({ queryKey: ['incidents'] });
+          const newestEvent = payload.recentEvents?.events?.[0]; // Full event object from SSE
+
+          if (lastEventTotal.current !== null && newTotal > lastEventTotal.current && newestEvent) {
+            console.log(`[Global SSE] New event detected (${lastEventTotal.current} → ${newTotal}). Injecting directly into cache (no HTTP).`);
+
+            // Level 3: Incremental Cache Shift
+            // Find ALL active incidents queries in the cache (any filter/page combo).
+            // For page-1 queries: inject the new event at the top + pop the 50th item off.
+            // For page 2+ queries: just update the total count so pagination math stays correct.
+            // No HTTP request is made regardless of which page the user is on.
+            const allIncidentQueries = queryClient.getQueriesData<any>({ queryKey: ['incidents'] });
+
+            for (const [queryKey, queryData] of allIncidentQueries) {
+              if (!queryData) continue;
+
+              // queryKey shape: ['incidents', filters, page]
+              const pageInKey = queryKey[2] ?? 1;
+
+              if (pageInKey === 1) {
+                // Page 1: prepend new event, drop the 50th item (it logically moves to page 2)
+                const currentEvents: any[] = queryData.events ?? [];
+                const updatedEvents = [newestEvent, ...currentEvents].slice(0, 50);
+                queryClient.setQueryData(queryKey, {
+                  ...queryData,
+                  total: newTotal,
+                  events: updatedEvents,
+                });
+              } else {
+                // Page 2+: user is not watching page 1, just update the total count
+                // so the pagination "Showing X–Y of Z" counter and Next/Prev buttons stay accurate.
+                queryClient.setQueryData(queryKey, {
+                  ...queryData,
+                  total: newTotal,
+                });
+              }
+            }
           }
           lastEventTotal.current = newTotal;
         }
