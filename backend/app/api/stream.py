@@ -53,8 +53,10 @@ async def global_event_generator(
             boxes_data = await get_live_boxes(limit=50)
 
             # 6. Alert History (Used by AlertContacts for count monitoring)
+            # limit=1: Only fetch the single newest alert. SSE uses it for Level 3 cache injection.
+            # The actual paginated history is loaded via HTTP GET in AlertContacts.tsx.
             alert_repo = AlertRepository()
-            alerts_data = await alert_repo.list_alerts(limit=0)
+            alerts_data = await alert_repo.list_alerts(limit=1)
 
             # Combine everything
             payload = {

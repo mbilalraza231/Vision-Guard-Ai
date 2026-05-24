@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/select';
 import {
   Bell, Mail, Phone, Plus, Trash2, Search, UserCheck, Shield, History,
-  ExternalLink, CheckCircle2, Clock, XCircle, AlertCircle, Filter, Edit2
+  ExternalLink, CheckCircle2, Clock, XCircle, AlertCircle, Filter, Edit2, Download
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { apiService } from '@/services/api.service';
@@ -32,6 +32,12 @@ const STORAGE_KEY = 'vg:dashboard:settings';
 export default function AlertContacts() {
   const [activeTab, setActiveTab] = useState<'contacts' | 'history'>('contacts');
   const [historyPage, setHistoryPage] = useState(1);
+  const [historyFilters, setHistoryFilters] = useState({
+    status: 'all',
+    severity: 'all',
+    channel: 'all',
+    timePeriod: 'all',
+  });
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedRecipientId, setSelectedRecipientId] = useState<string | null>(null);
   const [newRecipient, setNewRecipient] = useState({
@@ -134,13 +140,42 @@ export default function AlertContacts() {
     (r.phone && r.phone.includes(searchQuery))
   );
 
-  // Load Alert History from Backend — now powered by Signal-to-Fetch Hybrid (SSE + HTTP)
+  const handleHistoryFilterChange = (newFilters: typeof historyFilters) => {
+    setHistoryFilters(newFilters);
+    setHistoryPage(1); // Reset to page 1 on filter change
+  };
+
+  const handleHistoryExport = () => {
+    if (!alerts || alerts.length === 0) return;
+    const header = ['ID', 'Time', 'Recipient', 'Channel', 'Status', 'Error'].join(',');
+    const rows = alerts.map((a: any) => [
+      a.id,
+      new Date(a.created_at * 1000).toLocaleString(),
+      a.recipient || 'Unknown',
+      a.channel || '',
+      a.status || '',
+      a.error_message || ''
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
+    const csv = [header, ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `alert-history-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Load Alert History from Backend — now powered by Level 3 Incremental Cache Shift (SSE + HTTP)
+  const historyQueryParams: Record<string, string> = { limit: '50', offset: ((historyPage - 1) * 50).toString() };
+  if (historyFilters.status !== 'all') historyQueryParams.status = historyFilters.status;
+  if (historyFilters.severity !== 'all') historyQueryParams.severity = historyFilters.severity;
+  if (historyFilters.channel !== 'all') historyQueryParams.channel = historyFilters.channel;
+  if (historyFilters.timePeriod !== 'all') historyQueryParams.time_period = historyFilters.timePeriod;
+
   const { data: alertHistory, isLoading: historyLoading } = useQuery({
-    queryKey: ['alert-history', historyPage],
-    queryFn: () => apiService.getData<any>(API_ENDPOINTS.alerts.list, { 
-      limit: '50', 
-      offset: ((historyPage - 1) * 50).toString() 
-    }),
+    queryKey: ['alert-history', historyPage, historyFilters],
+    queryFn: () => apiService.getData<any>(API_ENDPOINTS.alerts.list, historyQueryParams),
     enabled: activeTab === 'history',
   });
 
@@ -313,6 +348,60 @@ export default function AlertContacts() {
           </div>
         ) : (
           <div className="animate-fade-in">
+            {/* History Filters Toolbar */}
+            <div className="flex flex-wrap items-center gap-3 mb-4">
+              <select
+                value={historyFilters.status}
+                onChange={e => handleHistoryFilterChange({ ...historyFilters, status: e.target.value })}
+                className="h-8 text-xs rounded-lg bg-secondary/50 border border-border/50 px-2 text-foreground cursor-pointer"
+              >
+                <option value="all">All Statuses</option>
+                <option value="sent">Sent</option>
+                <option value="failed">Failed</option>
+                <option value="pending">Pending</option>
+              </select>
+              <select
+                value={historyFilters.severity}
+                onChange={e => handleHistoryFilterChange({ ...historyFilters, severity: e.target.value })}
+                className="h-8 text-xs rounded-lg bg-secondary/50 border border-border/50 px-2 text-foreground cursor-pointer"
+              >
+                <option value="all">All Severities</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+              </select>
+              <select
+                value={historyFilters.channel}
+                onChange={e => handleHistoryFilterChange({ ...historyFilters, channel: e.target.value })}
+                className="h-8 text-xs rounded-lg bg-secondary/50 border border-border/50 px-2 text-foreground cursor-pointer"
+              >
+                <option value="all">All Channels</option>
+                <option value="whatsapp">WhatsApp</option>
+                <option value="email">Email</option>
+                <option value="multi-channel">Multi-Channel</option>
+              </select>
+              <select
+                value={historyFilters.timePeriod}
+                onChange={e => handleHistoryFilterChange({ ...historyFilters, timePeriod: e.target.value })}
+                className="h-8 text-xs rounded-lg bg-secondary/50 border border-border/50 px-2 text-foreground cursor-pointer"
+              >
+                <option value="all">All Time</option>
+                <option value="24h">Last 24 Hours</option>
+                <option value="7days">Last 7 Days</option>
+                <option value="30days">Last 30 Days</option>
+              </select>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs gap-1.5 ml-auto"
+                onClick={handleHistoryExport}
+                disabled={!alerts || alerts.length === 0}
+              >
+                <Download className="h-3.5 w-3.5" />
+                Export CSV
+              </Button>
+            </div>
+
             <div className="flex justify-end mb-3 px-2">
               <div className="flex items-center gap-4 text-[10px] uppercase font-bold tracking-widest text-muted-foreground/60">
                 <div className="flex items-center gap-1.5">

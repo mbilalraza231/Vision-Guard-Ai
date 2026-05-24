@@ -13,6 +13,8 @@ export function useGlobalSSE() {
   const isConnected = useRef(false);
   // Track the last known event total to detect genuinely new events
   const lastEventTotal = useRef<number | null>(null);
+  // Track the last known alert total to detect genuinely new alerts
+  const lastAlertTotal = useRef<number | null>(null);
 
   useEffect(() => {
     // Only open one connection
@@ -103,8 +105,43 @@ export function useGlobalSSE() {
         }
 
         // 6. Alert History (Used by AlertContacts)
+        // Level 3: Incremental Cache Shift — same pattern as Incidents.
+        // SSE carries the newest alert object. We inject it into the page-1 cache directly.
+        // No HTTP request is made when a new alert arrives.
         if (payload.alerts) {
-          queryClient.setQueryData(['alert-history'], payload.alerts);
+          const newAlertTotal: number = payload.alerts?.total ?? 0;
+          const newestAlert = payload.alerts?.alerts?.[0]; // Newest alert object from SSE
+
+          if (lastAlertTotal.current !== null && newAlertTotal > lastAlertTotal.current && newestAlert) {
+            console.log(`[Global SSE] New alert detected (${lastAlertTotal.current} → ${newAlertTotal}). Injecting directly into cache (no HTTP).`);
+
+            const allAlertQueries = queryClient.getQueriesData<any>({ queryKey: ['alert-history'] });
+
+            for (const [queryKey, queryData] of allAlertQueries) {
+              if (!queryData) continue;
+
+              // queryKey shape: ['alert-history', page]
+              const pageInKey = queryKey[1] ?? 1;
+
+              if (pageInKey === 1) {
+                // Page 1: prepend new alert, drop the 50th item off the bottom
+                const currentAlerts: any[] = queryData.alerts ?? [];
+                const updatedAlerts = [newestAlert, ...currentAlerts].slice(0, 50);
+                queryClient.setQueryData(queryKey, {
+                  ...queryData,
+                  total: newAlertTotal,
+                  alerts: updatedAlerts,
+                });
+              } else {
+                // Page 2+: just update total count so pagination counters stay accurate
+                queryClient.setQueryData(queryKey, {
+                  ...queryData,
+                  total: newAlertTotal,
+                });
+              }
+            }
+          }
+          lastAlertTotal.current = newAlertTotal;
         }
 
       } catch (err) {
