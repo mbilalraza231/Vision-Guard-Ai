@@ -13,6 +13,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useProfile } from '@/hooks/useProfile';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
+import { useQuery } from '@tanstack/react-query';
+import { apiService } from '@/services/api.service';
 
 interface HeaderProps {
   title?: string;
@@ -24,6 +26,15 @@ export function Header({ title, showDateNav = true }: HeaderProps) {
   const { data: user } = useProfile();
   const navigate = useNavigate();
   const today = new Date();
+
+  // Fetch count of recent alerts in the last 24 hours
+  const { data: notificationData } = useQuery({
+    queryKey: ['header-notifications'],
+    queryFn: () => apiService.getData<{ total: number; events: any[] }>('/events', { time_period: '24h', limit: '5' }),
+    staleTime: 1000 * 30, // 30 seconds
+    refetchInterval: 1000 * 30, // Poll every 30 seconds
+    enabled: !!user,
+  });
 
   const handleLogout = async () => {
     await logout();
@@ -62,13 +73,62 @@ export function Header({ title, showDateNav = true }: HeaderProps) {
           </div>
         )}
 
-        {/* Notifications */}
-        <Button variant="ghost" size="icon" className="relative">
-          <Bell className="h-5 w-5" />
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-severity-critical text-[10px] font-medium text-white">
-            4
-          </span>
-        </Button>
+        {/* Notifications Dropdown */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="relative">
+              <Bell className="h-5 w-5" />
+              {notificationData && notificationData.total > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-severity-critical text-[10px] font-medium text-white animate-pulse">
+                  {notificationData.total}
+                </span>
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-80 bg-[#0f1117] border-white/10 text-white shadow-2xl">
+            <DropdownMenuLabel className="flex items-center justify-between">
+              <span>Recent Alerts (24h)</span>
+              <span className="text-[10px] font-normal text-muted-foreground bg-white/5 px-2 py-0.5 rounded">
+                {notificationData?.total ?? 0} active
+              </span>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator className="bg-white/10" />
+            {notificationData?.events && notificationData.events.length > 0 ? (
+              <>
+                {notificationData.events.map((event) => (
+                  <DropdownMenuItem
+                    key={event.id}
+                    className="flex flex-col items-start gap-1 p-3 cursor-pointer hover:bg-white/5 focus:bg-white/5"
+                    onClick={() => navigate(`/incidents/${event.id}`)}
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <span className="text-xs font-semibold capitalize text-severity-high">
+                        {event.event_type} Detected
+                      </span>
+                      <span className="text-[10px] text-muted-foreground font-mono">
+                        {new Date(event.start_ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground font-mono">
+                      Camera: {event.camera_id}
+                    </span>
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator className="bg-white/10" />
+                <DropdownMenuItem
+                  className="flex items-center justify-center text-xs text-primary font-medium py-2 cursor-pointer hover:bg-white/5 focus:bg-white/5"
+                  onClick={() => navigate('/incidents')}
+                >
+                  View All Incidents
+                </DropdownMenuItem>
+              </>
+            ) : (
+              <div className="py-6 text-center text-xs text-muted-foreground">
+                No new alerts in the last 24 hours.
+              </div>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         {/* User Menu */}
         <DropdownMenu>
