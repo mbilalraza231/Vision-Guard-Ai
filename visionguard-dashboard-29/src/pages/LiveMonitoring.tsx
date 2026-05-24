@@ -283,6 +283,7 @@ function CameraFeed({
 
 export default function LiveMonitoring() {
   const [liveFeedState, setLiveFeedState] = useState<Record<string, boolean>>({});
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Fetch real camera list from backend
   const { data: cameras, isLoading, error, refetch } = useQuery({
@@ -318,7 +319,15 @@ export default function LiveMonitoring() {
               {liveCameras.length} Camera{liveCameras.length !== 1 ? 's' : ''} Live
             </Badge>
           </div>
-          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => refetch()}>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="gap-1.5" 
+            onClick={() => {
+              refetch();
+              setRefreshKey(prev => prev + 1);
+            }}
+          >
             <RefreshCw className="h-3.5 w-3.5" />
             Refresh
           </Button>
@@ -347,7 +356,7 @@ export default function LiveMonitoring() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {enabledCameras.map(camera => (
               <CameraFeed
-                key={camera.id}
+                key={`${camera.id}-${refreshKey}`}
                 camera={camera}
                 onLoadStateChange={(isLive) =>
                   setLiveFeedState((current) => ({ ...current, [camera.id]: isLive }))
