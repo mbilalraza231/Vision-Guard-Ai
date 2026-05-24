@@ -14,7 +14,6 @@ import { useProfile } from '@/hooks/useProfile';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { useQuery } from '@tanstack/react-query';
-import { apiService } from '@/services/api.service';
 
 const eventConfigs: Record<string, { icon: any; color: string; label: string; bg: string; border: string }> = {
   fire: { icon: Flame, color: 'text-orange-500', label: 'Fire Detected', bg: 'bg-orange-500/10', border: 'border-orange-500/20' },
@@ -33,14 +32,12 @@ export function Header({ title, showDateNav = true }: HeaderProps) {
   const navigate = useNavigate();
   const today = new Date();
 
-  // Fetch count of recent alerts in the last 24 hours
-  const { data: notificationData } = useQuery({
-    queryKey: ['header-notifications'],
-    queryFn: () => apiService.getData<{ total: number; events: any[] }>('/events', { time_period: '24h', limit: '5' }),
-    staleTime: 1000 * 30, // 30 seconds
-    refetchInterval: 1000 * 30, // Poll every 30 seconds
-    enabled: !!user,
-  });
+  // Passively read from the SSE cache populated by useGlobalSSE (DashboardLayout).
+  // Zero HTTP requests — the global SSE stream already pushes recentEvents every 1.5s.
+  const { data: sseRecentEvents } = useQuery<{ total: number; events: any[] }>(
+    { queryKey: ['dashboard-recent-events'], enabled: false }
+  );
+  const notificationData = sseRecentEvents;
 
   const handleLogout = async () => {
     await logout();
