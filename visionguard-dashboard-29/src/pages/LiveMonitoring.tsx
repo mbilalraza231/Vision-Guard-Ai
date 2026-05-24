@@ -2,7 +2,7 @@ import { Header } from '@/components/layout/Header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { buildApiUrl, API_ENDPOINTS, API_CONFIG } from '@/config/api';
 import { apiService } from '@/services/api.service';
 import { RefreshCw, Camera, Loader2, Shield, Flame, PersonStanding, Maximize2, Minimize2 } from 'lucide-react';
@@ -130,6 +130,51 @@ function CameraFeed({
   const [hasError, setHasError] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
+  const queryClient = useQueryClient();
+
+  // Helper to auto-stop dead cameras so they instantly vanish from the grid
+  const handleDeadStream = () => {
+    if (hasError) return;
+    setHasError(true);
+    onLoadStateChange(false);
+    apiService.postData(API_ENDPOINTS.cameras.stop(camera.id)).finally(() => {
+      queryClient.invalidateQueries({ queryKey: ['cameras-list'] });
+      queryClient.invalidateQueries({ queryKey: ['cameras'] });
+    });
+  };
+
+  // Combo Approach: Active Health Polling
+  useEffect(() => {
+    if (hasError || !camera.source.startsWith('http')) return;
+
+    let isMounted = true;
+    const interval = setInterval(async () => {
+      if (!isMounted) return;
+      try {
+        const urlObj = new URL(camera.source);
+        const baseUrl = `${urlObj.protocol}//${urlObj.host}/`;
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        
+        await fetch(baseUrl, { 
+          mode: 'no-cors',
+          signal: controller.signal 
+        });
+        clearTimeout(timeoutId);
+      } catch (err) {
+        if (isMounted) {
+          console.warn(`CameraFeed ping failed for ${camera.name}, auto-stopping...`);
+          handleDeadStream();
+        }
+      }
+    }, 5000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [hasError, camera.source]);
 
   // Reset error when camera changes and cleanup active connection on unmount
   useEffect(() => {
@@ -165,8 +210,7 @@ function CameraFeed({
                 onLoadStateChange(true);
               }}
               onError={() => {
-                setHasError(true);
-                onLoadStateChange(false);
+                handleDeadStream();
               }}
             />
 

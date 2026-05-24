@@ -402,6 +402,43 @@ function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdi
     };
   }, [isHttpStream]);
 
+  // Combo Approach: Active Health Polling for MJPEG streams
+  // Browsers often hang indefinitely instead of firing onError when an MJPEG HTTP server dies abruptly.
+  useEffect(() => {
+    if (!isHttpStream || imageError) return;
+
+    let isMounted = true;
+    const interval = setInterval(async () => {
+      if (!isMounted) return;
+      try {
+        // We ping the root URL of the camera. 
+        // Using 'no-cors' prevents CORS errors from blocking the request,
+        // but still allows us to detect fundamental network/server failures.
+        const urlObj = new URL(camera.source);
+        const baseUrl = `${urlObj.protocol}//${urlObj.host}/`;
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3s timeout
+        
+        await fetch(baseUrl, { 
+          mode: 'no-cors',
+          signal: controller.signal 
+        });
+        clearTimeout(timeoutId);
+      } catch (err) {
+        if (isMounted) {
+          console.warn(`Camera ping failed for ${camera.name}, marking offline`, err);
+          setImageError(true);
+        }
+      }
+    }, 5000); // Ping every 5 seconds
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [isHttpStream, imageError, camera.source]);
+
   return (
     <div className="dashboard-card p-5 flex flex-col justify-between h-full min-h-[390px]">
       <div>
@@ -486,7 +523,7 @@ function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdi
               variant="outline"
               className={cn(
                 'text-[10px] font-semibold',
-                camera.status === 'online'
+                (camera.status === 'online' && !imageError)
                   ? 'border-status-online/50 text-status-online bg-status-online/5'
                   : 'border-status-offline/50 text-status-offline bg-status-offline/5'
               )}
@@ -494,15 +531,15 @@ function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdi
               <span
                 className={cn(
                   'mr-1.5 h-1.5 w-1.5 rounded-full',
-                  camera.status === 'online'
+                  (camera.status === 'online' && !imageError)
                     ? 'bg-status-online pulse-live'
                     : 'bg-status-offline'
                 )}
               />
-              {camera.status === 'online' ? 'Online' : 'Offline'}
+              {(camera.status === 'online' && !imageError) ? 'Online' : 'Offline'}
             </Badge>
           )}
-          {camera.aiActive && (
+          {(camera.aiActive && !imageError) && (
             <Badge variant="outline" className="border-primary/50 text-primary bg-primary/5 text-[10px] font-semibold">
               AI Active
             </Badge>
@@ -513,7 +550,7 @@ function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdi
       {/* Bottom Row Actions - Separated cleanly to prevent overlap */}
       <div className="flex items-center justify-between border-t border-border pt-4 mt-auto">
         <div className="flex items-center gap-2">
-          {camera.enabled && camera.status === 'online' ? (
+          {camera.enabled && camera.status === 'online' && !imageError ? (
             <Button
               variant="outline"
               size="sm"
@@ -533,7 +570,10 @@ function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdi
               variant="outline"
               size="sm"
               className="gap-1.5 text-xs h-8 text-status-online border-status-online/30 hover:bg-status-online/10"
-              onClick={() => startMutation.mutate(camera.id)}
+              onClick={() => {
+                setImageError(false);
+                startMutation.mutate(camera.id);
+              }}
               disabled={startMutation.isPending}
             >
               {startMutation.isPending ? (
