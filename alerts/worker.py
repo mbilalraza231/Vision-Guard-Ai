@@ -95,26 +95,7 @@ class AlertWorker:
         """Construct the predictable Cloudinary Video URL."""
         return f"https://res.cloudinary.com/{self.config.cloudinary_cloud_name}/video/upload/visionguard/clips/{event_type}/clip_{event_id}.mp4"
 
-    async def wait_for_snapshot(self, url: str, timeout: float = 15.0) -> bool:
-        """Poll the snapshot URL until it is available (HTTP 200) or timeout is reached."""
-        start = time.time()
-        while time.time() - start < timeout:
-            try:
-                resp = await self.notifier.client.head(url)
-                if resp.status_code == 200:
-                    logger.info(f"Snapshot available at {url} after {time.time() - start:.2f}s")
-                    return True
-            except Exception as e:
-                pass
-            await asyncio.sleep(1.0)
-        logger.warning(f"Snapshot URL {url} not available after {timeout}s timeout")
-        return False
-
-    async def send_twilio_with_media_wait(self, to: str, message: str, media_url: Optional[str] = None) -> bool:
-        """Wait for the media_url to be available (HTTP 200) before sending the Twilio message."""
-        if media_url:
-            await self.wait_for_snapshot(media_url)
-        return await self.notifier.send_twilio(to, message, media_url=media_url)
+    # Note: No media_url polling needed — we embed URLs directly in the message text.
 
     async def process_event(self, event: Dict[str, Any]):
         """Evaluate event and dispatch notifications to matched contacts."""
@@ -137,11 +118,13 @@ class AlertWorker:
             if event_rank < rank.get(min_sev, 0):
                 continue
             
-            # Send WhatsApp
+            # Send WhatsApp — plain text with URLs embedded in body (no MediaUrl attachment).
+            # This avoids the race condition where Twilio tries to download the Cloudinary
+            # image before the clip recorder has finished uploading it (error 63019).
             if contact.get('phone') and contact.get('whatsapp'):
                 phone = contact['phone']
                 to = f"whatsapp:{phone}" if not phone.startswith('whatsapp:') else phone
-                tasks.append(self.send_twilio_with_media_wait(to, whatsapp_msg, media_url=snap_url))
+                tasks.append(self.notifier.send_twilio(to, whatsapp_msg))
                 
             # Send Premium Email
             if contact.get('email') and contact.get('email_alert'):
