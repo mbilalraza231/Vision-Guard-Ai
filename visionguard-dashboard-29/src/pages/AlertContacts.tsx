@@ -348,58 +348,82 @@ export default function AlertContacts() {
           </div>
         ) : (
           <div className="animate-fade-in">
-            {/* History Filters Toolbar */}
-            <div className="flex flex-wrap items-center gap-3 mb-4">
-              <select
+            {/* History Filters Toolbar — matches Incidents page style */}
+            <div className="flex flex-wrap items-center gap-3 mb-6">
+              <Select
                 value={historyFilters.status}
-                onChange={e => handleHistoryFilterChange({ ...historyFilters, status: e.target.value })}
-                className="h-8 text-xs rounded-lg bg-secondary/50 border border-border/50 px-2 text-foreground cursor-pointer"
+                onValueChange={value => handleHistoryFilterChange({ ...historyFilters, status: value })}
               >
-                <option value="all">All Statuses</option>
-                <option value="sent">Sent</option>
-                <option value="failed">Failed</option>
-                <option value="pending">Pending</option>
-              </select>
-              <select
+                <SelectTrigger className="w-36 bg-secondary/50">
+                  <SelectValue placeholder="All Statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="sent">Sent</SelectItem>
+                  <SelectItem value="failed">Failed</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select
                 value={historyFilters.severity}
-                onChange={e => handleHistoryFilterChange({ ...historyFilters, severity: e.target.value })}
-                className="h-8 text-xs rounded-lg bg-secondary/50 border border-border/50 px-2 text-foreground cursor-pointer"
+                onValueChange={value => handleHistoryFilterChange({ ...historyFilters, severity: value })}
               >
-                <option value="all">All Severities</option>
-                <option value="critical">Critical</option>
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-              </select>
-              <select
+                <SelectTrigger className="w-40 bg-secondary/50">
+                  <SelectValue placeholder="All Severities" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Severities</SelectItem>
+                  <SelectItem value="critical">Critical</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select
                 value={historyFilters.channel}
-                onChange={e => handleHistoryFilterChange({ ...historyFilters, channel: e.target.value })}
-                className="h-8 text-xs rounded-lg bg-secondary/50 border border-border/50 px-2 text-foreground cursor-pointer"
+                onValueChange={value => handleHistoryFilterChange({ ...historyFilters, channel: value })}
               >
-                <option value="all">All Channels</option>
-                <option value="whatsapp">WhatsApp</option>
-                <option value="email">Email</option>
-                <option value="multi-channel">Multi-Channel</option>
-              </select>
-              <select
+                <SelectTrigger className="w-40 bg-secondary/50">
+                  <SelectValue placeholder="All Channels" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Channels</SelectItem>
+                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                  <SelectItem value="email">Email</SelectItem>
+                  <SelectItem value="multi-channel">Multi-Channel</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select
                 value={historyFilters.timePeriod}
-                onChange={e => handleHistoryFilterChange({ ...historyFilters, timePeriod: e.target.value })}
-                className="h-8 text-xs rounded-lg bg-secondary/50 border border-border/50 px-2 text-foreground cursor-pointer"
+                onValueChange={value => handleHistoryFilterChange({ ...historyFilters, timePeriod: value })}
               >
-                <option value="all">All Time</option>
-                <option value="24h">Last 24 Hours</option>
-                <option value="7days">Last 7 Days</option>
-                <option value="30days">Last 30 Days</option>
-              </select>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 text-xs gap-1.5 ml-auto"
-                onClick={handleHistoryExport}
-                disabled={!alerts || alerts.length === 0}
-              >
-                <Download className="h-3.5 w-3.5" />
-                Export CSV
-              </Button>
+                <SelectTrigger className="w-40 bg-secondary/50">
+                  <SelectValue placeholder="All Time" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Time</SelectItem>
+                  <SelectItem value="24h">Last 24 Hours</SelectItem>
+                  <SelectItem value="7days">Last 7 Days</SelectItem>
+                  <SelectItem value="30days">Last 30 Days</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <div className="ml-auto flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">
+                  {alertHistory?.total ?? 0} total alerts
+                </span>
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  onClick={handleHistoryExport}
+                  disabled={!alerts || alerts.length === 0}
+                >
+                  <Download className="h-4 w-4" />
+                  Export
+                </Button>
+              </div>
             </div>
 
             <div className="flex justify-end mb-3 px-2">
