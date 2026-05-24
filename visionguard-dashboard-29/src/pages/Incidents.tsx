@@ -390,6 +390,21 @@ export default function Incidents() {
           </Select>
 
           <Select
+            value={filters.status as string}
+            onValueChange={(value) => setFilters({ ...filters, status: value as IncidentStatus | 'all' })}
+          >
+            <SelectTrigger className="w-36 bg-secondary/50">
+              <SelectValue placeholder="All Statuses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Statuses</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="acknowledged">Acknowledged</SelectItem>
+              <SelectItem value="resolved">Resolved</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select
             value={filters.timePeriod || '7days'}
             onValueChange={(value) => setFilters({ ...filters, timePeriod: value })}
           >
