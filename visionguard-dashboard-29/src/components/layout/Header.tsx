@@ -1,4 +1,4 @@
-import { Bell, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Bell, ChevronLeft, ChevronRight, Flame, Shield, PersonStanding, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -15,6 +15,12 @@ import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { useQuery } from '@tanstack/react-query';
 import { apiService } from '@/services/api.service';
+
+const eventConfigs: Record<string, { icon: any; color: string; label: string; bg: string; border: string }> = {
+  fire: { icon: Flame, color: 'text-orange-500', label: 'Fire Detected', bg: 'bg-orange-500/10', border: 'border-orange-500/20' },
+  weapon: { icon: Shield, color: 'text-red-500', label: 'Weapon Detected', bg: 'bg-red-500/10', border: 'border-red-500/20' },
+  fall: { icon: PersonStanding, color: 'text-blue-500', label: 'Fall Detected', bg: 'bg-blue-500/10', border: 'border-blue-500/20' },
+};
 
 interface HeaderProps {
   title?: string;
@@ -85,45 +91,59 @@ export function Header({ title, showDateNav = true }: HeaderProps) {
               )}
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-80 bg-[#0f1117] border-white/10 text-white shadow-2xl">
-            <DropdownMenuLabel className="flex items-center justify-between">
-              <span>Recent Alerts (24h)</span>
-              <span className="text-[10px] font-normal text-muted-foreground bg-white/5 px-2 py-0.5 rounded">
-                {notificationData?.total ?? 0} active
+          <DropdownMenuContent align="end" className="w-80 p-1 bg-background/95 backdrop-blur-md border border-border/80 shadow-2xl rounded-xl">
+            <DropdownMenuLabel className="px-3 py-2 flex items-center justify-between">
+              <span className="text-xs font-bold tracking-wide">Recent Alerts (24h)</span>
+              <span className="text-[10px] font-bold text-red-400 bg-red-500/10 border border-red-500/20 px-2 py-0.5 rounded-full animate-pulse">
+                {notificationData?.total ?? 0} Active
               </span>
             </DropdownMenuLabel>
-            <DropdownMenuSeparator className="bg-white/10" />
+            <DropdownMenuSeparator className="bg-border/50" />
             {notificationData?.events && notificationData.events.length > 0 ? (
-              <>
-                {notificationData.events.map((event) => (
-                  <DropdownMenuItem
-                    key={event.id}
-                    className="flex flex-col items-start gap-1 p-3 cursor-pointer hover:bg-white/5 focus:bg-white/5"
-                    onClick={() => navigate(`/incidents/${event.id}`)}
-                  >
-                    <div className="flex items-center justify-between w-full">
-                      <span className="text-xs font-semibold capitalize text-severity-high">
-                        {event.event_type} Detected
-                      </span>
-                      <span className="text-[10px] text-muted-foreground font-mono">
-                        {new Date(event.start_ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
-                    <span className="text-[10px] text-muted-foreground font-mono">
-                      Camera: {event.camera_id}
-                    </span>
-                  </DropdownMenuItem>
-                ))}
-                <DropdownMenuSeparator className="bg-white/10" />
+              <div className="max-h-[300px] overflow-y-auto">
+                {notificationData.events.map((event) => {
+                  const config = eventConfigs[event.event_type.toLowerCase()] || {
+                    icon: AlertCircle,
+                    color: 'text-yellow-500',
+                    label: `${event.event_type} Detected`,
+                    bg: 'bg-yellow-500/10',
+                    border: 'border-yellow-500/20',
+                  };
+                  const Icon = config.icon;
+                  return (
+                    <DropdownMenuItem
+                      key={event.id}
+                      className="flex items-center gap-3 p-3 cursor-pointer hover:bg-secondary/40 focus:bg-secondary/40 border-b border-border/30 last:border-b-0 transition-colors"
+                      onClick={() => navigate(`/incidents/${event.id}`)}
+                    >
+                      <div className={`h-9 w-9 rounded-lg ${config.bg} border ${config.border} flex items-center justify-center shrink-0`}>
+                        <Icon className={`h-5 w-5 ${config.color}`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs font-semibold text-foreground truncate">{config.label}</p>
+                          <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                            {new Date(event.start_ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground truncate mt-0.5">
+                          Camera: <span className="font-mono text-foreground/80">{event.camera_id}</span>
+                        </p>
+                      </div>
+                    </DropdownMenuItem>
+                  );
+                })}
+                <DropdownMenuSeparator className="bg-border/50 m-1" />
                 <DropdownMenuItem
-                  className="flex items-center justify-center text-xs text-primary font-medium py-2 cursor-pointer hover:bg-white/5 focus:bg-white/5"
+                  className="flex items-center justify-center text-xs text-primary font-semibold py-2 cursor-pointer hover:bg-secondary/40 focus:bg-secondary/40 rounded-lg"
                   onClick={() => navigate('/incidents')}
                 >
                   View All Incidents
                 </DropdownMenuItem>
-              </>
+              </div>
             ) : (
-              <div className="py-6 text-center text-xs text-muted-foreground">
+              <div className="py-8 text-center text-xs text-muted-foreground">
+                <Bell className="h-8 w-8 mx-auto mb-2 opacity-20" />
                 No new alerts in the last 24 hours.
               </div>
             )}
