@@ -285,13 +285,22 @@ export default function Incidents() {
     type: 'all',
     status: 'all',
     camera: 'all',
-    timePeriod: '7days',
+    timePeriod: 'all',
   });
+  const [page, setPage] = useState(1);
   const [selectedIncidents, setSelectedIncidents] = useState<string[]>([]);
   const [activeIncident, setActiveIncident] = useState<(Incident & { confidence: number }) | null>(null);
 
+  const handleFilterChange = (newFilters: IncidentFilters) => {
+    setFilters(newFilters);
+    setPage(1); // Reset to first page when changing filters
+  };
+
   // Build query params from filters
-  const queryParams: Record<string, string> = { limit: '50' };
+  const queryParams: Record<string, string> = { 
+    limit: '50',
+    offset: ((page - 1) * 50).toString()
+  };
   if (filters.severity && filters.severity !== 'all') {
     queryParams.severity = filters.severity;
   }
@@ -306,7 +315,7 @@ export default function Incidents() {
   }
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['incidents', filters],
+    queryKey: ['incidents', filters, page],
     queryFn: () => apiService.getData<EventsListResponse>(API_ENDPOINTS.incidents.list, queryParams),
   });
 
@@ -361,7 +370,7 @@ export default function Incidents() {
         <div className="flex flex-wrap items-center gap-3 mb-6">
           <Select
             value={filters.severity as string}
-            onValueChange={(value) => setFilters({ ...filters, severity: value as Severity | 'all' })}
+            onValueChange={(value) => handleFilterChange({ ...filters, severity: value as Severity | 'all' })}
           >
             <SelectTrigger className="w-40 bg-secondary/50">
               <SelectValue placeholder="All Severities" />
@@ -376,7 +385,7 @@ export default function Incidents() {
 
           <Select
             value={filters.type as string}
-            onValueChange={(value) => setFilters({ ...filters, type: value as Incident['type'] | 'all' })}
+            onValueChange={(value) => handleFilterChange({ ...filters, type: value as Incident['type'] | 'all' })}
           >
             <SelectTrigger className="w-36 bg-secondary/50">
               <SelectValue placeholder="All Types" />
@@ -391,7 +400,7 @@ export default function Incidents() {
 
           <Select
             value={filters.status as string}
-            onValueChange={(value) => setFilters({ ...filters, status: value as IncidentStatus | 'all' })}
+            onValueChange={(value) => handleFilterChange({ ...filters, status: value as IncidentStatus | 'all' })}
           >
             <SelectTrigger className="w-36 bg-secondary/50">
               <SelectValue placeholder="All Statuses" />
@@ -405,8 +414,8 @@ export default function Incidents() {
           </Select>
 
           <Select
-            value={filters.timePeriod || '7days'}
-            onValueChange={(value) => setFilters({ ...filters, timePeriod: value })}
+            value={filters.timePeriod || 'all'}
+            onValueChange={(value) => handleFilterChange({ ...filters, timePeriod: value })}
           >
             <SelectTrigger className="w-40 bg-secondary/50">
               <SelectValue placeholder="Time Period" />
@@ -548,6 +557,35 @@ export default function Incidents() {
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* Pagination Controls */}
+        {!isLoading && !error && data && data.total > 50 && (
+          <div className="flex items-center justify-between mt-6 border-t border-border/50 pt-4">
+            <p className="text-sm text-muted-foreground">
+              Showing {((page - 1) * 50) + 1} to {Math.min(page * 50, data.total)} of {data.total} entries
+            </p>
+            <div className="flex items-center gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="w-24"
+              >
+                Previous
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setPage(p => p + 1)}
+                disabled={page * 50 >= data.total}
+                className="w-24"
+              >
+                Next
+              </Button>
             </div>
           </div>
         )}
