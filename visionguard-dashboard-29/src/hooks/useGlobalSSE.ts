@@ -11,6 +11,8 @@ import { buildApiUrl } from '@/config/api';
 export function useGlobalSSE() {
   const queryClient = useQueryClient();
   const isConnected = useRef(false);
+  // Track the last known event total to detect genuinely new events
+  const lastEventTotal = useRef<number | null>(null);
 
   useEffect(() => {
     // Only open one connection
@@ -50,9 +52,20 @@ export function useGlobalSSE() {
           queryClient.setQueryData(['analytics-stats'], payload.stats);
         }
 
-        // 4. Recent Events (Used by Dashboard)
+        // 4. Recent Events (Used by Dashboard & Header Bell icon)
         if (payload.recentEvents) {
           queryClient.setQueryData(['dashboard-recent-events'], payload.recentEvents);
+
+          // SSE-driven Incidents page refresh:
+          // If the total event count has grown since last SSE tick, a new incident
+          // has arrived. Invalidate the Incidents query so it silently re-fetches
+          // with the user's current filters still intact (HTTP GET, stateless).
+          const newTotal: number = payload.recentEvents?.total ?? 0;
+          if (lastEventTotal.current !== null && newTotal > lastEventTotal.current) {
+            console.log(`[Global SSE] New event detected (${lastEventTotal.current} → ${newTotal}). Refreshing Incidents table.`);
+            queryClient.invalidateQueries({ queryKey: ['incidents'] });
+          }
+          lastEventTotal.current = newTotal;
         }
 
         // 5. Live Bounding Boxes (Used by LiveMonitoring)
