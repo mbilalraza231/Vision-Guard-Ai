@@ -72,7 +72,7 @@ class AlertWorker:
         # Must match CloudinaryUploader.upload_snapshot folder structure exactly
         return f"https://res.cloudinary.com/{self.config.cloudinary_cloud_name}/image/upload/visionguard/snapshots/{event_type}/snapshot_{event_id}.jpg"
 
-    def format_message(self, event: Dict[str, Any], url: str) -> str:
+    def format_message(self, event: Dict[str, Any], snap_url: str, video_url: str) -> str:
         """Format the alert message for SMS/WhatsApp."""
         severity = event.get('severity', 'UNKNOWN').upper()
         etype = event.get('event_type', 'Detection').replace('_', ' ').title()
@@ -88,7 +88,8 @@ class AlertWorker:
             f"Camera: {event.get('camera_id')}\n"
             f"Time: {ts_str}\n"
             f"Confidence: {float(event.get('confidence', 0))*100:.1f}%\n"
-            f"Evidence: {url}"
+            f"📸 Snapshot: {snap_url}\n"
+            f"🎬 Clip: {video_url}"
         )
 
     def get_predictable_video_url(self, event_id: str, event_type: str) -> str:
@@ -107,7 +108,7 @@ class AlertWorker:
         
         snap_url = self.get_predictable_url(event_id, event_type)
         video_url = self.get_predictable_video_url(event_id, event_type)
-        whatsapp_msg = self.format_message(event, snap_url)
+        whatsapp_msg = self.format_message(event, snap_url, video_url)
         
         rank = {"critical": 3, "high": 2, "medium": 1, "low": 0}
         event_rank = rank.get(severity, 0)
