@@ -52,9 +52,9 @@ async def global_event_generator(
             # 5. Live Bounding Boxes
             boxes_data = await get_live_boxes(limit=50)
 
-            # 6. Alert History
+            # 6. Alert History (Used by AlertContacts for count monitoring)
             alert_repo = AlertRepository()
-            alerts_data = await alert_repo.list_alerts(limit=50)
+            alerts_data = await alert_repo.list_alerts(limit=0)
 
             # Combine everything
             payload = {

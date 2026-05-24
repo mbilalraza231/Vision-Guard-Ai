@@ -31,6 +31,7 @@ const STORAGE_KEY = 'vg:dashboard:settings';
 
 export default function AlertContacts() {
   const [activeTab, setActiveTab] = useState<'contacts' | 'history'>('contacts');
+  const [historyPage, setHistoryPage] = useState(1);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedRecipientId, setSelectedRecipientId] = useState<string | null>(null);
   const [newRecipient, setNewRecipient] = useState({
@@ -133,10 +134,13 @@ export default function AlertContacts() {
     (r.phone && r.phone.includes(searchQuery))
   );
 
-  // Load Alert History from Backend — now powered by Global SSE Stream
+  // Load Alert History from Backend — now powered by Signal-to-Fetch Hybrid (SSE + HTTP)
   const { data: alertHistory, isLoading: historyLoading } = useQuery({
-    queryKey: ['alert-history'],
-    queryFn: () => apiService.getData<any>(API_ENDPOINTS.alerts.list),
+    queryKey: ['alert-history', historyPage],
+    queryFn: () => apiService.getData<any>(API_ENDPOINTS.alerts.list, { 
+      limit: '50', 
+      offset: ((historyPage - 1) * 50).toString() 
+    }),
     enabled: activeTab === 'history',
   });
 
@@ -424,6 +428,36 @@ export default function AlertContacts() {
             </div>
           </div>
         )}
+
+        {/* Pagination for Alert History */}
+        {activeTab === 'history' && !historyLoading && alertHistory && alertHistory.total > 50 && (
+          <div className="flex items-center justify-between mt-6 border-t border-border/50 pt-4">
+            <p className="text-sm text-muted-foreground">
+              Showing {((historyPage - 1) * 50) + 1} to {Math.min(historyPage * 50, alertHistory.total)} of {alertHistory.total} entries
+            </p>
+            <div className="flex items-center gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
+                disabled={historyPage === 1}
+                className="w-24"
+              >
+                Previous
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setHistoryPage(p => p + 1)}
+                disabled={historyPage * 50 >= alertHistory.total}
+                className="w-24"
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
+
       </div>
 
       {/* Add Modal */}

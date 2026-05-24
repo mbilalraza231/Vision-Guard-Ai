@@ -17,7 +17,7 @@ export function useGlobalSSE() {
   useEffect(() => {
     // Only open one connection
     if (isConnected.current) return;
-    
+
     const sseUrl = buildApiUrl('/stream/global');
     const eventSource = new EventSource(sseUrl);
     isConnected.current = true;
@@ -25,7 +25,7 @@ export function useGlobalSSE() {
     eventSource.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data);
-        
+
         if (payload.error) {
           console.error('[Global SSE] Backend stream error:', payload.error);
           return;
