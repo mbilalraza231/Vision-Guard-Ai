@@ -250,6 +250,7 @@ export interface IncidentFilters {
   status?: IncidentStatus | 'all';
   camera?: string | 'all';
   dateRange?: DateRange;
+  timePeriod?: string;
 }
 
 export interface DateRange {

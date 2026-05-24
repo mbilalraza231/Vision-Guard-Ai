@@ -285,6 +285,7 @@ export default function Incidents() {
     type: 'all',
     status: 'all',
     camera: 'all',
+    timePeriod: '7days',
   });
   const [selectedIncidents, setSelectedIncidents] = useState<string[]>([]);
   const [activeIncident, setActiveIncident] = useState<(Incident & { confidence: number }) | null>(null);
@@ -299,6 +300,9 @@ export default function Incidents() {
   }
   if (filters.camera && filters.camera !== 'all') {
     queryParams.camera_id = filters.camera;
+  }
+  if (filters.timePeriod && filters.timePeriod !== 'all') {
+    queryParams.time_period = filters.timePeriod;
   }
 
   const { data, isLoading, error, refetch } = useQuery({
@@ -322,6 +326,31 @@ export default function Incidents() {
     } else {
       setSelectedIncidents([...selectedIncidents, id]);
     }
+  };
+
+  // CSV Export handler
+  const handleExport = () => {
+    if (!incidents.length) return;
+    const headers = ['ID', 'Time', 'Camera ID', 'Type', 'Severity', 'Confidence', 'Snapshot URL', 'Clip URL'];
+    const rows = incidents.map(inc => [
+      inc.id,
+      inc.createdAt,
+      inc.camera.id,
+      inc.type,
+      inc.severity,
+      inc.confidence ? `${(inc.confidence * 100).toFixed(1)}%` : '0%',
+      inc.snapshotUrl || '',
+      inc.clipUrl || ''
+    ]);
+    const csvContent = [headers.join(','), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `visionguard_incidents_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -361,29 +390,17 @@ export default function Incidents() {
           </Select>
 
           <Select
-            value={filters.status as string}
-            onValueChange={(value) => setFilters({ ...filters, status: value as IncidentStatus | 'all' })}
+            value={filters.timePeriod || '7days'}
+            onValueChange={(value) => setFilters({ ...filters, timePeriod: value })}
           >
-            <SelectTrigger className="w-36 bg-secondary/50">
-              <SelectValue placeholder="All Statuses" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="acknowledged">Acknowledged</SelectItem>
-              <SelectItem value="resolved">Resolved</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select defaultValue="7days">
-            <SelectTrigger className="w-36 bg-secondary/50">
+            <SelectTrigger className="w-40 bg-secondary/50">
               <SelectValue placeholder="Time Period" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="all">All Time</SelectItem>
               <SelectItem value="24h">Last 24 Hours</SelectItem>
               <SelectItem value="7days">Last 7 Days</SelectItem>
               <SelectItem value="30days">Last 30 Days</SelectItem>
-              <SelectItem value="custom">Custom Range</SelectItem>
             </SelectContent>
           </Select>
 
@@ -392,7 +409,12 @@ export default function Incidents() {
               {data?.total ?? 0} total events
             </span>
             {(user?.role === 'admin' || user?.role === 'manager') && (
-              <Button variant="outline" className="gap-2">
+              <Button 
+                variant="outline" 
+                className="gap-2"
+                onClick={handleExport}
+                disabled={!incidents.length}
+              >
                 <Download className="h-4 w-4" />
                 Export
               </Button>

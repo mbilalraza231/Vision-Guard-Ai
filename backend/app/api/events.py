@@ -10,6 +10,7 @@ GET /alerts/{id} - Get single alert with event metadata
 
 import os
 import sys
+import time
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, Path
@@ -43,16 +44,28 @@ async def list_events(
     offset: int = Query(default=0, ge=0, description="Offset for pagination"),
     camera_id: Optional[str] = Query(default=None, description="Filter by camera"),
     event_type: Optional[str] = Query(default=None, description="Filter by event type"),
-    severity: Optional[str] = Query(default=None, description="Filter by severity")
+    severity: Optional[str] = Query(default=None, description="Filter by severity"),
+    time_period: Optional[str] = Query(default=None, description="Time period: 24h, 7days, 30days")
 ) -> DBEventListResponse:
     reader = get_db_reader()
+    
+    start_ts_gte = None
+    if time_period:
+        now = time.time()
+        if time_period == "24h":
+            start_ts_gte = now - (24 * 3600)
+        elif time_period == "7days":
+            start_ts_gte = now - (7 * 24 * 3600)
+        elif time_period == "30days":
+            start_ts_gte = now - (30 * 24 * 3600)
     
     result = await reader.list_events(
         limit=limit,
         offset=offset,
         camera_id=camera_id,
         event_type=event_type,
-        severity=severity
+        severity=severity,
+        start_ts_gte=start_ts_gte
     )
     
     events = [DBEvent(**e) for e in result["events"]]

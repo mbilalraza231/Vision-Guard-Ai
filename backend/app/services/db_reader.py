@@ -59,7 +59,8 @@ class DatabaseReader:
         offset: int = 0,
         camera_id: str = None,
         event_type: str = None,
-        severity: str = None
+        severity: str = None,
+        start_ts_gte: float = None
     ) -> Dict[str, Any]:
         """
         List events with pagination and filtering.
@@ -83,6 +84,11 @@ class DatabaseReader:
             if severity:
                 where_clauses.append(f"severity = ${param_idx}")
                 params.append(severity.lower())
+                param_idx += 1
+                
+            if start_ts_gte is not None:
+                where_clauses.append(f"start_ts >= ${param_idx}")
+                params.append(start_ts_gte)
                 param_idx += 1
             
             where_sql = ""
