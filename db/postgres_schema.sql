@@ -47,7 +47,8 @@ CREATE TABLE IF NOT EXISTS alerts (
     error_message TEXT,                  -- detail on failure
     attempts INTEGER NOT NULL DEFAULT 0,
     last_attempt_ts DOUBLE PRECISION,
-    created_at DOUBLE PRECISION NOT NULL
+    created_at DOUBLE PRECISION NOT NULL,
+    details TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_alerts_event_id ON alerts(event_id);
