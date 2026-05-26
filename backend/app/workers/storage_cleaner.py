@@ -3,8 +3,9 @@ VisionGuard AI - Storage Cleaner Background Worker
 
 Periodically enforces storage settings:
   - retentionDays: Deletes events/alerts older than N days from the database.
+                   Also destroys associated files from Local FS and Cloudinary.
   - maxStorage (GB): Deletes the oldest local video/snapshot files when the
-    /shared-frames directory exceeds the configured limit.
+                     /data/visionguard directories exceed the limit.
   - autoDelete: Master switch — if False, this worker does nothing.
 """
 
@@ -14,7 +15,11 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+import urllib.parse
+
+import cloudinary
+import cloudinary.uploader
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +33,29 @@ class StorageCleaner:
     by the administrator in the Settings → Storage page.
     """
 
-    def __init__(self, shared_frames_dir: str = "/shared-frames"):
-        self.shared_frames_dir = shared_frames_dir
+    def __init__(self, data_dir: str = "/data/visionguard"):
+        self.data_dir = data_dir
+        self.clip_dir = os.path.join(data_dir, "clips")
+        self.snapshot_dir = os.path.join(data_dir, "detections")
+        
         self._stop_event = asyncio.Event()
         self._task: asyncio.Task = None
+
+        # Configure Cloudinary if credentials exist
+        self.cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME", "")
+        self.api_key = os.getenv("CLOUDINARY_API_KEY", "")
+        self.api_secret = os.getenv("CLOUDINARY_API_SECRET", "")
+        
+        if self.cloud_name and self.api_key and self.api_secret:
+            cloudinary.config(
+                cloud_name=self.cloud_name,
+                api_key=self.api_key,
+                api_secret=self.api_secret,
+                secure=True,
+            )
+            self.cloudinary_enabled = True
+        else:
+            self.cloudinary_enabled = False
 
     # ------------------------------------------------------------------ #
     # Public API                                                           #
@@ -93,10 +117,10 @@ class StorageCleaner:
             retention_days, max_storage_gb
         )
 
-        # Enforce retention policy
+        # Enforce retention policy (DB, Local, Cloud)
         await self._enforce_retention(retention_days)
 
-        # Enforce disk usage limit
+        # Enforce disk usage limit (Local Files only)
         await self._enforce_max_storage(max_storage_gb)
 
     # ------------------------------------------------------------------ #
@@ -124,17 +148,18 @@ class StorageCleaner:
     # ------------------------------------------------------------------ #
 
     async def _enforce_retention(self, retention_days: int):
-        """Delete events (and cascading alerts) older than retention_days."""
+        """Delete events, and securely delete their evidence from Local FS and Cloudinary."""
         if retention_days <= 0:
             return
         try:
             from backend.app.core.database import db
             cutoff_ts = time.time() - (retention_days * 86400)
 
-            # Delete alerts whose linked event is older than the cutoff
-            deleted_alerts = await db.execute(
+            # 1. Fetch all evidence linked to expiring events BEFORE we delete the events
+            evidence_rows = await db.fetch_all(
                 """
-                DELETE FROM alerts
+                SELECT id, evidence_type, storage_provider, public_url 
+                FROM event_evidence 
                 WHERE event_id IN (
                     SELECT id FROM events WHERE created_at < $1
                 )
@@ -142,7 +167,18 @@ class StorageCleaner:
                 cutoff_ts,
             )
 
-            # Delete the old events themselves
+            # 2. Delete actual files (Local & Cloudinary)
+            deleted_files = 0
+            for row in evidence_rows:
+                success = await self._destroy_evidence_file(
+                    provider=row["storage_provider"],
+                    url=row["public_url"],
+                    evidence_type=row["evidence_type"]
+                )
+                if success:
+                    deleted_files += 1
+
+            # 3. Delete the events (ON DELETE CASCADE will automatically wipe alerts and event_evidence)
             deleted_events = await db.execute(
                 "DELETE FROM events WHERE created_at < $1",
                 cutoff_ts,
@@ -150,20 +186,75 @@ class StorageCleaner:
 
             logger.info(
                 "StorageCleaner [retention]: removed events before %.0f (cutoff=%dd). "
-                "alerts=%s events=%s",
-                cutoff_ts, retention_days, deleted_alerts, deleted_events,
+                "events_purged=%s, files_destroyed=%d/%d",
+                cutoff_ts, retention_days, deleted_events, deleted_files, len(evidence_rows)
             )
         except Exception as exc:
             logger.error("StorageCleaner retention enforcement failed: %s", exc)
+
+    async def _destroy_evidence_file(self, provider: str, url: str, evidence_type: str) -> bool:
+        """Destroy the actual media file based on its provider."""
+        if provider == "local":
+            try:
+                if os.path.exists(url):
+                    os.remove(url)
+                    return True
+                return False  # Already gone
+            except OSError as e:
+                logger.warning("StorageCleaner: failed to remove local file %s: %s", url, e)
+                return False
+
+        elif provider == "cloudinary" and self.cloudinary_enabled:
+            # Parse public_id from Cloudinary URL
+            # Format usually: https://res.cloudinary.com/.../upload/v.../visionguard/clips/weapon/clip_123.mp4
+            try:
+                # Extract everything after the version folder or 'upload/'
+                parsed = urllib.parse.urlparse(url)
+                path_parts = parsed.path.split('/')
+                
+                # Find 'visionguard' index to get the folder structure
+                try:
+                    vg_idx = path_parts.index('visionguard')
+                    public_id_with_ext = '/'.join(path_parts[vg_idx:])
+                    # Remove extension
+                    public_id = os.path.splitext(public_id_with_ext)[0]
+                except ValueError:
+                    # Fallback if structure is different
+                    filename = path_parts[-1]
+                    public_id = os.path.splitext(filename)[0]
+
+                resource_type = "video" if evidence_type == "clip" else "image"
+                
+                # Cloudinary delete is blocking, use to_thread
+                result = await asyncio.to_thread(
+                    cloudinary.uploader.destroy,
+                    public_id,
+                    resource_type=resource_type
+                )
+                
+                if result.get("result") == "ok":
+                    return True
+                else:
+                    logger.warning("StorageCleaner: Cloudinary destroy returned %s for %s", result, public_id)
+                    return False
+            except Exception as e:
+                logger.warning("StorageCleaner: failed to destroy Cloudinary asset %s: %s", url, e)
+                return False
+                
+        return False
 
     # ------------------------------------------------------------------ #
     # Rule: Max Storage                                                     #
     # ------------------------------------------------------------------ #
 
     async def _enforce_max_storage(self, max_storage_gb: float):
-        """Delete the oldest media files until disk usage is below max_storage_gb."""
+        """Delete the oldest local media files until disk usage is below max_storage_gb."""
         max_bytes = max_storage_gb * 1024 * 1024 * 1024
-        current_bytes = self._get_dir_size(self.shared_frames_dir)
+        
+        # We only care about the clips and detections folders
+        clips_size = self._get_dir_size(self.clip_dir)
+        snapshots_size = self._get_dir_size(self.snapshot_dir)
+        current_bytes = clips_size + snapshots_size
 
         if current_bytes <= max_bytes:
             logger.debug(
@@ -177,23 +268,36 @@ class StorageCleaner:
             current_bytes / 1e9, max_storage_gb
         )
 
-        # Gather all media files, sorted oldest-first
-        media_files = self._collect_media_files(self.shared_frames_dir)
+        # Gather all media files from both directories, sorted oldest-first
+        media_files = self._collect_media_files([self.clip_dir, self.snapshot_dir])
 
         bytes_freed = 0
+        deleted_count = 0
+        from backend.app.core.database import db
+
         for file_path, file_size in media_files:
             if current_bytes - bytes_freed <= max_bytes:
                 break
             try:
                 os.remove(file_path)
                 bytes_freed += file_size
+                deleted_count += 1
+                
+                # We must also clean up the database so the UI doesn't show broken links!
+                await db.execute(
+                    "DELETE FROM event_evidence WHERE storage_provider = 'local' AND public_url = $1",
+                    file_path
+                )
+                
                 logger.info("StorageCleaner: deleted %s (%.1f KB)", file_path, file_size / 1024)
             except OSError as exc:
                 logger.warning("StorageCleaner: could not delete %s: %s", file_path, exc)
+            except Exception as exc:
+                logger.warning("StorageCleaner: failed to clean DB for %s: %s", file_path, exc)
 
         logger.info(
             "StorageCleaner [max storage]: freed %.2f MB across %d files",
-            bytes_freed / 1e6, len([f for f in media_files if f[1] <= bytes_freed])
+            bytes_freed / 1e6, deleted_count
         )
 
     # ------------------------------------------------------------------ #
@@ -209,7 +313,8 @@ class StorageCleaner:
                 for fname in filenames:
                     fpath = os.path.join(dirpath, fname)
                     try:
-                        total += os.path.getsize(fpath)
+                        if not os.path.islink(fpath):
+                            total += os.path.getsize(fpath)
                     except OSError:
                         pass
         except Exception:
@@ -217,26 +322,30 @@ class StorageCleaner:
         return total
 
     @staticmethod
-    def _collect_media_files(directory: str) -> List[tuple]:
+    def _collect_media_files(directories: List[str]) -> List[tuple]:
         """
         Return a sorted list of (path, size_bytes) tuples for all .mp4/.jpg files
-        under the given directory, sorted oldest-first by modification time.
+        under the given directories, sorted oldest-first by modification time.
         """
         MEDIA_EXTENSIONS = {".mp4", ".jpg", ".jpeg", ".png"}
         files = []
-        try:
-            for dirpath, _, filenames in os.walk(directory):
-                for fname in filenames:
-                    if Path(fname).suffix.lower() in MEDIA_EXTENSIONS:
-                        fpath = os.path.join(dirpath, fname)
-                        try:
-                            stat = os.stat(fpath)
-                            files.append((fpath, stat.st_size, stat.st_mtime))
-                        except OSError:
-                            pass
-        except Exception:
-            pass
-        # Sort oldest first
+        for directory in directories:
+            try:
+                if not os.path.exists(directory):
+                    continue
+                for dirpath, _, filenames in os.walk(directory):
+                    for fname in filenames:
+                        if Path(fname).suffix.lower() in MEDIA_EXTENSIONS:
+                            fpath = os.path.join(dirpath, fname)
+                            try:
+                                stat = os.stat(fpath)
+                                files.append((fpath, stat.st_size, stat.st_mtime))
+                            except OSError:
+                                pass
+            except Exception:
+                pass
+                
+        # Sort oldest first (smallest mtime)
         files.sort(key=lambda x: x[2])
         # Return only (path, size) — drop mtime
         return [(f[0], f[1]) for f in files]
@@ -246,11 +355,10 @@ class StorageCleaner:
 _cleaner: StorageCleaner = None
 
 
-def get_storage_cleaner(shared_frames_dir: str = None) -> StorageCleaner:
+def get_storage_cleaner(data_dir: str = None) -> StorageCleaner:
     global _cleaner
     if _cleaner is None:
         _cleaner = StorageCleaner(
-            shared_frames_dir=shared_frames_dir
-            or os.environ.get("SHARED_FRAMES_DIR", "/shared-frames")
+            data_dir=data_dir or os.environ.get("VG_DATA_DIR", "/data/visionguard")
         )
     return _cleaner
