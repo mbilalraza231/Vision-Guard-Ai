@@ -672,7 +672,12 @@ export default function Settings() {
                     </div>
 
                     <div className="flex items-center justify-between rounded-lg bg-secondary/30 px-4 py-3">
-                      <Label htmlFor="autoDelete">Auto-delete old data</Label>
+                      <div className="space-y-0.5">
+                        <Label htmlFor="autoDelete">Enable Scheduled Cleanup</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Master switch. When ON, the system runs a hourly cleanup job that enforces the Retention Days and Max Storage limits above.
+                        </p>
+                      </div>
                       <Switch
                         id="autoDelete"
                         checked={settings.storage.autoDelete}
