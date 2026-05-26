@@ -566,6 +566,8 @@ export default function Settings() {
                       />
                     </div>
 
+                    {/* SMS Notifications disabled for now as it's not fully implemented */}
+                    {/*
                     <div className="flex items-center justify-between rounded-lg bg-secondary/30 px-4 py-3">
                       <Label htmlFor="smsNotifications">SMS Notifications</Label>
                       <Switch
@@ -574,9 +576,10 @@ export default function Settings() {
                         onCheckedChange={(checked) => updateAlerts({ smsNotifications: checked })}
                       />
                     </div>
+                    */}
 
                     <div className="flex items-center justify-between rounded-lg bg-secondary/30 px-4 py-3">
-                      <Label htmlFor="pushNotifications">Push Notifications</Label>
+                      <Label htmlFor="pushNotifications">WhatsApp Notifications</Label>
                       <Switch
                         id="pushNotifications"
                         checked={settings.alerts.pushNotifications}

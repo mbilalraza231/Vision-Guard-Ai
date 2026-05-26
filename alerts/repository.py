@@ -130,6 +130,20 @@ class AlertRepository:
             logger.error(f"Get active contacts failed: {e}")
             return []
     
+    async def get_system_settings(self) -> Dict[str, Any]:
+        """Fetch global system settings."""
+        try:
+            import json
+            row = await db.fetch_one("SELECT data FROM system_settings ORDER BY id DESC LIMIT 1")
+            if row and row['data']:
+                if isinstance(row['data'], str):
+                    return json.loads(row['data'])
+                return dict(row['data'])
+            return {}
+        except Exception as e:
+            logger.error(f"Get system settings failed: {e}")
+            return {}
+    
     async def list_alerts(
         self,
         limit: int = 50,

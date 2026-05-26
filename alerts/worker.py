@@ -113,6 +113,18 @@ class AlertWorker:
         rank = {"critical": 3, "high": 2, "medium": 1, "low": 0}
         event_rank = rank.get(severity, 0)
         
+        # Fetch global system settings
+        sys_settings = await self.repo.get_system_settings()
+        alert_settings = sys_settings.get('alerts', {})
+        global_threshold = alert_settings.get('alertThreshold', 'low').lower()
+        email_enabled = alert_settings.get('emailNotifications', False)
+        push_enabled = alert_settings.get('pushNotifications', False)
+        
+        # If the event severity is below the global threshold, skip entirely
+        if event_rank < rank.get(global_threshold, 0):
+            logger.info(f"Skipping event {event_id}: severity '{severity}' is below global threshold '{global_threshold}'")
+            return
+        
         tasks = []
         for contact in self.contacts:
             min_sev = contact.get('min_severity', 'medium').lower()
@@ -122,13 +134,14 @@ class AlertWorker:
             # Send WhatsApp — plain text with URLs embedded in body (no MediaUrl attachment).
             # This avoids the race condition where Twilio tries to download the Cloudinary
             # image before the clip recorder has finished uploading it (error 63019).
-            if contact.get('phone') and contact.get('whatsapp'):
+            # Send WhatsApp (Push Notification toggle)
+            if push_enabled and contact.get('phone') and contact.get('whatsapp'):
                 phone = contact['phone']
                 to = f"whatsapp:{phone}" if not phone.startswith('whatsapp:') else phone
                 tasks.append(self.notifier.send_twilio(to, whatsapp_msg))
                 
             # Send Premium Email
-            if contact.get('email') and contact.get('email_alert'):
+            if email_enabled and contact.get('email') and contact.get('email_alert'):
                 color = "#ff4b2b" if severity == "critical" else "#ffa502" if severity == "high" else "#2ed573"
                 subject = f"⚠️ VisionGuard: {severity.upper()} {event_type.replace('_', ' ').title()}"
                 body = f"""
@@ -227,7 +240,7 @@ class AlertWorker:
                     port=self.config.redis_port,
                     decode_responses=True
                 )
-                await self.redis.ping()
+                await self.redis.ping()  # type: ignore
                 break
             except Exception as e:
                 logger.error(f"Redis failed: {e}. Retrying...")
