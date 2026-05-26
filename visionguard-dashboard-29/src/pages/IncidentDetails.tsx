@@ -4,6 +4,8 @@ import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { SeverityBadge, StatusBadge } from '@/components/common/StatusBadge';
+import { useSettings } from '@/hooks/useSettings';
+import { formatDateTime, formatTimeString } from '@/lib/utils';
 import { API_ENDPOINTS, buildApiUrl } from '@/config/api';
 import { apiService } from '@/services/api.service';
 import {
@@ -43,6 +45,8 @@ interface EvidenceResponse {
 export default function IncidentDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { data: settings } = useSettings();
+  const timezone = settings?.general?.timezone || 'UTC';
 
   const { data: incident, isLoading: incidentLoading, error: incidentError } = useQuery({
     queryKey: ['incident', id],
@@ -55,7 +59,7 @@ export default function IncidentDetails() {
 
       return {
         id: event.id,
-        time: new Date(event.start_ts * 1000).toLocaleTimeString(),
+        time: formatTimeString(event.start_ts * 1000, timezone),
         camera: {
           id: event.camera_id,
           name: event.camera_id,
@@ -66,8 +70,8 @@ export default function IncidentDetails() {
         type: event.event_type as Incident['type'],
         severity: event.severity as Incident['severity'],
         status: 'active' as Incident['status'],
-        incidentTime: new Date(event.start_ts * 1000).toLocaleString(),
-        reportingTime: new Date(event.created_at * 1000).toLocaleString(),
+        incidentTime: formatDateTime(event.start_ts * 1000, timezone),
+        reportingTime: formatDateTime(event.created_at * 1000, timezone),
         processingDelay: event.created_at - event.start_ts,
         createdAt: new Date(event.created_at * 1000).toISOString(),
         updatedAt: new Date(event.end_ts * 1000).toISOString(),

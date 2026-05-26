@@ -7,6 +7,7 @@ import { buildApiUrl, API_ENDPOINTS, API_CONFIG } from '@/config/api';
 import { apiService } from '@/services/api.service';
 import { RefreshCw, Camera, Loader2, Shield, Flame, PersonStanding, Maximize2, Minimize2 } from 'lucide-react';
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 
 // ────── Types ──────
 
@@ -127,6 +128,7 @@ function CameraFeed({
   camera: CameraItem;
   onLoadStateChange: (isLive: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const [hasError, setHasError] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -225,7 +227,7 @@ function CameraFeed({
               <div className="h-16 w-16 rounded-full bg-secondary/50 flex items-center justify-center mx-auto mb-3">
                 <Camera className="h-8 w-8 text-muted-foreground" />
               </div>
-              <p className="text-sm text-muted-foreground">Camera feed unavailable</p>
+              <p className="text-sm text-muted-foreground">{t('monitoring.feedUnavailable')}</p>
               <p className="text-xs text-muted-foreground mt-1">{camera.source}</p>
               <Button
                 variant="outline"
@@ -236,7 +238,7 @@ function CameraFeed({
                   onLoadStateChange(false);
                 }}
               >
-                <RefreshCw className="h-3 w-3 mr-1" /> Retry
+                <RefreshCw className="h-3 w-3 mr-1" /> {t('common.retry', 'Retry')}
               </Button>
             </div>
           </div>
@@ -249,11 +251,11 @@ function CameraFeed({
             className="backdrop-blur-md border-green-500/50 bg-green-500/10 text-green-400"
           >
             <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-green-400 pulse-live inline-block" />
-            Live
+            {t('monitoring.live')}
           </Badge>
           <div className="flex gap-1.5">
             <Badge variant="outline" className="backdrop-blur-md border-primary/50 bg-primary/10 text-primary">
-              AI Active
+              {t('monitoring.aiActive')}
             </Badge>
             <Button
               variant="ghost"
@@ -282,6 +284,7 @@ function CameraFeed({
 // ────── Main Page ──────
 
 export default function LiveMonitoring() {
+  const { t } = useTranslation();
   const [liveFeedState, setLiveFeedState] = useState<Record<string, boolean>>({});
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -308,15 +311,15 @@ export default function LiveMonitoring() {
 
   return (
     <div className="min-h-screen">
-      <Header title="Live Monitoring" />
+      <Header title={t('monitoring.title')} />
       <div className="p-6">
         {/* Title + controls */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <h2 className="text-xl font-semibold">Live Camera Feed</h2>
+            <h2 className="text-xl font-semibold">{t('monitoring.liveCameraFeed')}</h2>
             <Badge variant="outline" className="border-green-500/50 bg-green-500/10 text-green-400">
               <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-green-400 pulse-live inline-block" />
-              {liveCameras.length} Camera{liveCameras.length !== 1 ? 's' : ''} Live
+              {liveCameras.length} {t('monitoring.camerasLive')}
             </Badge>
           </div>
           <Button 
@@ -329,7 +332,7 @@ export default function LiveMonitoring() {
             }}
           >
             <RefreshCw className="h-3.5 w-3.5" />
-            Refresh
+            {t('monitoring.refresh')}
           </Button>
         </div>
 
@@ -343,10 +346,10 @@ export default function LiveMonitoring() {
         {/* Error */}
         {error && (
           <div className="rounded-lg bg-destructive/10 border border-destructive/30 p-6 text-center">
-            <p className="text-destructive font-medium">Failed to load cameras</p>
+            <p className="text-destructive font-medium">{t('monitoring.failedToLoad')}</p>
             <p className="text-sm text-muted-foreground mt-1">{(error as Error).message}</p>
             <Button variant="outline" size="sm" className="mt-3" onClick={() => refetch()}>
-              <RefreshCw className="h-4 w-4 mr-1.5" /> Retry
+              <RefreshCw className="h-4 w-4 mr-1.5" /> {t('monitoring.retry')}
             </Button>
           </div>
         )}
@@ -373,9 +376,9 @@ export default function LiveMonitoring() {
               <Camera className="h-10 w-10 text-muted-foreground" />
             </div>
             <div className="text-center">
-              <p className="text-lg font-medium">No cameras enabled</p>
+              <p className="text-lg font-medium">{t('monitoring.noCamerasEnabled')}</p>
               <p className="text-sm text-muted-foreground mt-1">
-                Enable cameras in cameras.json and restart the camera service.
+                {t('monitoring.noCamerasHint')}
               </p>
             </div>
           </div>
@@ -385,17 +388,17 @@ export default function LiveMonitoring() {
         <div className="mt-6 rounded-lg bg-secondary/30 border border-border p-4">
           <div className="flex items-center justify-center gap-6 text-sm">
             <span className="flex items-center gap-1.5">
-              <Shield className="h-4 w-4 text-red-400" /> Weapon
+              <Shield className="h-4 w-4 text-red-400" /> {t('monitoring.weapon')}
             </span>
             <span className="flex items-center gap-1.5">
-              <Flame className="h-4 w-4 text-orange-400" /> Fire
+              <Flame className="h-4 w-4 text-orange-400" /> {t('monitoring.fire')}
             </span>
             <span className="flex items-center gap-1.5">
-              <PersonStanding className="h-4 w-4 text-blue-400" /> Fall
+              <PersonStanding className="h-4 w-4 text-blue-400" /> {t('monitoring.fall')}
             </span>
             <span className="text-muted-foreground">|</span>
             <span className="text-muted-foreground">
-              Bounding boxes appear when AI detects objects in real-time
+              {t('monitoring.boundingBoxHint')}
             </span>
           </div>
         </div>

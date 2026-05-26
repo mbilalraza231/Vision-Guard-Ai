@@ -183,7 +183,7 @@ export interface StorageSettings {
 export interface ModelSettings {
   detectionModel: string;
   confidenceThreshold: number;
-  processingMode: 'realtime' | 'batch';
+  processingMode: 'realtime';
 }
 
 export interface PrivacySettings {

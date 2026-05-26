@@ -32,7 +32,10 @@ import { API_ENDPOINTS, buildApiUrl } from '@/config/api';
 import { apiService } from '@/services/api.service';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProfile } from '@/hooks/useProfile';
+import { useSettings } from '@/hooks/useSettings';
+import { formatDateTime, formatTimeString } from '@/lib/utils';
 import type { Incident, IncidentFilters, Severity, IncidentStatus } from '@/types';
+import { useTranslation } from 'react-i18next';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -82,10 +85,10 @@ interface EvidenceResponse {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function adaptEventToIncident(event: BackendEvent): Incident & { confidence: number } {
+function adaptEventToIncident(event: BackendEvent, timezone: string): Incident & { confidence: number } {
   return {
     id: event.id,
-    time: new Date(event.start_ts * 1000).toLocaleTimeString(),
+    time: formatTimeString(event.start_ts * 1000, timezone),
     camera: {
       id: event.camera_id,
       name: event.camera_id,
@@ -96,8 +99,8 @@ function adaptEventToIncident(event: BackendEvent): Incident & { confidence: num
     type: event.event_type as Incident['type'],
     severity: event.severity as Incident['severity'],
     status: 'active',
-    incidentTime: new Date(event.start_ts * 1000).toLocaleString(),
-    reportingTime: new Date(event.created_at * 1000).toLocaleString(),
+    incidentTime: formatDateTime(event.start_ts * 1000, timezone),
+    reportingTime: formatDateTime(event.created_at * 1000, timezone),
     createdAt: new Date(event.start_ts * 1000).toISOString(),
     updatedAt: new Date(event.end_ts * 1000).toISOString(),
     snapshotUrl: event.snapshot_url,
@@ -279,7 +282,10 @@ function EvidenceModal({ incident, onClose }: EvidenceModalProps) {
 // ---------------------------------------------------------------------------
 
 export default function Incidents() {
+  const { t } = useTranslation();
   const { data: user } = useProfile();
+  const { data: settings } = useSettings();
+  const timezone = settings?.general?.timezone || 'UTC';
   const [filters, setFilters] = useState<IncidentFilters>({
     severity: 'all',
     type: 'all',
@@ -319,7 +325,7 @@ export default function Incidents() {
     queryFn: () => apiService.getData<EventsListResponse>(API_ENDPOINTS.incidents.list, queryParams),
   });
 
-  const incidents = data?.events?.map(adaptEventToIncident) ?? [];
+  const incidents = data?.events?.map(e => adaptEventToIncident(e, timezone)) ?? [];
 
   const toggleSelectAll = () => {
     if (selectedIncidents.length === incidents.length) {
@@ -364,7 +370,7 @@ export default function Incidents() {
 
   return (
     <div className="min-h-screen">
-      <Header title="Incidents" showDateNav={false} />
+      <Header title={t('incidents.title')} showDateNav={false} />
       <div className="p-6">
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-3 mb-6">
@@ -373,13 +379,13 @@ export default function Incidents() {
             onValueChange={(value) => handleFilterChange({ ...filters, severity: value as Severity | 'all' })}
           >
             <SelectTrigger className="w-40 bg-secondary/50">
-              <SelectValue placeholder="All Severities" />
+              <SelectValue placeholder={t('incidents.allSeverities')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Severities</SelectItem>
-              <SelectItem value="critical">Critical</SelectItem>
-              <SelectItem value="high">High</SelectItem>
-              <SelectItem value="medium">Medium</SelectItem>
+              <SelectItem value="all">{t('incidents.allSeverities')}</SelectItem>
+              <SelectItem value="critical">{t('incidents.critical')}</SelectItem>
+              <SelectItem value="high">{t('incidents.high')}</SelectItem>
+              <SelectItem value="medium">{t('incidents.medium')}</SelectItem>
             </SelectContent>
           </Select>
 
@@ -388,13 +394,13 @@ export default function Incidents() {
             onValueChange={(value) => handleFilterChange({ ...filters, type: value as Incident['type'] | 'all' })}
           >
             <SelectTrigger className="w-36 bg-secondary/50">
-              <SelectValue placeholder="All Types" />
+              <SelectValue placeholder={t('incidents.allTypes')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Types</SelectItem>
-              <SelectItem value="fire">Fire</SelectItem>
-              <SelectItem value="weapon">Weapon</SelectItem>
-              <SelectItem value="fall">Fall</SelectItem>
+              <SelectItem value="all">{t('incidents.allTypes')}</SelectItem>
+              <SelectItem value="fire">{t('incidents.fire')}</SelectItem>
+              <SelectItem value="weapon">{t('incidents.weapon')}</SelectItem>
+              <SelectItem value="fall">{t('incidents.fall')}</SelectItem>
             </SelectContent>
           </Select>
 
@@ -403,13 +409,13 @@ export default function Incidents() {
             onValueChange={(value) => handleFilterChange({ ...filters, status: value as IncidentStatus | 'all' })}
           >
             <SelectTrigger className="w-36 bg-secondary/50">
-              <SelectValue placeholder="All Statuses" />
+              <SelectValue placeholder={t('incidents.allStatuses')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="all">{t('incidents.allStatuses')}</SelectItem>
+              <SelectItem value="active">{t('incidents.active')}</SelectItem>
               <SelectItem value="acknowledged">Acknowledged</SelectItem>
-              <SelectItem value="resolved">Resolved</SelectItem>
+              <SelectItem value="resolved">{t('incidents.resolved')}</SelectItem>
             </SelectContent>
           </Select>
 
@@ -440,7 +446,7 @@ export default function Incidents() {
                 disabled={!incidents.length}
               >
                 <Download className="h-4 w-4" />
-                Export
+                {t('incidents.export')}
               </Button>
             )}
           </div>
@@ -478,13 +484,13 @@ export default function Incidents() {
                         onCheckedChange={toggleSelectAll}
                       />
                     </th>
-                    <th>ID</th>
-                    <th>Time</th>
-                    <th>Camera</th>
-                    <th>Type</th>
-                    <th>Severity</th>
+                    <th>{t('incidents.id')}</th>
+                    <th>{t('incidents.time')}</th>
+                    <th>{t('incidents.camera')}</th>
+                    <th>{t('incidents.type')}</th>
+                    <th>{t('incidents.severity')}</th>
                     <th>Confidence</th>
-                    <th>Status</th>
+                    <th>{t('incidents.status')}</th>
                     <th>
                       <span className="flex items-center gap-1">
                         <Paperclip className="h-3.5 w-3.5" />
@@ -497,7 +503,7 @@ export default function Incidents() {
                   {incidents.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="text-center text-muted-foreground py-8">
-                        No incidents found
+                        {t('incidents.noIncidents')}
                       </td>
                     </tr>
                   ) : (
@@ -510,7 +516,9 @@ export default function Incidents() {
                           />
                         </td>
                         <td className="text-sm font-mono">#{incident.id.slice(0, 8)}</td>
-                        <td className="text-sm">{new Date((incident as any).createdAt).toLocaleTimeString()}</td>
+                        <td className="text-sm">
+                          {formatTimeString(incident.createdAt, timezone)}
+                        </td>
                         <td>
                           <div>
                             <div className="text-sm font-medium">{incident.camera.name}</div>

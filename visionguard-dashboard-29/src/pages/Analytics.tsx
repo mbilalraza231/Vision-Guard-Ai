@@ -7,6 +7,9 @@ import { useQuery } from '@tanstack/react-query';
 import { API_ENDPOINTS } from '@/config/api';
 import { apiService } from '@/services/api.service';
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useSettings } from '@/hooks/useSettings';
+import { formatTimeString } from '@/lib/utils';
 import {
   LineChart,
   Line,
@@ -65,6 +68,9 @@ interface StatusResponse {
 }
 
 export default function Analytics() {
+  const { t } = useTranslation();
+  const { data: settings } = useSettings();
+  const timezone = settings?.general?.timezone || 'UTC';
   const { data: stats, isLoading: isStatsLoading, error: statsError, refetch: refetchStats } = useQuery({
     queryKey: ['analytics-stats'],
     queryFn: () => apiService.getData<EventsStatsResponse>(API_ENDPOINTS.incidents.stats),
@@ -107,10 +113,10 @@ export default function Analytics() {
         name: `D${index + 1}`,
         confidence: Math.round(item.confidence * 100),
         type: item.event_type.charAt(0).toUpperCase() + item.event_type.slice(1),
-        time: date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        time: formatTimeString(date.getTime(), timezone),
       };
     });
-  }, [stats]);
+  }, [stats, timezone]);
 
   // Calculate real performance metrics
   const performanceMetrics = useMemo(() => {
@@ -181,13 +187,13 @@ export default function Analytics() {
   if (error) {
     return (
       <div className="min-h-screen">
-        <Header title="Analytics" />
+        <Header title={t('analytics.title')} />
         <div className="p-6 flex flex-col items-center justify-center gap-4 min-h-[60vh]">
-          <p className="text-severity-critical text-lg">Failed to load analytics</p>
+          <p className="text-severity-critical text-lg">{t('common.error')}</p>
           <p className="text-muted-foreground text-sm">{(error as Error).message}</p>
           <Button variant="outline" className="gap-2" onClick={refetchAll}>
             <RefreshCw className="h-4 w-4" />
-            Retry
+            {t('common.retry')}
           </Button>
         </div>
       </div>
@@ -196,7 +202,7 @@ export default function Analytics() {
 
   return (
     <div className="min-h-screen">
-      <Header title="Analytics" />
+      <Header title={t('analytics.title')} />
       <div className="p-6">
         {isLoading && !stats ? (
           <div className="flex items-center justify-center min-h-[40vh]">
@@ -207,12 +213,12 @@ export default function Analytics() {
             {/* Stats Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               <StatCard
-                title="Total Incidents"
+                title={t('dashboard.totalEvents')}
                 value={stats?.total_events ?? 0}
                 icon={AlertCircle}
               />
               <StatCard
-                title="Critical Events"
+                title={t('dashboard.criticalAlerts')}
                 value={stats?.by_severity?.critical ?? 0}
                 icon={Clock}
               />

@@ -25,11 +25,13 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { apiService } from '@/services/api.service';
 import { API_ENDPOINTS } from '@/config/api';
-import { cn } from '@/lib/utils';
+import { useSettings } from '@/hooks/useSettings';
+import { cn, formatDateTime } from '@/lib/utils';
 
 const STORAGE_KEY = 'vg:dashboard:settings';
 
 export default function AlertContacts() {
+  const { data: settings } = useSettings();
   const [activeTab, setActiveTab] = useState<'contacts' | 'history'>('contacts');
   const [historyPage, setHistoryPage] = useState(1);
   const [historyFilters, setHistoryFilters] = useState({
@@ -150,7 +152,7 @@ export default function AlertContacts() {
     const header = ['ID', 'Time', 'Recipient', 'Channel', 'Status', 'Error'].join(',');
     const rows = alerts.map((a: any) => [
       a.id,
-      new Date(a.created_at * 1000).toLocaleString(),
+      formatDateTime(a.created_at * 1000, settings?.general?.timezone || 'UTC'),
       a.recipient || 'Unknown',
       a.channel || '',
       a.status || '',
@@ -453,7 +455,7 @@ export default function AlertContacts() {
                   {alerts.map((alert: any) => (
                     <tr key={alert.id} className="hover:bg-white/5 transition-colors group">
                       <td className="p-4 text-sm font-mono text-muted-foreground">
-                        {new Date(alert.created_at * 1000).toLocaleString()}
+                        {formatDateTime(alert.created_at * 1000, settings?.general?.timezone || 'UTC')}
                       </td>
                       <td className="p-4">
                         <div className="font-semibold">{alert.recipient || 'Unknown'}</div>

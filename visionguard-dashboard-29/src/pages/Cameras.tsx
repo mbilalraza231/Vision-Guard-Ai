@@ -20,6 +20,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 
 // Backend camera from GET /cameras
 interface BackendCamera {
@@ -55,6 +56,7 @@ function adaptCamera(cam: BackendCamera): Camera & { enabled: boolean; source: s
 
 export default function Cameras() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   // Add/Edit Camera Form States
   const [isOpen, setIsOpen] = useState(false);
@@ -152,13 +154,13 @@ export default function Cameras() {
   if (error) {
     return (
       <div className="min-h-screen">
-        <Header title="Cameras" showDateNav={false} />
+        <Header title={t('cameras.title')} showDateNav={false} />
         <div className="p-6 flex flex-col items-center justify-center gap-4 min-h-[60vh]">
-          <p className="text-severity-critical text-lg">Failed to load cameras</p>
+          <p className="text-severity-critical text-lg">{t('common.error')}</p>
           <p className="text-muted-foreground text-sm">{(error as Error).message}</p>
           <Button variant="outline" className="gap-2" onClick={() => refetch()}>
             <RefreshCw className="h-4 w-4" />
-            Retry
+            {t('common.retry')}
           </Button>
         </div>
       </div>
@@ -167,7 +169,7 @@ export default function Cameras() {
 
   return (
     <div className="min-h-screen">
-      <Header title="Cameras" showDateNav={false} />
+      <Header title={t('cameras.title')} showDateNav={false} />
       <div className="p-6">
         {/* Header Actions */}
         <div className="flex items-center justify-between mb-6">
@@ -200,11 +202,11 @@ export default function Cameras() {
               }}
             >
               <Plus className="h-4 w-4" />
-              Add Camera
+              {t('cameras.add')}
             </Button>
             <DialogContent className="sm:max-w-[425px] max-h-[85vh] p-0 flex flex-col overflow-hidden">
               <DialogHeader className="p-6 pb-3 border-b">
-                <DialogTitle>{editingId ? 'Edit Camera Settings' : 'Add New Camera'}</DialogTitle>
+                <DialogTitle>{editingId ? t('cameras.editCamera') : t('cameras.add')}</DialogTitle>
                 <DialogDescription>
                   {editingId ? 'Modify configuration options for this camera source.' : 'Configure a new camera source for VisionGuard AI monitoring.'}
                 </DialogDescription>
@@ -320,10 +322,10 @@ export default function Cameras() {
                     {registerMutation.isPending ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Saving...
+                        {t('common.loading')}
                       </>
                     ) : (
-                      editingId ? 'Save Changes' : 'Save Camera'
+                      editingId ? t('common.save') : t('cameras.add')
                     )}
                   </Button>
                 </div>
@@ -338,8 +340,8 @@ export default function Cameras() {
           </div>
         ) : cameras.length === 0 ? (
           <div className="flex flex-col items-center justify-center min-h-[40vh] text-muted-foreground">
-            <p className="text-lg">No cameras configured</p>
-            <p className="text-sm mt-1">Click "Add Camera" above to get started</p>
+            <p className="text-lg">{t('cameras.noCameras')}</p>
+            <p className="text-sm mt-1">{t('cameras.addFirst')}</p>
           </div>
         ) : (
           /* Camera Grid */
@@ -380,6 +382,7 @@ interface CameraCardProps {
 }
 
 function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdit }: CameraCardProps) {
+  const { t } = useTranslation();
   const [imageError, setImageError] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
   const isHttpStream = camera.status === 'online' && camera.source.startsWith('http');
@@ -536,12 +539,12 @@ function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdi
                     : 'bg-status-offline'
                 )}
               />
-              {(camera.status === 'online' && !imageError) ? 'Online' : 'Offline'}
+              {(camera.status === 'online' && !imageError) ? t('cameras.online') : t('cameras.offline')}
             </Badge>
           )}
           {(camera.aiActive && !imageError) && (
             <Badge variant="outline" className="border-primary/50 text-primary bg-primary/5 text-[10px] font-semibold">
-              AI Active
+              {t('monitoring.aiActive')}
             </Badge>
           )}
         </div>
@@ -563,7 +566,7 @@ function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdi
               ) : (
                 <Square className="h-3 w-3 fill-current" />
               )}
-              Stop Stream
+              {t('cameras.stop')}
             </Button>
           ) : (
             <Button
@@ -581,7 +584,7 @@ function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdi
               ) : (
                 <Play className="h-3 w-3 fill-current" />
               )}
-              Start Stream
+              {t('cameras.start')}
             </Button>
           )}
         </div>

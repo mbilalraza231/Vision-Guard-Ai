@@ -8,8 +8,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useProfile, useUpdateProfile } from '@/hooks/useProfile';
 import { Loader2, User, Mail, Shield, Camera, Save, Key } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 
 export default function Profile() {
+  const { t } = useTranslation();
   const { data: user, isLoading: isProfileLoading } = useProfile();
   const updateProfile = useUpdateProfile();
   
@@ -37,9 +39,10 @@ export default function Profile() {
     try {
       await updateProfile.mutateAsync({ name: formData.name });
       toast.success('Profile updated successfully');
-    } catch (err: any) {
+    } catch (err) {
       console.error('[Profile] Update error:', err);
-      toast.error(err.message || 'Failed to update profile');
+      const error = err as Error;
+      toast.error(error.message || 'Failed to update profile');
     }
   };
 
@@ -47,7 +50,7 @@ export default function Profile() {
 
   return (
     <div className="min-h-screen">
-      <Header title="My Profile" showDateNav={false} />
+      <Header title={t('profile.title')} showDateNav={false} />
       
       <div className="p-6 max-w-4xl mx-auto">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -88,13 +91,13 @@ export default function Profile() {
             <div className="dashboard-card p-6">
               <div className="flex items-center gap-2 mb-6">
                 <User className="h-5 w-5 text-primary" />
-                <h3 className="text-xl font-bold">Personal Information</h3>
+                <h3 className="text-xl font-bold">{t('profile.personalInfo')}</h3>
               </div>
               
               <form onSubmit={handleUpdateProfile} className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="name">Full Name</Label>
+                    <Label htmlFor="name">{t('profile.fullName')}</Label>
                     <Input 
                       id="name" 
                       value={formData.name} 
@@ -103,7 +106,7 @@ export default function Profile() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="email">Email Address</Label>
+                    <Label htmlFor="email">{t('profile.email')}</Label>
                     <Input 
                       id="email" 
                       type="email" 
@@ -111,14 +114,14 @@ export default function Profile() {
                       disabled
                       className="bg-secondary/50 opacity-50 cursor-not-allowed" 
                     />
-                    <p className="text-[10px] text-muted-foreground">Email cannot be changed directly.</p>
+                    <p className="text-[10px] text-muted-foreground">{t('profile.emailHint')}</p>
                   </div>
                 </div>
 
                 <div className="flex justify-end pt-4">
                   <Button type="submit" className="gap-2" disabled={updateProfile.isPending}>
                     {updateProfile.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    Save Changes
+                    {t('profile.saveChanges')}
                   </Button>
                 </div>
               </form>
@@ -127,15 +130,15 @@ export default function Profile() {
             <div className="dashboard-card p-6">
               <div className="flex items-center gap-2 mb-6">
                 <Key className="h-5 w-5 text-primary" />
-                <h3 className="text-xl font-bold">Security</h3>
+                <h3 className="text-xl font-bold">{t('profile.security')}</h3>
               </div>
               
               <div className="space-y-4">
                 <p className="text-sm text-muted-foreground">
-                  To update your password, we will send a reset link to your email address.
+                  {t('profile.passwordReset')}
                 </p>
                 <Button variant="outline" className="gap-2">
-                  Send Password Reset Link
+                  {t('profile.sendReset')}
                 </Button>
               </div>
             </div>

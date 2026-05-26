@@ -93,7 +93,7 @@ class ApiService {
         let errorMessage = errorData.message || `HTTP Error: ${response.status}`;
         
         if (Array.isArray(errorData.detail)) {
-          errorMessage = errorData.detail.map((err: any) => {
+          errorMessage = errorData.detail.map((err: { loc: string | string[], msg: string }) => {
             const loc = Array.isArray(err.loc) ? err.loc.join('.') : err.loc;
             return `${loc}: ${err.msg}`;
           }).join(', ');

@@ -10,6 +10,9 @@ import { API_ENDPOINTS } from '@/config/api';
 import { apiService } from '@/services/api.service';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProfile } from '@/hooks/useProfile';
+import { useTranslation } from 'react-i18next';
+import { useSettings } from '@/hooks/useSettings';
+import { formatDateTime, formatTimeString } from '@/lib/utils';
 import type { SystemMetrics, Incident } from '@/types';
 
 // Backend response types
@@ -71,7 +74,7 @@ interface EventsListResponse {
 }
 
 // Adapt backend event to frontend Incident type
-function adaptEventToIncident(event: BackendEvent): Incident {
+function adaptEventToIncident(event: BackendEvent, timezone: string): Incident {
   return {
     id: event.id,
     camera: {
@@ -84,9 +87,9 @@ function adaptEventToIncident(event: BackendEvent): Incident {
     type: event.event_type as Incident['type'],
     severity: event.severity as Incident['severity'],
     status: 'active',
-    time: new Date(event.start_ts * 1000).toLocaleString(),
-    incidentTime: new Date(event.start_ts * 1000).toLocaleString(),
-    reportingTime: new Date(event.created_at * 1000).toLocaleString(),
+    time: formatTimeString(event.start_ts * 1000, timezone),
+    incidentTime: formatDateTime(event.start_ts * 1000, timezone),
+    reportingTime: formatDateTime(event.created_at * 1000, timezone),
     snapshotUrl: event.snapshot_url,
     clipUrl: event.clip_url,
     confidence: event.confidence,
@@ -98,7 +101,10 @@ function adaptEventToIncident(event: BackendEvent): Incident {
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { data: user } = useProfile();
+  const { data: settings } = useSettings();
+  const timezone = settings?.general?.timezone || 'UTC';
 
   // Fetch event stats
   const { data: stats, isLoading: statsLoading, error: statsError, refetch: refetchStats } =
@@ -151,18 +157,18 @@ export default function Dashboard() {
       : '-',
   };
 
-  const incidents: Incident[] = recentEvents?.events?.map(adaptEventToIncident) ?? [];
+  const incidents: Incident[] = recentEvents?.events?.map(e => adaptEventToIncident(e, timezone)) ?? [];
 
   if (statsError) {
     return (
       <div className="min-h-screen">
         <Header />
         <div className="p-6 flex flex-col items-center justify-center gap-4 min-h-[60vh]">
-          <p className="text-severity-critical text-lg">Failed to load dashboard data</p>
+          <p className="text-severity-critical text-lg">{t('dashboard.failedToLoad')}</p>
           <p className="text-muted-foreground text-sm">{(statsError as Error).message}</p>
           <Button variant="outline" className="gap-2" onClick={() => refetchStats()}>
             <RefreshCw className="h-4 w-4" />
-            Retry
+            {t('dashboard.retry')}
           </Button>
         </div>
       </div>
@@ -174,7 +180,7 @@ export default function Dashboard() {
       <Header />
       <div className="p-6">
         {/* Greeting */}
-        <h1 className="text-3xl font-bold mb-6">VisionGuard AI Dashboard</h1>
+        <h1 className="text-3xl font-bold mb-6">{t('dashboard.title')}</h1>
 
         {isLoading ? (
           <div className="flex items-center justify-center min-h-[40vh]">
@@ -185,27 +191,27 @@ export default function Dashboard() {
             {/* Stats Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               <StatCard
-                title="Active Cameras"
+                title={t('dashboard.activeCameras')}
                 value={`${runningCameras}/${totalCameras}`}
-                subtitle={runningCameras > 0 ? 'Online' : 'No cameras running'}
+                subtitle={runningCameras > 0 ? t('dashboard.online') : t('dashboard.noCamerasRunning')}
                 icon={Camera}
               />
               <StatCard
-                title="Total Events"
+                title={t('dashboard.totalEvents')}
                 value={stats?.total_events ?? 0}
-                subtitle="All time"
+                subtitle={t('dashboard.allTime')}
                 icon={AlertTriangle}
                 iconBgColor="bg-severity-high/10"
               />
               <StatCard
-                title="Critical Alerts"
+                title={t('dashboard.criticalAlerts')}
                 value={stats?.by_severity?.critical ?? 0}
-                subtitle="Requires Attention"
+                subtitle={t('dashboard.requiresAttention')}
                 icon={AlertTriangle}
                 iconBgColor="bg-severity-critical/10"
               />
               <StatCard
-                title="Detection Types"
+                title={t('dashboard.detectionTypes')}
                 value={Object.keys(stats?.by_type ?? {}).length}
                 subtitle={
                   stats?.by_type

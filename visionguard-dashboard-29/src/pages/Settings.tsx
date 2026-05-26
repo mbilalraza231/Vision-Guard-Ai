@@ -1,5 +1,7 @@
 import { useMemo, useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Header } from '@/components/layout/Header';
+import { useSettings } from '@/hooks/useSettings';
 import { cn } from '@/lib/utils';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -24,6 +26,7 @@ import {
 import { Loader2, RefreshCw, Save, RotateCcw, Bell, ShieldCheck, Mail, Phone, Plus, Trash2 } from 'lucide-react';
 import { apiService } from '@/services/api.service';
 import { buildApiUrl } from '@/config/api';
+import { formatTimeString } from '@/lib/utils';
 import type {
   AlertSettings,
   GeneralSettings,
@@ -51,23 +54,23 @@ const tabs: TabItem[] = [
   { id: 'system', label: 'System' },
 ];
 
-const SETTINGS_STORAGE_KEY = 'vg:dashboard:settings';
+// Settings are now persisted in PostgreSQL via /api/v1/settings
 
 const defaultSettings: SystemSettings = {
   general: {
     siteName: 'VisionGuard AI',
-    timezone: 'UTC',
+    timezone: 'Asia/Karachi',
     language: 'en',
   },
   alerts: {
-    emailNotifications: true,
+    emailNotifications: false,
     smsNotifications: false,
-    pushNotifications: true,
-    alertThreshold: 'high',
+    pushNotifications: false,
+    alertThreshold: 'low',
   },
   storage: {
     retentionDays: 30,
-    autoDelete: true,
+    autoDelete: false,
     maxStorage: 50,
   },
   models: {
@@ -77,8 +80,8 @@ const defaultSettings: SystemSettings = {
   },
   privacy: {
     maskFaces: false,
-    anonymizeData: true,
-    gdprCompliant: true,
+    anonymizeData: false,
+    gdprCompliant: false,
   },
   system: {
     version: '-',
@@ -147,39 +150,41 @@ function formatDuration(seconds: number | undefined): string {
   return `${minutes}m`;
 }
 
-function readStoredSettings(): SystemSettings {
-  const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
-  if (!raw) {
-    return defaultSettings;
-  }
-  try {
-    const parsed = JSON.parse(raw) as Partial<SystemSettings>;
-    return {
-      ...defaultSettings,
-      ...parsed,
-      general: { ...defaultSettings.general, ...(parsed.general ?? {}) },
-      alerts: { ...defaultSettings.alerts, ...(parsed.alerts ?? {}) },
-      storage: { ...defaultSettings.storage, ...(parsed.storage ?? {}) },
-      models: { ...defaultSettings.models, ...(parsed.models ?? {}) },
-      privacy: { ...defaultSettings.privacy, ...(parsed.privacy ?? {}) },
-      system: { ...defaultSettings.system, ...(parsed.system ?? {}) },
-      notifications: {
-        recipients: (parsed as any).notifications?.recipients ?? [
-          { id: '1', name: 'Main Admin', phone: '+1 234 567 890', email: 'admin@visionguard.ai', whatsapp: true, emailAlert: true },
-        ],
-        twilio: (parsed as any).notifications?.twilio ?? { sid: '', token: '', from: '' },
-        gmail: (parsed as any).notifications?.gmail ?? { server: 'smtp.gmail.com', user: '', pass: '' },
-      }
-    };
-  } catch {
-    return defaultSettings;
-  }
-}
+// Settings are fetched from the backend API on mount
 
 export default function Settings() {
+  const { t, i18n } = useTranslation();
   const [activeTab, setActiveTab] = useState<SettingsTab>('system');
-  const [settings, setSettings] = useState<any>(() => readStoredSettings());
+  const [settings, setSettings] = useState<SystemSettings>(defaultSettings);
   const [saveMessage, setSaveMessage] = useState<string>('');
+  const [settingsLoading, setSettingsLoading] = useState(true);
+
+  // Fetch settings from backend API on mount
+  useEffect(() => {
+    let cancelled = false;
+    const fetchSettings = async () => {
+      try {
+        const data = await apiService.getData<SystemSettings>('/api/v1/settings');
+        if (!cancelled) {
+          setSettings((prev: SystemSettings) => ({
+            ...prev,
+            ...data,
+            system: prev.system, // system info comes from /health, /status, /metrics
+          }));
+          // Sync i18n with loaded setting
+          if (data?.general?.language) {
+            i18n.changeLanguage(data.general.language);
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to fetch settings from API, using defaults', err);
+      } finally {
+        if (!cancelled) setSettingsLoading(false);
+      }
+    };
+    fetchSettings();
+    return () => { cancelled = true; };
+  }, []);
 
   const {
     data: health,
@@ -253,17 +258,44 @@ export default function Settings() {
     };
   }, [health?.version, metrics?.system?.uptime_seconds, metrics?.system?.version, status?.timestamp, status?.uptime_seconds]);
 
-  const persistSettings = (next: SystemSettings) => {
-    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(next));
-    setSettings(next);
-    setSaveMessage('Settings saved successfully');
+  const persistSettings = async (next: SystemSettings) => {
+    try {
+      const { general, alerts, storage, models, privacy, notifications } = next;
+      const saved = await apiService.putData<SystemSettings>('/api/v1/settings', { general, alerts, storage, models, privacy, notifications });
+      setSettings((prev: SystemSettings) => ({ ...prev, ...saved }));
+      setSaveMessage(t('settings.buttons.save') + ' Successful');
+      i18n.changeLanguage(saved.general.language);
+      queryClient.setQueryData(['system-settings'], saved);
+      // Also persist to localStorage so timezone/siteName are instant on next render
+      try { localStorage.setItem('vg:settings:cache', JSON.stringify(saved)); } catch {}
+    } catch (err) {
+      console.error('Failed to save settings', err);
+      setSaveMessage('Failed to save settings');
+    }
     setTimeout(() => setSaveMessage(''), 2500);
   };
 
-  const resetSettings = () => {
-    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(defaultSettings));
-    setSettings(defaultSettings);
-    setSaveMessage('Settings reset to defaults');
+  const resetSettings = async () => {
+    try {
+      const defaults = await apiService.postData<SystemSettings>('/api/v1/settings/reset');
+      
+      // Override backend defaults with our new UI defaults
+      defaults.general.timezone = 'Asia/Karachi';
+      defaults.general.siteName = 'VisionGuard AI';
+      
+      // Persist these overridden defaults back to the backend immediately
+      await apiService.putData<SystemSettings>('/api/v1/settings', defaults);
+      
+      setSettings((prev: SystemSettings) => ({ ...prev, ...defaults }));
+      setSaveMessage(t('settings.buttons.reset') + ' Successful');
+      i18n.changeLanguage(defaults.general.language);
+      queryClient.setQueryData(['system-settings'], defaults);
+      // Also persist to localStorage so timezone/siteName are instant on next render
+      try { localStorage.setItem('vg:settings:cache', JSON.stringify(defaults)); } catch {}
+    } catch (err) {
+      console.error('Failed to reset settings', err);
+      setSaveMessage('Failed to reset settings');
+    }
     setTimeout(() => setSaveMessage(''), 2500);
   };
 
@@ -284,18 +316,18 @@ export default function Settings() {
   };
 
   const updatePrivacy = (patch: Partial<PrivacySettings>) => {
-    setSettings((prev: any) => ({ ...prev, privacy: { ...prev.privacy, ...patch } }));
+    setSettings((prev: SystemSettings) => ({ ...prev, privacy: { ...prev.privacy, ...patch } }));
   };
 
-  const updateTwilio = (patch: any) => {
-    setSettings((prev: any) => ({ 
+  const updateTwilio = (patch: Partial<SystemSettings['notifications']['twilio']>) => {
+    setSettings((prev: SystemSettings) => ({ 
       ...prev, 
       notifications: { ...prev.notifications, twilio: { ...prev.notifications.twilio, ...patch } } 
     }));
   };
 
-  const updateGmail = (patch: any) => {
-    setSettings((prev: any) => ({ 
+  const updateGmail = (patch: Partial<SystemSettings['notifications']['gmail']>) => {
+    setSettings((prev: SystemSettings) => ({ 
       ...prev, 
       notifications: { ...prev.notifications, gmail: { ...prev.notifications.gmail, ...patch } } 
     }));
@@ -303,7 +335,7 @@ export default function Settings() {
 
   return (
     <div className="min-h-screen">
-      <Header title="Settings" showDateNav={false} />
+      <Header title={t('settings.title', 'Settings')} showDateNav={false} />
       <div className="p-6">
         <div className="dashboard-card">
           <div className="flex flex-col md:flex-row">
@@ -321,7 +353,7 @@ export default function Settings() {
                         : 'text-muted-foreground hover:bg-secondary/50 hover:text-foreground'
                     )}
                   >
-                    {tab.label}
+                    {t(`settings.tabs.${tab.id}`, tab.label)}
                   </button>
                 ))}
               </nav>
@@ -331,7 +363,7 @@ export default function Settings() {
             <div className="flex-1 p-6">
               <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
                 <div className="text-sm text-muted-foreground">
-                  Settings are synced with the VisionGuard backend.
+                  {t('settings.syncedMessage', 'Settings are synced with the VisionGuard backend.')}
                 </div>
                 <div className="flex items-center gap-2">
                   <Button
@@ -340,14 +372,14 @@ export default function Settings() {
                     onClick={resetSettings}
                   >
                     <RotateCcw className="h-4 w-4" />
-                    Reset
+                    {t('settings.buttons.reset', 'Reset')}
                   </Button>
                   <Button
                     className="gap-2"
                     onClick={() => persistSettings(settings)}
                   >
                     <Save className="h-4 w-4" />
-                    Save
+                    {t('settings.buttons.save', 'Save')}
                   </Button>
                 </div>
               </div>
@@ -451,7 +483,7 @@ export default function Settings() {
                                 </div>
                                 <div className="flex justify-between pt-1 border-t border-white/5 mt-1">
                                   <span>Last Seen</span>
-                                  <span>{new Date(w.last_seen * 1000).toLocaleTimeString()}</span>
+                                  <span>{formatTimeString(w.last_seen * 1000, settings.general.timezone)}</span>
                                 </div>
                               </div>
                             </div>
@@ -470,10 +502,10 @@ export default function Settings() {
 
               {activeTab === 'general' && (
                 <div className="animate-fade-in">
-                  <h2 className="text-2xl font-bold mb-6">General Settings</h2>
+                  <h2 className="text-2xl font-bold mb-6">{t('settings.tabs.general', 'General Settings')}</h2>
                   <div className="space-y-5 max-w-xl">
                     <div className="space-y-2">
-                      <Label htmlFor="siteName">Site Name</Label>
+                      <Label htmlFor="siteName">{t('settings.general.siteName', 'Site Name')}</Label>
                       <Input
                         id="siteName"
                         value={settings.general.siteName}
@@ -482,7 +514,7 @@ export default function Settings() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label>Timezone</Label>
+                      <Label>{t('settings.general.timezone', 'Timezone')}</Label>
                       <Select
                         value={settings.general.timezone}
                         onValueChange={(value) => updateGeneral({ timezone: value })}
@@ -501,7 +533,7 @@ export default function Settings() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label>Language</Label>
+                      <Label>{t('settings.general.language', 'Language')}</Label>
                       <Select
                         value={settings.general.language}
                         onValueChange={(value) => updateGeneral({ language: value })}
@@ -510,7 +542,8 @@ export default function Settings() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="en">English</SelectItem>
+                          <SelectItem value="en">{t('settings.general.english', 'English')}</SelectItem>
+                          <SelectItem value="es">{t('settings.general.spanish', 'Spanish')}</SelectItem>
                           <SelectItem value="ur">Urdu</SelectItem>
                           <SelectItem value="ar">Arabic</SelectItem>
                         </SelectContent>
@@ -655,15 +688,14 @@ export default function Settings() {
                     <div className="space-y-2">
                       <Label>Processing Mode</Label>
                       <Select
-                        value={settings.models.processingMode}
-                        onValueChange={(value) => updateModels({ processingMode: value as ModelSettings['processingMode'] })}
+                        value={settings.models.processingMode || 'realtime'}
+                        onValueChange={(value) => updateModels({ processingMode: value as any })}
                       >
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="realtime">Realtime</SelectItem>
-                          <SelectItem value="batch">Batch</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

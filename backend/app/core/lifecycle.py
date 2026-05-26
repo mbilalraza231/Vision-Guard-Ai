@@ -61,6 +61,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.warning(f"Failed to start metrics heartbeat: {e}")
 
+    # Ensure system_settings table exists (auto-migration)
+    try:
+        from .database import db
+        await db.connect()
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS system_settings (
+                id          SERIAL PRIMARY KEY,
+                data        JSONB NOT NULL DEFAULT '{}'::jsonb,
+                updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+        """)
+        # Seed a default row if the table is empty
+        existing = await db.fetch_one("SELECT id FROM system_settings LIMIT 1")
+        if not existing:
+            await db.execute("INSERT INTO system_settings (data) VALUES ('{}'::jsonb)")
+        logger.info("system_settings table ready")
+    except Exception as e:
+        logger.warning(f"Failed to ensure system_settings table: {e}")
+
     logger.info("Service managers initialized")
     logger.info(f"Backend ready at http://{settings.host}:{settings.port}")
     

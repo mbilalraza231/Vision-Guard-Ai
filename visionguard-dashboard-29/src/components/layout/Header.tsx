@@ -11,9 +11,12 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProfile } from '@/hooks/useProfile';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { useQuery } from '@tanstack/react-query';
+import { useSettings } from '@/hooks/useSettings';
+import { formatTimeString } from '@/lib/utils';
 
 const eventConfigs: Record<string, { icon: any; color: string; label: string; bg: string; border: string }> = {
   fire: { icon: Flame, color: 'text-orange-500', label: 'Fire Detected', bg: 'bg-orange-500/10', border: 'border-orange-500/20' },
@@ -29,8 +32,11 @@ interface HeaderProps {
 export function Header({ title, showDateNav = true }: HeaderProps) {
   const { logout } = useAuth();
   const { data: user } = useProfile();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const today = new Date();
+  const { data: settings } = useSettings();
+  const timezone = settings?.general?.timezone || 'UTC';
 
   // Passively read from the SSE cache populated by useGlobalSSE (DashboardLayout).
   // Zero HTTP requests — the global SSE stream already pushes recentEvents every 1.5s.
@@ -68,7 +74,7 @@ export function Header({ title, showDateNav = true }: HeaderProps) {
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <span className="text-sm font-medium">
-              Today, {format(today, 'MMM d')}
+              {t('header.today', 'Today')}, {format(today, 'MMM d')}
             </span>
             <Button variant="ghost" size="icon" className="h-6 w-6">
               <ChevronRight className="h-4 w-4" />
@@ -90,9 +96,9 @@ export function Header({ title, showDateNav = true }: HeaderProps) {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-80 p-1 bg-background/95 backdrop-blur-md border border-border/80 shadow-2xl rounded-xl">
             <DropdownMenuLabel className="px-3 py-2 flex items-center justify-between">
-              <span className="text-xs font-bold tracking-wide">Recent Alerts (24h)</span>
+              <span className="text-xs font-bold tracking-wide">{t('header.recentAlerts', 'Recent Alerts (24h)')}</span>
               <span className="text-[10px] font-bold text-red-400 bg-red-500/10 border border-red-500/20 px-2 py-0.5 rounded-full animate-pulse">
-                {notificationData?.total ?? 0} Active
+                {notificationData?.total ?? 0} {t('header.active', 'Active')}
               </span>
             </DropdownMenuLabel>
             <DropdownMenuSeparator className="bg-border/50" />
@@ -119,8 +125,8 @@ export function Header({ title, showDateNav = true }: HeaderProps) {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
                           <p className="text-xs font-semibold text-foreground truncate">{config.label}</p>
-                          <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                            {new Date(event.start_ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">
+                            {formatTimeString(event.start_ts * 1000, timezone)}
                           </span>
                         </div>
                         <p className="text-[10px] text-muted-foreground truncate mt-0.5">
@@ -135,13 +141,13 @@ export function Header({ title, showDateNav = true }: HeaderProps) {
                   className="flex items-center justify-center text-xs text-primary font-semibold py-2 cursor-pointer hover:bg-secondary/40 focus:bg-secondary/40 rounded-lg"
                   onClick={() => navigate('/incidents')}
                 >
-                  View All Incidents
+                  {t('header.viewAll', 'View All Incidents')}
                 </DropdownMenuItem>
               </div>
             ) : (
               <div className="py-8 text-center text-xs text-muted-foreground">
                 <Bell className="h-8 w-8 mx-auto mb-2 opacity-20" />
-                No new alerts in the last 24 hours.
+                {t('header.noAlerts', 'No new alerts in the last 24 hours.')}
               </div>
             )}
           </DropdownMenuContent>
@@ -174,14 +180,14 @@ export function Header({ title, showDateNav = true }: HeaderProps) {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => navigate('/settings')}>
-              Settings
+              {t('header.settingsMenu', 'Settings')}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => navigate('/profile')}>
-              Profile
+              {t('header.profile', 'Profile')}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout} className="text-severity-critical">
-              Logout
+              {t('header.logout', 'Logout')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

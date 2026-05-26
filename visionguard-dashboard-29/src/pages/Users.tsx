@@ -10,6 +10,7 @@ import type { User, UserRole } from '@/types';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTranslation } from 'react-i18next';
 
 const roleDescriptions: Record<UserRole, string> = {
   admin: 'Full system access, user management, settings configuration',
@@ -265,6 +266,7 @@ function EditUserModal({ user, onClose, onSuccess }: EditUserModalProps) {
 
 // ─── Main Users Page ───────────────────────────────────────────────────────────
 export default function Users() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -308,7 +310,7 @@ export default function Users() {
 
   return (
     <div className="min-h-screen">
-      <Header title="User Management" showDateNav={false} />
+      <Header title={t('users.title')} showDateNav={false} />
       <div className="p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -320,10 +322,10 @@ export default function Users() {
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading}>
               <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-              Refresh
+              {t('common.retry', 'Refresh')}
             </Button>
             <Button className="gap-2" onClick={() => setShowAddModal(true)}>
-              <Plus className="h-4 w-4" /> Add User
+              <Plus className="h-4 w-4" /> {t('users.add')}
             </Button>
           </div>
         </div>
@@ -351,11 +353,11 @@ export default function Users() {
               <table className="data-table w-full text-left">
                 <thead>
                   <tr className="border-b border-border">
-                    <th className="p-4">Name</th>
-                    <th className="p-4">Email</th>
-                    <th className="p-4">Role</th>
-                    <th className="p-4">Status</th>
-                    <th className="p-4 text-right">Actions</th>
+                    <th className="p-4">{t('users.name')}</th>
+                    <th className="p-4">{t('users.email')}</th>
+                    <th className="p-4">{t('users.role')}</th>
+                    <th className="p-4">{t('users.status')}</th>
+                    <th className="p-4 text-right">{t('users.actions')}</th>
                   </tr>
                 </thead>
                 <tbody>

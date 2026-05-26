@@ -17,16 +17,15 @@ class AlertEvaluator:
         self.repo = AlertRepository(self.config)
     
     def is_eligible(self, event: Dict[str, Any]) -> bool:
+        # Previously only "critical" and "high" were allowed.
+        # Updated to allow all severity levels; further filtering is handled per‑contact via the alertThreshold setting.
         severity = event.get("severity", "").lower()
-        if severity not in ("critical", "high"):
-            return False
-        
+        # No early return based on severity.
         confidence = event.get("confidence", 0.0)
         if severity == "critical" and confidence < self.config.min_confidence_critical:
             return False
         if severity == "high" and confidence < self.config.min_confidence_high:
             return False
-        
         return True
     
     def _get_dedup_window(self, severity: str) -> int:

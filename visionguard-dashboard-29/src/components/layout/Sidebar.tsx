@@ -1,4 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { useSettings } from '@/hooks/useSettings';
 import { cn } from '@/lib/utils';
 import {
   LayoutDashboard,
@@ -18,27 +20,29 @@ import { Button } from '@/components/ui/button';
 import { useProfile } from '@/hooks/useProfile';
 
 interface NavItem {
-  label: string;
+  id: string;
   path: string;
   icon: React.ComponentType<{ className?: string }>;
   requiredRoles?: string[];
 }
 
 const navItems: NavItem[] = [
-  { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-  { label: 'Live Monitoring', path: '/monitoring', icon: Monitor },
-  { label: 'Incidents', path: '/incidents', icon: AlertTriangle },
-  { label: 'Analytics', path: '/analytics', icon: BarChart3, requiredRoles: ['admin', 'manager'] },
-  { label: 'Cameras', path: '/cameras', icon: Camera, requiredRoles: ['admin', 'manager'] },
-  { label: 'Zones', path: '/zones', icon: MapPin, requiredRoles: ['admin', 'manager'] },
-  { label: 'Alerts', path: '/alert-contacts', icon: Bell, requiredRoles: ['admin'] },
-  { label: 'Users', path: '/users', icon: Users, requiredRoles: ['admin'] },
-  { label: 'Settings', path: '/settings', icon: Settings, requiredRoles: ['admin'] },
+  { id: 'dashboard', path: '/dashboard', icon: LayoutDashboard },
+  { id: 'monitoring', path: '/monitoring', icon: Monitor },
+  { id: 'incidents', path: '/incidents', icon: AlertTriangle },
+  { id: 'analytics', path: '/analytics', icon: BarChart3, requiredRoles: ['admin', 'manager'] },
+  { id: 'cameras', path: '/cameras', icon: Camera, requiredRoles: ['admin', 'manager'] },
+  { id: 'zones', path: '/zones', icon: MapPin, requiredRoles: ['admin', 'manager'] },
+  { id: 'alerts', path: '/alert-contacts', icon: Bell, requiredRoles: ['admin'] },
+  { id: 'users', path: '/users', icon: Users, requiredRoles: ['admin'] },
+  { id: 'settings', path: '/settings', icon: Settings, requiredRoles: ['admin'] },
 ];
 
 export function Sidebar() {
+  const { t } = useTranslation();
   const location = useLocation();
   const { data: user } = useProfile();
+  const { data: settings } = useSettings();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
@@ -81,12 +85,21 @@ export function Sidebar() {
           <div className="flex h-10 w-10 items-center justify-center rounded-lg overflow-hidden">
             <img src="/favicon.png" alt="VisionGuard AI Logo" className="h-full w-full object-cover" />
           </div>
-          {!isCollapsed && (
+          <div
+            className={cn(
+              'flex items-center gap-3 overflow-hidden whitespace-nowrap transition-all duration-300',
+              isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'
+            )}
+          >
             <div className="flex flex-col">
-              <span className="font-semibold text-foreground">VisionGuard AI</span>
-              <span className="text-xs text-muted-foreground">v2.0</span>
+              <span className="text-lg font-bold tracking-tight text-foreground/90 leading-tight">
+                {settings?.general?.siteName || 'VisionGuard AI'}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                v2.0
+              </span>
             </div>
-          )}
+          </div>
         </div>
 
         {/* Navigation */}
@@ -109,7 +122,7 @@ export function Sidebar() {
                 )}
               >
                 <Icon className={cn('h-5 w-5 flex-shrink-0', isActive && 'text-primary')} />
-                {!isCollapsed && <span>{item.label}</span>}
+                {!isCollapsed && <span>{t(`nav.${item.id}`)}</span>}
               </NavLink>
             );
           })}
@@ -124,7 +137,7 @@ export function Sidebar() {
             onClick={() => setIsCollapsed(!isCollapsed)}
           >
             <Menu className="h-5 w-5" />
-            {!isCollapsed && <span>Collapse</span>}
+            {!isCollapsed && <span>{t('nav.collapse', 'Collapse')}</span>}
           </Button>
         </div>
       </aside>
