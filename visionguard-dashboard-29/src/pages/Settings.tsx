@@ -159,6 +159,11 @@ export default function Settings() {
   const [saveMessage, setSaveMessage] = useState<string>('');
   const [settingsLoading, setSettingsLoading] = useState(true);
 
+  // Clear save messages when changing tabs
+  useEffect(() => {
+    setSaveMessage('');
+  }, [activeTab]);
+
   // Fetch settings from backend API on mount
   useEffect(() => {
     let cancelled = false;
@@ -258,12 +263,21 @@ export default function Settings() {
     };
   }, [health?.version, metrics?.system?.uptime_seconds, metrics?.system?.version, status?.timestamp, status?.uptime_seconds]);
 
-  const persistSettings = async (next: SystemSettings) => {
+  const persistSettings = async () => {
     try {
-      const { general, alerts, storage, models, privacy, notifications } = next;
-      const saved = await apiService.putData<SystemSettings>('/api/v1/settings', { general, alerts, storage, models, privacy, notifications });
+      const payload: Partial<SystemSettings> = {};
+      if (activeTab === 'general') payload.general = settings.general;
+      else if (activeTab === 'alerts') payload.alerts = settings.alerts;
+      else if (activeTab === 'storage') payload.storage = settings.storage;
+      else if (activeTab === 'models') payload.models = settings.models;
+      else if (activeTab === 'privacy') payload.privacy = settings.privacy;
+      else if (activeTab === 'notifications') payload.notifications = settings.notifications;
+      else return; // 'system' tab has no settings
+
+      const saved = await apiService.putData<SystemSettings>('/api/v1/settings', payload);
       setSettings((prev: SystemSettings) => ({ ...prev, ...saved }));
-      setSaveMessage(t('settings.buttons.save') + ' Successful');
+      const tabName = activeTab.charAt(0).toUpperCase() + activeTab.slice(1);
+      setSaveMessage(`Save ${tabName} settings Successful`);
       i18n.changeLanguage(saved.general.language);
       queryClient.setQueryData(['system-settings'], saved);
       // Also persist to localStorage so timezone/siteName are instant on next render
@@ -277,21 +291,34 @@ export default function Settings() {
 
   const resetSettings = async () => {
     try {
-      const defaults = await apiService.postData<SystemSettings>('/api/v1/settings/reset');
+      // Fetch pure defaults without modifying the DB
+      const defaults = await apiService.getData<SystemSettings>('/api/v1/settings/defaults');
       
-      // Override backend defaults with our new UI defaults
-      defaults.general.timezone = 'Asia/Karachi';
-      defaults.general.siteName = 'VisionGuard AI';
+      // Override general defaults with our new UI defaults if resetting general
+      if (activeTab === 'general') {
+        defaults.general.timezone = 'Asia/Karachi';
+        defaults.general.siteName = 'VisionGuard AI';
+      }
       
-      // Persist these overridden defaults back to the backend immediately
-      await apiService.putData<SystemSettings>('/api/v1/settings', defaults);
+      const payload: Partial<SystemSettings> = {};
+      if (activeTab === 'general') payload.general = defaults.general;
+      else if (activeTab === 'alerts') payload.alerts = defaults.alerts;
+      else if (activeTab === 'storage') payload.storage = defaults.storage;
+      else if (activeTab === 'models') payload.models = defaults.models;
+      else if (activeTab === 'privacy') payload.privacy = defaults.privacy;
+      else if (activeTab === 'notifications') payload.notifications = defaults.notifications;
+      else return; // 'system' tab has no settings
       
-      setSettings((prev: SystemSettings) => ({ ...prev, ...defaults }));
-      setSaveMessage(t('settings.buttons.reset') + ' Successful');
-      i18n.changeLanguage(defaults.general.language);
-      queryClient.setQueryData(['system-settings'], defaults);
+      // Persist ONLY the active tab's defaults back to the backend
+      const saved = await apiService.putData<SystemSettings>('/api/v1/settings', payload);
+      
+      setSettings((prev: SystemSettings) => ({ ...prev, ...saved }));
+      const tabName = activeTab.charAt(0).toUpperCase() + activeTab.slice(1);
+      setSaveMessage(`Reset ${tabName} settings Successful`);
+      i18n.changeLanguage(saved.general.language);
+      queryClient.setQueryData(['system-settings'], saved);
       // Also persist to localStorage so timezone/siteName are instant on next render
-      try { localStorage.setItem('vg:settings:cache', JSON.stringify(defaults)); } catch {}
+      try { localStorage.setItem('vg:settings:cache', JSON.stringify(saved)); } catch {}
     } catch (err) {
       console.error('Failed to reset settings', err);
       setSaveMessage('Failed to reset settings');
@@ -376,7 +403,7 @@ export default function Settings() {
                   </Button>
                   <Button
                     className="gap-2"
-                    onClick={() => persistSettings(settings)}
+                    onClick={persistSettings}
                   >
                     <Save className="h-4 w-4" />
                     {t('settings.buttons.save', 'Save')}
