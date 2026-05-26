@@ -10,7 +10,11 @@ import logging
 import os
 import cv2
 from multiprocessing import Process, Event
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import numpy as np
+    from ..redis_client.task_consumer import TaskMetadata
 
 from ..config import WorkerConfig
 from ..utils.logging import setup_worker_logging
