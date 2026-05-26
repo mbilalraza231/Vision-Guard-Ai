@@ -366,6 +366,35 @@ class AIWorker:
         
         self.logger.info("Inference loop ended")
     
+    def _mask_faces(self, frame: 'np.ndarray', logger: logging.Logger) -> 'np.ndarray':
+        """Blur all detected faces in the frame using OpenCV Haar Cascade."""
+        if not hasattr(self, "_face_cascade"):
+            try:
+                import cv2
+                self._face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+            except Exception as e:
+                logger.error(f"Failed to load Haar Cascade face classifier in AI worker: {e}")
+                self._face_cascade = None
+
+        if not self._face_cascade or self._face_cascade.empty():
+            return frame
+
+        try:
+            import cv2
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            faces = self._face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(20, 20))
+            if len(faces) > 0:
+                frame_copy = frame.copy()
+                for (x, y, w, h) in faces:
+                    face_roi = frame_copy[y:y+h, x:x+w]
+                    ksize = int(max(15, (w // 2) | 1))
+                    blurred = cv2.GaussianBlur(face_roi, (ksize, ksize), 0)
+                    frame_copy[y:y+h, x:x+w] = blurred
+                return frame_copy
+        except Exception as e:
+            logger.warning(f"Error in face masking: {e}")
+        return frame
+
     def _save_detection_image(
         self,
         frame: 'np.ndarray',
@@ -387,6 +416,22 @@ class AIWorker:
             
             # Make a copy to avoid modifying the original
             annotated = frame.copy()
+            
+            # Fetch Mask Faces setting from Redis
+            mask_faces = False
+            if self.task_consumer and self.task_consumer.client:
+                try:
+                    data = self.task_consumer.client.get("vg:system_settings")
+                    if data:
+                        import json
+                        settings = json.loads(data)
+                        mask_faces = settings.get("privacy", {}).get("maskFaces", False)
+                except Exception:
+                    pass
+
+            if mask_faces:
+                annotated = self._mask_faces(annotated, logger)
+
             h, w = annotated.shape[:2]
             
             # Get bbox (in 640x640 preprocessed coords) and scale to original frame

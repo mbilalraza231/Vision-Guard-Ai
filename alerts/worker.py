@@ -72,7 +72,7 @@ class AlertWorker:
         # Must match CloudinaryUploader.upload_snapshot folder structure exactly
         return f"https://res.cloudinary.com/{self.config.cloudinary_cloud_name}/image/upload/visionguard/snapshots/{event_type}/snapshot_{event_id}.jpg"
 
-    def format_message(self, event: Dict[str, Any], snap_url: str, video_url: str) -> str:
+    def format_message(self, event: Dict[str, Any], snap_url: str, video_url: str, anonymize: bool = False) -> str:
         """Format the alert message for SMS/WhatsApp."""
         severity = event.get('severity', 'UNKNOWN').upper()
         etype = event.get('event_type', 'Detection').replace('_', ' ').title()
@@ -83,9 +83,16 @@ class AlertWorker:
         except:
             ts_str = "Recently"
         
+        cam_id = event.get('camera_id', 'Unknown')
+        if anonymize:
+            if len(cam_id) > 4:
+                cam_id = cam_id[:2] + "****" + cam_id[-2:]
+            else:
+                cam_id = "****"
+        
         return (
             f"🚨 {severity} ALERT: {etype} 🚨\n"
-            f"Camera: {event.get('camera_id')}\n"
+            f"Camera: {cam_id}\n"
             f"Time: {ts_str}\n"
             f"Confidence: {float(event.get('confidence', 0))*100:.1f}%\n"
             f"📸 Snapshot: {snap_url}\n"
@@ -108,7 +115,21 @@ class AlertWorker:
         
         snap_url = self.get_predictable_url(event_id, event_type)
         video_url = self.get_predictable_video_url(event_id, event_type)
-        whatsapp_msg = self.format_message(event, snap_url, video_url)
+        
+        # Fetch global system settings
+        sys_settings = await self.repo.get_system_settings()
+        privacy_settings = sys_settings.get('privacy', {})
+        anonymize_data = privacy_settings.get('anonymizeData', False)
+
+        whatsapp_msg = self.format_message(event, snap_url, video_url, anonymize=anonymize_data)
+        
+        # Determine camera ID string to use in notifications
+        cam_id = event.get('camera_id', 'Unknown')
+        if anonymize_data:
+            if len(cam_id) > 4:
+                cam_id = cam_id[:2] + "****" + cam_id[-2:]
+            else:
+                cam_id = "****"
         
         rank = {"critical": 3, "high": 2, "medium": 1, "low": 0}
         event_rank = rank.get(severity, 0)
@@ -138,7 +159,7 @@ class AlertWorker:
             if push_enabled and contact.get('phone') and contact.get('whatsapp'):
                 phone = contact['phone']
                 to = f"whatsapp:{phone}" if not phone.startswith('whatsapp:') else phone
-                tasks.append(self.notifier.send_twilio(to, whatsapp_msg))
+                tasks.append(self.notifier.send_twilio(to, whatsapp_msg, anonymize=anonymize_data))
                 
             # Send Premium Email
             if email_enabled and contact.get('email') and contact.get('email_alert'):
@@ -154,7 +175,7 @@ class AlertWorker:
                     <div style="background-color: #1e293b; border-left: 4px solid {color}; padding: 20px; border-radius: 8px; margin-bottom: 25px;">
                         <h2 style="margin: 0 0 10px 0; color: {color}; text-transform: uppercase; font-size: 18px;">{severity.upper()} ALERT DETECTED</h2>
                         <p style="margin: 5px 0;"><strong>Incident:</strong> {event_type.replace('_', ' ').title()}</p>
-                        <p style="margin: 5px 0;"><strong>Camera:</strong> {event.get('camera_id')}</p>
+                        <p style="margin: 5px 0;"><strong>Camera:</strong> {cam_id}</p>
                         <p style="margin: 5px 0;"><strong>Confidence:</strong> {float(event.get('confidence', 0))*100:.1f}%</p>
                     </div>
 
@@ -174,7 +195,7 @@ class AlertWorker:
                     </div>
                 </div>
                 """
-                tasks.append(self.notifier.send_gmail(contact['email'], subject, body))
+                tasks.append(self.notifier.send_gmail(contact['email'], subject, body, anonymize=anonymize_data))
 
         if tasks:
             logger.info(f"Dispatching {len(tasks)} notifications for event {event_id}")

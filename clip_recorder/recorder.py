@@ -185,6 +185,67 @@ class ClipRecorder:
             if source:
                 self._start_camera_buffer(source)
 
+    def _get_mask_faces_setting(self) -> bool:
+        """Synchronously check if face masking is enabled (for use in sync thread methods)."""
+        try:
+            import json
+            import psycopg2
+            db_url = self.db.url
+            conn = psycopg2.connect(db_url, connect_timeout=2)
+            cursor = conn.cursor()
+            cursor.execute("SELECT data FROM system_settings ORDER BY id DESC LIMIT 1")
+            row = cursor.fetchone()
+            conn.close()
+            if row and row[0]:
+                stored = row[0]
+                if isinstance(stored, str):
+                    stored = json.loads(stored)
+                return stored.get("privacy", {}).get("maskFaces", False)
+        except Exception as e:
+            logger.warning(f"Could not fetch mask_faces setting: {e}")
+        return False
+
+    async def get_system_settings(self) -> dict:
+        """Fetch current settings from database."""
+        try:
+            row = await self.db.fetch_one("SELECT data FROM system_settings ORDER BY id DESC LIMIT 1")
+            if row and row.get("data"):
+                import json
+                stored = row["data"]
+                if isinstance(stored, str):
+                    stored = json.loads(stored)
+                return stored
+        except Exception as e:
+            logger.error(f"Failed to fetch system settings in clip recorder: {e}")
+        return {}
+
+    def _mask_faces(self, frame: 'cv2.Mat') -> 'cv2.Mat':
+        """Blur all detected faces in the frame using OpenCV Haar Cascade."""
+        if not hasattr(self, "_face_cascade"):
+            try:
+                self._face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+            except Exception as e:
+                logger.error(f"Failed to load Haar Cascade face classifier in clip recorder: {e}")
+                self._face_cascade = None
+
+        if not self._face_cascade or self._face_cascade.empty():
+            return frame
+
+        try:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            faces = self._face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(20, 20))
+            if len(faces) > 0:
+                frame_copy = frame.copy()
+                for (x, y, w, h) in faces:
+                    face_roi = frame_copy[y:y+h, x:x+w]
+                    ksize = int(max(15, (w // 2) | 1))
+                    blurred = cv2.GaussianBlur(face_roi, (ksize, ksize), 0)
+                    frame_copy[y:y+h, x:x+w] = blurred
+                return frame_copy
+        except Exception as e:
+            logger.warning(f"Error in face masking: {e}")
+        return frame
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -485,6 +546,13 @@ class ClipRecorder:
                 
                 return self._record_clip_direct(event_id, event_type, camera_source, detection_ts)
 
+            # Fetch settings to check if face masking is enabled
+            mask_faces = False
+            try:
+                mask_faces = self._get_mask_faces_setting()
+            except Exception as se:
+                logger.warning(f"Failed to check privacy settings in stitching: {se}")
+
             height, width = valid_frames[0].shape[:2]
             fps = self.config.camera_fps
 
@@ -502,6 +570,8 @@ class ClipRecorder:
             )
 
             for frame in valid_frames:
+                if mask_faces:
+                    frame = self._mask_faces(frame)
                 writer.write(frame)
             writer.release()
             
@@ -538,6 +608,13 @@ class ClipRecorder:
                 logger.error(f"Direct clip capture could not read first frame: {camera_source}")
                 return None, ClipError.NO_SIGNAL
 
+            # Fetch settings to check if face masking is enabled
+            mask_faces = False
+            try:
+                mask_faces = self._get_mask_faces_setting()
+            except Exception as se:
+                logger.warning(f"Failed to check privacy settings in direct record: {se}")
+
             height, width = first_frame.shape[:2]
             fps = self.config.camera_fps
             total_frames = max(1, int(self.config.clip_post_seconds * fps))
@@ -549,6 +626,8 @@ class ClipRecorder:
             fourcc = cv2.VideoWriter_fourcc(*"mp4v")
             writer = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
 
+            if mask_faces:
+                first_frame = self._mask_faces(first_frame)
             writer.write(first_frame)
             frames_written = 1
 
@@ -556,6 +635,8 @@ class ClipRecorder:
                 ok, frame = cap.read()
                 if not ok or frame is None:
                     break
+                if mask_faces:
+                    frame = self._mask_faces(frame)
                 writer.write(frame)
                 frames_written += 1
 

@@ -145,6 +145,31 @@ class DatabaseWriter:
             start_ts = end_ts
         return (start_ts, end_ts)
     
+    def _is_anonymize_enabled(self) -> bool:
+        """Check if data anonymization is enabled in system settings (cached for 30s)."""
+        now = time.time()
+        if not hasattr(self, "_last_privacy_check") or now - self._last_privacy_check > 30:
+            self._last_privacy_check = now
+            self._anonymize_cached = False
+            conn = None
+            try:
+                import json
+                conn = psycopg2.connect(self.dsn, connect_timeout=5)
+                cursor = conn.cursor()
+                cursor.execute("SELECT data FROM system_settings ORDER BY id DESC LIMIT 1")
+                row = cursor.fetchone()
+                if row and row[0]:
+                    stored = row[0]
+                    if isinstance(stored, str):
+                        stored = json.loads(stored)
+                    self._anonymize_cached = stored.get("privacy", {}).get("anonymizeData", False)
+            except Exception as e:
+                self.logger.warning(f"Failed to fetch privacy settings in DB writer: {e}")
+            finally:
+                if conn:
+                    conn.close()
+        return getattr(self, "_anonymize_cached", False)
+
     def _write_batch(self, batch: List[Event]) -> None:
         """Write a batch of events to database."""
         if not batch:
@@ -156,11 +181,20 @@ class DatabaseWriter:
             cursor = conn.cursor()
             
             data = []
+            anonymize = self._is_anonymize_enabled()
             for event in batch:
                 start_ts, end_ts = self._derive_timestamps(event)
+                
+                cam_id = event.camera_id
+                if anonymize:
+                    if len(cam_id) > 4:
+                        cam_id = cam_id[:2] + "****" + cam_id[-2:]
+                    else:
+                        cam_id = "****"
+
                 data.append((
                     event.event_id,
-                    event.camera_id,
+                    cam_id,
                     event.event_type.lower().replace("_detected", ""),
                     event.severity.lower(),
                     start_ts,

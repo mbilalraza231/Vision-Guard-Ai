@@ -102,15 +102,29 @@ class StorageCleaner:
 
     async def _run_cycle(self):
         """Single cleanup cycle — reads settings and applies all rules."""
-        settings = await self._fetch_storage_settings()
-        auto_delete = settings.get("autoDelete", False)
+        full_settings = await self._fetch_full_settings()
+        
+        storage_settings = full_settings.get("storage", {})
+        privacy_settings = full_settings.get("privacy", {})
+        
+        auto_delete = storage_settings.get("autoDelete", False)
+        gdpr_compliant = privacy_settings.get("gdprCompliant", False)
+
+        # GDPR compliance mode overrides: forces scheduled cleanup on and caps retention
+        if gdpr_compliant:
+            auto_delete = True
 
         if not auto_delete:
             logger.debug("StorageCleaner: autoDelete is OFF — skipping cycle")
             return
 
-        retention_days = int(settings.get("retentionDays", 30))
-        max_storage_gb = float(settings.get("maxStorage", 50))
+        retention_days = int(storage_settings.get("retentionDays", 30))
+        max_storage_gb = float(storage_settings.get("maxStorage", 50))
+
+        if gdpr_compliant:
+            # Force GDPR strict retention limit (caps at 30 days maximum, or keeps user stricter choice if smaller)
+            retention_days = min(30, retention_days)
+            logger.info("StorageCleaner GDPR Compliance Mode active: autoDelete is FORCED to ON, and retentionDays is capped at 30 days.")
 
         logger.info(
             "StorageCleaner cycle: retentionDays=%d, maxStorageGB=%.1f",
@@ -127,8 +141,8 @@ class StorageCleaner:
     # Settings Fetch                                                        #
     # ------------------------------------------------------------------ #
 
-    async def _fetch_storage_settings(self) -> Dict[str, Any]:
-        """Read storage settings from the DB."""
+    async def _fetch_full_settings(self) -> Dict[str, Any]:
+        """Read full settings from the DB."""
         try:
             from backend.app.core.database import db
             row = await db.fetch_one(
@@ -138,9 +152,9 @@ class StorageCleaner:
                 data = row["data"]
                 if isinstance(data, str):
                     data = json.loads(data)
-                return data.get("storage", {})
+                return data
         except Exception as exc:
-            logger.error("StorageCleaner: could not fetch settings: %s", exc)
+            logger.error("StorageCleaner: could not fetch full settings: %s", exc)
         return {}
 
     # ------------------------------------------------------------------ #

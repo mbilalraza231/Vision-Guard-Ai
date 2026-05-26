@@ -23,7 +23,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Loader2, RefreshCw, Save, RotateCcw, Bell, ShieldCheck, Mail, Phone, Plus, Trash2 } from 'lucide-react';
+import { Loader2, RefreshCw, Save, RotateCcw, Bell, ShieldCheck, Mail, Phone, Plus, Trash2, Download, FileJson } from 'lucide-react';
 import { apiService } from '@/services/api.service';
 import { buildApiUrl } from '@/config/api';
 import { formatTimeString } from '@/lib/utils';
@@ -287,6 +287,30 @@ export default function Settings() {
       setSaveMessage('Failed to save settings');
     }
     setTimeout(() => setSaveMessage(''), 2500);
+  };
+
+  const [exportingData, setExportingData] = useState(false);
+
+  const handleGdprExport = async () => {
+    setExportingData(true);
+    setSaveMessage('Preparing GDPR Portable Data Profile...');
+    try {
+      const data = await apiService.getData<any>('/api/v1/settings/gdpr/export');
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", "visionguard_gdpr_export.json");
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      setSaveMessage('GDPR Data Profile downloaded successfully!');
+    } catch (err) {
+      console.error('Failed to export GDPR data', err);
+      setSaveMessage('Failed to compile GDPR data export');
+    } finally {
+      setExportingData(false);
+      setTimeout(() => setSaveMessage(''), 3000);
+    }
   };
 
   const resetSettings = async () => {
@@ -739,11 +763,26 @@ export default function Settings() {
               )}
 
               {activeTab === 'privacy' && (
-                <div className="animate-fade-in">
-                  <h2 className="text-2xl font-bold mb-6">Privacy Settings</h2>
-                  <div className="space-y-5 max-w-xl">
-                    <div className="flex items-center justify-between rounded-lg bg-secondary/30 px-4 py-3">
-                      <Label htmlFor="maskFaces">Mask Faces</Label>
+                <div className="animate-fade-in space-y-6">
+                  <div>
+                    <h2 className="text-2xl font-bold mb-1 flex items-center gap-2">
+                      <ShieldCheck className="h-6 w-6 text-primary" />
+                      Privacy Settings
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      Configure data protection, obfuscation levels, and GDPR regulatory compliance.
+                    </p>
+                  </div>
+
+                  <div className="space-y-4 max-w-xl">
+                    {/* Mask Faces */}
+                    <div className="flex items-start justify-between rounded-xl border border-white/5 bg-secondary/10 p-5 transition-all hover:bg-secondary/20">
+                      <div className="space-y-1">
+                        <Label htmlFor="maskFaces" className="text-base font-semibold cursor-pointer">Mask Faces</Label>
+                        <p className="text-xs text-muted-foreground max-w-sm">
+                          Automatically blurs and covers detected faces in all saved snapshot evidence and stitched video clips before storage.
+                        </p>
+                      </div>
                       <Switch
                         id="maskFaces"
                         checked={settings.privacy.maskFaces}
@@ -751,8 +790,14 @@ export default function Settings() {
                       />
                     </div>
 
-                    <div className="flex items-center justify-between rounded-lg bg-secondary/30 px-4 py-3">
-                      <Label htmlFor="anonymizeData">Anonymize Data</Label>
+                    {/* Anonymize Data */}
+                    <div className="flex items-start justify-between rounded-xl border border-white/5 bg-secondary/10 p-5 transition-all hover:bg-secondary/20">
+                      <div className="space-y-1">
+                        <Label htmlFor="anonymizeData" className="text-base font-semibold cursor-pointer">Anonymize Data</Label>
+                        <p className="text-xs text-muted-foreground max-w-sm">
+                          Obfuscates camera names and masks recipient contact details (phone numbers and emails) in the event database, notification logs, and alerts.
+                        </p>
+                      </div>
                       <Switch
                         id="anonymizeData"
                         checked={settings.privacy.anonymizeData}
@@ -760,13 +805,49 @@ export default function Settings() {
                       />
                     </div>
 
-                    <div className="flex items-center justify-between rounded-lg bg-secondary/30 px-4 py-3">
-                      <Label htmlFor="gdprCompliant">GDPR Compliance Mode</Label>
+                    {/* GDPR Compliance */}
+                    <div className="flex items-start justify-between rounded-xl border border-white/5 bg-secondary/10 p-5 transition-all hover:bg-secondary/20">
+                      <div className="space-y-1">
+                        <Label htmlFor="gdprCompliant" className="text-base font-semibold cursor-pointer">GDPR Compliance Mode</Label>
+                        <p className="text-xs text-muted-foreground max-w-sm">
+                          Enforces strict right-to-be-forgotten and caps the data retention policy at a maximum of 30 days, actively auto-deleting old data automatically.
+                        </p>
+                      </div>
                       <Switch
                         id="gdprCompliant"
                         checked={settings.privacy.gdprCompliant}
                         onCheckedChange={(checked) => updatePrivacy({ gdprCompliant: checked })}
                       />
+                    </div>
+                  </div>
+
+                  {/* GDPR Data Portability Audit Section */}
+                  <div className="pt-6 max-w-xl border-t border-white/5">
+                    <div className="rounded-xl border border-primary/20 bg-primary/5 p-5">
+                      <h3 className="text-lg font-semibold text-primary mb-2 flex items-center gap-2">
+                        <FileJson className="h-5 w-5" />
+                        Right to Data Portability (GDPR Article 20)
+                      </h3>
+                      <p className="text-xs text-muted-foreground mb-4">
+                        Download a secure, standardized JSON profile of your active security configurations, alert contacts, camera records, and incident histories.
+                      </p>
+                      <Button
+                        onClick={handleGdprExport}
+                        disabled={exportingData}
+                        className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+                      >
+                        {exportingData ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Compiling Data Export...
+                          </>
+                        ) : (
+                          <>
+                            <Download className="h-4 w-4" />
+                            Export Portable Data Profile
+                          </>
+                        )}
+                      </Button>
                     </div>
                   </div>
                 </div>

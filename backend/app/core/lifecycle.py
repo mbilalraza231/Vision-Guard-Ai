@@ -78,6 +78,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         if not existing:
             await db.execute("INSERT INTO system_settings (data) VALUES ('{}'::jsonb)")
         logger.info("system_settings table ready")
+
+        # Sync system settings to Redis on boot
+        try:
+            from ..api.settings import sync_settings_to_redis
+            await sync_settings_to_redis()
+        except Exception as se:
+            logger.warning(f"Failed to sync settings on boot: {se}")
+
     except Exception as e:
         logger.warning(f"Failed to ensure system_settings table: {e}")
 
