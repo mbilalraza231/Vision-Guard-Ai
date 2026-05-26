@@ -17,6 +17,7 @@ from ..services.camera_manager import get_camera_manager
 from ..utils.logging import setup_logging, get_logger
 from ..utils.metrics_utils import MetricsReporter
 from ..core.config import get_redis_config
+from ..workers.storage_cleaner import get_storage_cleaner
 import redis
 
 logger = get_logger(__name__)
@@ -80,6 +81,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.warning(f"Failed to ensure system_settings table: {e}")
 
+    # Start the storage cleaner background worker
+    storage_cleaner = get_storage_cleaner()
+    storage_cleaner.start()
+    app.state.storage_cleaner = storage_cleaner
+
     logger.info("Service managers initialized")
     logger.info(f"Backend ready at http://{settings.host}:{settings.port}")
     
@@ -109,6 +115,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if hasattr(app.state, "metrics_reporter"):
         app.state.metrics_reporter.stop()
         logger.info("Project metrics heartbeat stopped")
+
+    # Stop storage cleaner
+    if hasattr(app.state, "storage_cleaner"):
+        await app.state.storage_cleaner.stop()
 
     logger.info("Shutdown complete")
 
