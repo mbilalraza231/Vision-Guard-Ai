@@ -222,9 +222,10 @@ class DatabaseReader:
                 for r in reversed(trend_rows)
             ]
             
-            # Calculate average processing delay (latency) over the last 50 events to reflect real-time performance
+            # Calculate average processing delay (latency) over the last 50 events to reflect real-time performance.
+            # IMPORTANT: PostgreSQL returns timestamp difference as an INTERVAL; convert to seconds.
             avg_delay_row = await db.fetch_one("""
-                SELECT AVG(created_at - start_ts) as avg 
+                SELECT AVG(EXTRACT(EPOCH FROM (created_at - start_ts))) as avg
                 FROM (
                     SELECT created_at, start_ts 
                     FROM events 

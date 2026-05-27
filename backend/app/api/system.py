@@ -170,9 +170,32 @@ async def system_status(
         
     cpu_cores = psutil.cpu_count(logical=True)
     
+    # Determine memory total
     virtual_mem = psutil.virtual_memory()
     memory_total = round(virtual_mem.total / (1024 * 1024 * 1024), 2)
     
+    # 1. Try to load override from environment variable
+    env_mem_override = os.environ.get("VG_SYSTEM_MEMORY_GB")
+    if env_mem_override:
+        try:
+            memory_total = float(env_mem_override)
+        except ValueError:
+            pass
+    else:
+        # 2. Try to load override from mounted host_info.json
+        host_info_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "host_info.json")
+        possible_paths = [host_info_path, "/app/host_info.json", "./host_info.json"]
+        for path in possible_paths:
+            if os.path.exists(path):
+                try:
+                    with open(path, "r") as f:
+                        host_data = json.load(f)
+                        if "memory_total_gb" in host_data:
+                            memory_total = float(host_data["memory_total_gb"])
+                            break
+                except Exception as e:
+                    logger.warning(f"Failed to read host_info.json at {path}: {e}")
+                    
     shared_frames_dir = os.environ.get("SHARED_FRAMES_DIR", "/shared-frames")
     storage_used = get_directory_size(shared_frames_dir)
     

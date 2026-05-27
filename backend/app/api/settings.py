@@ -37,6 +37,12 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
         "timezone": "UTC",
         "language": "en",
     },
+    "cameras": {
+        "globalFpsTarget": 15,
+        "targetLatencyMs": 500,
+        "targetMemoryGb": 8.0,
+        "targetFalsePositiveRate": 5.0,
+    },
     "alerts": {
         "emailNotifications": False,
         "smsNotifications": False,
@@ -126,6 +132,7 @@ async def sync_settings_to_redis() -> Dict[str, Any]:
 
 class SettingsPayload(BaseModel):
     general: Dict[str, Any] | None = None
+    cameras: Dict[str, Any] | None = None
     alerts: Dict[str, Any] | None = None
     storage: Dict[str, Any] | None = None
     models: Dict[str, Any] | None = None

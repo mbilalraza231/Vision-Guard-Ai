@@ -4,9 +4,9 @@ import { AlertCircle, Clock, Target, Activity, Loader2, RefreshCw } from 'lucide
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
-import { API_ENDPOINTS } from '@/config/api';
+import { API_ENDPOINTS, buildApiUrl } from '@/config/api';
 import { apiService } from '@/services/api.service';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '@/hooks/useSettings';
 import { formatTimeString } from '@/lib/utils';
@@ -73,23 +73,62 @@ export default function Analytics() {
   const { t } = useTranslation();
   const { data: settings } = useSettings();
   const timezone = settings?.general?.timezone || 'UTC';
+  const [sseSystemStatus, setSseSystemStatus] = useState<StatusResponse | null>(null);
+  const [sseError, setSseError] = useState<Error | null>(null);
+  const supportsSse = typeof window !== 'undefined' && 'EventSource' in window;
   const { data: stats, isLoading: isStatsLoading, error: statsError, refetch: refetchStats } = useQuery({
     queryKey: ['analytics-stats'],
     queryFn: () => apiService.getData<EventsStatsResponse>(API_ENDPOINTS.incidents.stats),
+    refetchInterval: 5000,
   });
 
-  const { data: systemStatus, isLoading: isStatusLoading, error: statusError, refetch: refetchStatus } = useQuery({
+  // Prefer SSE for system status updates (lower overhead than polling).
+  // Fall back to polling if SSE is unavailable or errors.
+  useEffect(() => {
+    if (!supportsSse) return;
+
+    const url = buildApiUrl('/stream');
+    const es = new EventSource(url);
+
+    es.onmessage = (evt) => {
+      try {
+        const parsed = JSON.parse(evt.data);
+        if (parsed?.status) {
+          setSseSystemStatus(parsed.status as StatusResponse);
+          setSseError(null);
+        }
+      } catch (e) {
+        setSseError(e instanceof Error ? e : new Error('Failed to parse SSE payload'));
+      }
+    };
+
+    es.onerror = () => {
+      setSseError(new Error('SSE stream disconnected'));
+      es.close();
+    };
+
+    return () => es.close();
+  }, [supportsSse]);
+
+  const usePollingForStatus = !supportsSse || sseError != null;
+
+  const { data: polledSystemStatus, isLoading: isStatusLoading, error: statusError, refetch: refetchStatus } = useQuery({
     queryKey: ['analytics-status'],
     queryFn: () => apiService.getData<StatusResponse>(API_ENDPOINTS.dashboard.systemMetrics),
+    refetchInterval: 5000,
+    enabled: usePollingForStatus,
   });
+
+  const systemStatus = usePollingForStatus ? polledSystemStatus : sseSystemStatus;
 
   const { data: cameras, refetch: refetchCameras } = useQuery({
     queryKey: ['analytics-cameras'],
     queryFn: () => apiService.getData<CameraItem[]>(API_ENDPOINTS.cameras.list),
+    refetchInterval: 5000,
   });
 
   const isLoading = isStatsLoading || isStatusLoading;
-  const error = statsError || statusError;
+  const error = statsError || statusError || sseError;
 
   const refetchAll = () => {
     refetchStats();
@@ -134,14 +173,23 @@ export default function Analytics() {
     const camerasMap = cameraDetails?.cameras || {};
     const runningCamerasList = Object.values(camerasMap);
     const runningCameras = runningCamerasList.filter((c: any) => c.is_running && c.enabled);
+    const enabledCameras = runningCamerasList.filter((c: any) => c.enabled);
+    const cameraServiceAlive = Boolean((cameraDetails as any)?.service_alive);
+    const totalFramesCaptured = runningCamerasList.reduce((sum, c: any) => sum + (c.frames_captured || 0), 0);
+    const totalFramesWithMotion = runningCamerasList.reduce((sum, c: any) => sum + (c.frames_with_motion || 0), 0);
     
     // Target FPS is now driven by the global setting, not the sum of individual cameras
     const targetFpsTotal = settings?.cameras?.globalFpsTarget || 15;
     const currentFps = runningCameras.reduce((sum, c: any) => sum + (c.fps_actual || 0), 0);
     
     const isIdle = runningCameras.length === 0;
+    const isEnabledButNoFrames = enabledCameras.length > 0 && runningCameras.length === 0 && cameraServiceAlive;
 
-    const fpsStatus = isIdle ? 'good' : currentFps >= (targetFpsTotal * 0.8) ? 'good' : 'warning';
+    // FPS: target is a CEILING (cap), not a minimum.
+    // Good = below cap. Warning = above 80% of cap. Critical = exceeding cap.
+    const fpsStatus = isIdle ? 'good'
+      : currentFps <= targetFpsTotal ? 'good'
+      : currentFps <= targetFpsTotal * 1.2 ? 'warning' : 'critical';
 
     // 3. End-to-end Latency (Real)
     const targetLatency = settings?.cameras?.targetLatencyMs || 500;
@@ -159,14 +207,16 @@ export default function Analytics() {
       {
         metric: 'End-to-end Latency',
         target: `<${targetLatency.toFixed(0)}ms`,
-        current: isIdle ? 'Idle' : currentLatency > 0 ? `${currentLatency.toFixed(0)}ms` : 'No Recent Data',
-        status: latencyStatus
+        current: isIdle ? 'Idle' : currentLatency > 0 ? `${currentLatency.toFixed(0)}ms` : 'No Events Yet',
+        status: latencyStatus,
+        note: 'Avg pipeline delay of last 50 events (camera → AI → DB)'
       },
       {
         metric: 'Processing FPS',
-        target: `>${targetFpsTotal.toFixed(0)} FPS`,
-        current: isIdle ? 'Idle' : currentFps === 0 ? 'Initializing (0.0)' : `${currentFps.toFixed(1)} FPS`,
-        status: fpsStatus
+        target: `<${targetFpsTotal.toFixed(0)} FPS cap`,
+        current: isIdle ? 'Idle' : currentFps === 0 ? 'No frames' : `${currentFps.toFixed(1)} FPS`,
+        status: fpsStatus,
+        note: 'Total frames AI processes/sec across all cameras. Cap prevents overload.'
       },
       {
         metric: 'Memory Usage',

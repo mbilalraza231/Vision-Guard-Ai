@@ -415,23 +415,33 @@ class CameraManager:
         for cid, cam in self._cameras.items():
             cam_dict = cam.to_dict()
             
-            # If service is alive and camera is enabled, consider it running in Docker mode
+            # In Docker runtime: treat a camera as "running" only when it has a
+            # recent per-camera FPS heartbeat in Redis (setex ~15s). This avoids
+            # the UI showing "Initializing…" forever when the camera service is up
+            # but a specific stream isn't producing frames.
             if settings.is_docker_runtime and is_service_alive and cam.enabled:
-                cam_dict["is_running"] = True
-                running_count += 1
-                
-                # Try to get REAL FPS from Redis
+                fps_val = None
                 try:
                     from ..core.config import get_redis_config
                     import redis
                     r_config = get_redis_config()
                     r_client = redis.Redis(**r_config)
                     fps_val = r_client.get(f"vg:metrics:camera:{cid}:fps")
-                    if fps_val:
-                        cam_dict["fps_actual"] = float(fps_val.decode('utf-8'))
                     r_client.close()
                 except Exception:
-                    pass
+                    fps_val = None
+
+                fps_actual = 0.0
+                if fps_val:
+                    try:
+                        fps_actual = float(fps_val.decode('utf-8'))
+                    except Exception:
+                        fps_actual = 0.0
+
+                cam_dict["fps_actual"] = fps_actual
+                cam_dict["is_running"] = bool(fps_val) and fps_actual > 0.0
+                if cam_dict["is_running"]:
+                    running_count += 1
             elif cam.is_running:
                 running_count += 1
                 
