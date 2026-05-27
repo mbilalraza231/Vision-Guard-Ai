@@ -407,9 +407,9 @@ export default function Settings() {
       <div className="p-6 flex-1 overflow-hidden flex flex-col">
         <div className="dashboard-card flex flex-col flex-1 overflow-hidden">
           <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
-            {/* Sidebar Navigation – fixed in place, never scrolls */}
-            <div className="w-full md:w-48 border-b md:border-b-0 md:border-r border-border p-4 shrink-0">
-              <nav className="flex md:flex-col gap-1.5 overflow-x-auto md:overflow-visible">
+            {/* Sidebar Navigation – scrollable vertically on small screens */}
+            <div className="w-full md:w-48 border-b md:border-b-0 md:border-r border-border p-4 shrink-0 overflow-y-auto">
+              <nav className="flex md:flex-col gap-1.5 overflow-x-auto md:overflow-x-visible">
                 {tabs.map((tab) => (
                   <button
                     key={tab.id}
