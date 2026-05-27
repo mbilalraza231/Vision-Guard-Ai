@@ -153,12 +153,20 @@ export interface PerformanceMetric {
 // Settings Types
 export interface SystemSettings {
   general: GeneralSettings;
+  cameras: CameraSettings;
   alerts: AlertSettings;
   storage: StorageSettings;
   models: ModelSettings;
   privacy: PrivacySettings;
   system: SystemInfo;
   notifications: NotificationSettings;
+}
+
+export interface CameraSettings {
+  globalFpsTarget: number;
+  targetLatencyMs: number;
+  targetMemoryGb: number;
+  targetFalsePositiveRate: number;
 }
 
 export interface GeneralSettings {

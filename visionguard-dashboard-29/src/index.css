@@ -147,6 +147,10 @@
     @apply border-border;
   }
 
+  html {
+    overflow-y: scroll; /* Always show scrollbar to prevent horizontal layout shift */
+  }
+
   body {
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "rlig" 1, "calt" 1;

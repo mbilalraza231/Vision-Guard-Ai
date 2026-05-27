@@ -23,7 +23,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Loader2, RefreshCw, Save, RotateCcw, Bell, ShieldCheck, Mail, Phone, Plus, Trash2, Download, FileJson } from 'lucide-react';
+import { Loader2, RefreshCw, Save, RotateCcw, Bell, ShieldCheck, Mail, Phone, Plus, Trash2, Download, FileJson, Camera } from 'lucide-react';
 import { apiService } from '@/services/api.service';
 import { buildApiUrl } from '@/config/api';
 import { formatTimeString } from '@/lib/utils';
@@ -37,7 +37,7 @@ import type {
   SystemSettings,
 } from '@/types';
 
-type SettingsTab = 'general' | 'alerts' | 'notifications' | 'storage' | 'models' | 'privacy' | 'system';
+type SettingsTab = 'general' | 'alerts' | 'notifications' | 'cameras' | 'storage' | 'models' | 'privacy' | 'system';
 
 interface TabItem {
   id: SettingsTab;
@@ -48,6 +48,7 @@ const tabs: TabItem[] = [
   { id: 'general', label: 'General' },
   { id: 'alerts', label: 'Alert Rules' },
   { id: 'notifications', label: 'Notifications' },
+  { id: 'cameras', label: 'Camera Rules' },
   { id: 'storage', label: 'Storage' },
   { id: 'models', label: 'Models' },
   { id: 'privacy', label: 'Privacy' },
@@ -83,6 +84,12 @@ const defaultSettings: SystemSettings = {
     anonymizeData: false,
     gdprCompliant: false,
   },
+  cameras: {
+    globalFpsTarget: 15,
+    targetLatencyMs: 500,
+    targetMemoryGb: 8.0,
+    targetFalsePositiveRate: 5,
+  },
   system: {
     version: '-',
     build: '-',
@@ -106,6 +113,8 @@ interface StatusResponse {
   timestamp: string;
   uptime_seconds: number;
   components: Record<string, { name: string; status: string }>;
+  memory_total_gb?: number;
+  memory_used_gb?: number;
 }
 
 interface MetricsResponse {
@@ -270,6 +279,7 @@ export default function Settings() {
       else if (activeTab === 'alerts') payload.alerts = settings.alerts;
       else if (activeTab === 'storage') payload.storage = settings.storage;
       else if (activeTab === 'models') payload.models = settings.models;
+      else if (activeTab === 'cameras') payload.cameras = settings.cameras;
       else if (activeTab === 'privacy') payload.privacy = settings.privacy;
       else if (activeTab === 'notifications') payload.notifications = settings.notifications;
       else return; // 'system' tab has no settings
@@ -329,6 +339,7 @@ export default function Settings() {
       else if (activeTab === 'alerts') payload.alerts = defaults.alerts;
       else if (activeTab === 'storage') payload.storage = defaults.storage;
       else if (activeTab === 'models') payload.models = defaults.models;
+      else if (activeTab === 'cameras') payload.cameras = defaults.cameras;
       else if (activeTab === 'privacy') payload.privacy = defaults.privacy;
       else if (activeTab === 'notifications') payload.notifications = defaults.notifications;
       else return; // 'system' tab has no settings
@@ -370,6 +381,10 @@ export default function Settings() {
     setSettings((prev: SystemSettings) => ({ ...prev, privacy: { ...prev.privacy, ...patch } }));
   };
 
+  const updateCameras = (patch: Partial<SystemSettings['cameras']>) => {
+    setSettings((prev: SystemSettings) => ({ ...prev, cameras: { ...prev.cameras, ...patch } }));
+  };
+
   const updateTwilio = (patch: Partial<SystemSettings['notifications']['twilio']>) => {
     setSettings((prev: SystemSettings) => ({ 
       ...prev, 
@@ -391,17 +406,17 @@ export default function Settings() {
         <div className="dashboard-card">
           <div className="flex flex-col md:flex-row">
             {/* Sidebar Navigation */}
-            <div className="w-full md:w-48 border-b md:border-b-0 md:border-r border-border p-4">
-              <nav className="flex md:flex-col gap-1 overflow-x-auto md:overflow-visible">
+            <div className="w-full md:w-48 border-b md:border-b-0 md:border-r border-border p-4 md:sticky md:top-16 self-start">
+              <nav className="flex md:flex-col gap-1.5 overflow-x-auto md:overflow-visible">
                 {tabs.map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
                     className={cn(
-                      'px-4 py-2 text-sm font-medium rounded-lg text-left whitespace-nowrap transition-colors',
+                      'px-4 py-2.5 text-sm font-medium rounded-lg text-left whitespace-nowrap transition-colors duration-150',
                       activeTab === tab.id
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-muted-foreground hover:bg-secondary/50 hover:text-foreground'
+                        ? 'bg-primary text-primary-foreground font-semibold'
+                        : 'text-muted-foreground hover:bg-secondary/30 hover:text-foreground'
                     )}
                   >
                     {t(`settings.tabs.${tab.id}`, tab.label)}
@@ -411,8 +426,8 @@ export default function Settings() {
             </div>
 
             {/* Content Area */}
-            <div className="flex-1 p-6">
-              <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
+            <div className="flex-1 p-6 min-h-[600px]">
+              <div className="sticky top-16 z-20 bg-card pt-2 pb-4 mb-6 border-b border-border/40 flex items-center justify-between gap-3 flex-wrap">
                 <div className="text-sm text-muted-foreground">
                   {t('settings.syncedMessage', 'Settings are synced with the VisionGuard backend.')}
                 </div>
@@ -934,6 +949,269 @@ export default function Settings() {
                           </div>
                         </div>
                       </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'cameras' && (
+                <div className="animate-fade-in space-y-6">
+                  <div>
+                    <h2 className="text-2xl font-bold mb-1 flex items-center gap-2">
+                      <Camera className="h-6 w-6 text-primary" />
+                      Camera Rules & Performance
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      Manage system capacity limits and processing rules for your camera feeds.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="rounded-xl bg-secondary/20 border border-white/5 p-4">
+                      <p className="text-xs text-muted-foreground mb-1">Total Configured Cameras</p>
+                      <p className="text-2xl font-bold text-foreground">
+                        {metrics?.cameras?.total ?? 0}
+                      </p>
+                    </div>
+                    <div className="rounded-xl bg-secondary/20 border border-white/5 p-4">
+                      <p className="text-xs text-muted-foreground mb-1">Active AI Streams</p>
+                      <p className="text-2xl font-bold text-status-online">
+                        {metrics?.cameras?.running ?? 0}
+                      </p>
+                    </div>
+                    <div className="rounded-xl bg-secondary/20 border border-white/5 p-4">
+                      <p className="text-xs text-muted-foreground mb-1">Avg. Target FPS Per Stream</p>
+                      <p className="text-2xl font-bold text-primary">
+                        {metrics?.cameras?.running && metrics.cameras.running > 0
+                          ? ((settings.cameras?.globalFpsTarget || 15) / metrics.cameras.running).toFixed(1)
+                          : (settings.cameras?.globalFpsTarget || 15).toFixed(1)}{' '}
+                        FPS
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 max-w-xl">
+                    {/* Global Target FPS */}
+                    <div className="rounded-xl border border-white/5 bg-secondary/10 p-5 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="globalFpsTarget" className="text-base font-semibold">
+                          Global Target FPS (Total System Capacity)
+                        </Label>
+                        <span className="text-sm font-mono bg-secondary px-2 py-0.5 rounded text-primary font-bold">
+                          {settings.cameras?.globalFpsTarget || 15} FPS
+                        </span>
+                      </div>
+                      
+                      <div className="py-2">
+                        <Slider
+                          value={[settings.cameras?.globalFpsTarget || 15]}
+                          min={1}
+                          max={120}
+                          step={1}
+                          onValueChange={(value) =>
+                            updateCameras({ globalFpsTarget: value[0] })
+                          }
+                        />
+                      </div>
+
+                      <div className="flex gap-4 items-center">
+                        <span className="text-xs text-muted-foreground">1 FPS</span>
+                        <div className="flex-1" />
+                        <span className="text-xs text-muted-foreground">120 FPS</span>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="globalFpsTargetInput" className="text-xs text-muted-foreground">
+                          Or enter precise FPS target
+                        </Label>
+                        <Input
+                          id="globalFpsTargetInput"
+                          type="number"
+                          min={1}
+                          max={120}
+                          value={settings.cameras?.globalFpsTarget || 15}
+                          onChange={(e) =>
+                            updateCameras({
+                              globalFpsTarget: Math.max(1, Math.min(120, Number(e.target.value) || 1)),
+                            })
+                          }
+                          className="w-24 bg-background/50 font-mono text-sm"
+                        />
+                      </div>
+
+                      <p className="text-xs text-muted-foreground">
+                        This limits the total combined frames the AI will process per second across all cameras, preventing CPU/GPU resource exhaustion and stabilizing system performance.
+                      </p>
+                    </div>
+
+                    {/* End-to-end Latency Target */}
+                    <div className="rounded-xl border border-white/5 bg-secondary/10 p-5 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="targetLatencyMs" className="text-base font-semibold">
+                          Target End-to-End Latency Threshold
+                        </Label>
+                        <span className="text-sm font-mono bg-secondary px-2 py-0.5 rounded text-primary font-bold">
+                          {settings.cameras?.targetLatencyMs || 500} ms
+                        </span>
+                      </div>
+                      
+                      <div className="py-2">
+                        <Slider
+                          value={[settings.cameras?.targetLatencyMs || 500]}
+                          min={100}
+                          max={5000}
+                          step={50}
+                          onValueChange={(value) =>
+                            updateCameras({ targetLatencyMs: value[0] })
+                          }
+                        />
+                      </div>
+
+                      <div className="flex gap-4 items-center">
+                        <span className="text-xs text-muted-foreground">100 ms</span>
+                        <div className="flex-1" />
+                        <span className="text-xs text-muted-foreground">5000 ms</span>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="targetLatencyMsInput" className="text-xs text-muted-foreground">
+                          Or enter precise Latency target (ms)
+                        </Label>
+                        <Input
+                          id="targetLatencyMsInput"
+                          type="number"
+                          min={100}
+                          max={5000}
+                          value={settings.cameras?.targetLatencyMs || 500}
+                          onChange={(e) =>
+                            updateCameras({
+                              targetLatencyMs: Math.max(100, Math.min(5000, Number(e.target.value) || 100)),
+                            })
+                          }
+                          className="w-24 bg-background/50 font-mono text-sm"
+                        />
+                      </div>
+
+                      <p className="text-xs text-muted-foreground">
+                        Defines the maximum acceptable delay between camera event occurrences and notification delivery before it's marked Critical.
+                      </p>
+                    </div>
+
+                    {/* Target Memory GB */}
+                    <div className="rounded-xl border border-white/5 bg-secondary/10 p-5 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <Label htmlFor="targetMemoryGb" className="text-base font-semibold">
+                            Target Memory Limit Threshold
+                          </Label>
+                          {status?.memory_total_gb && (
+                            <p className="text-xs text-muted-foreground">
+                              Detected System Memory: {status.memory_total_gb.toFixed(1)} GB
+                            </p>
+                          )}
+                        </div>
+                        <span className="text-sm font-mono bg-secondary px-2 py-0.5 rounded text-primary font-bold">
+                          {settings.cameras?.targetMemoryGb || 8.0} GB
+                        </span>
+                      </div>
+                      
+                      <div className="py-2">
+                        <Slider
+                          value={[settings.cameras?.targetMemoryGb || 8.0]}
+                          min={1.0}
+                          max={status?.memory_total_gb ? Math.ceil(status.memory_total_gb) : 16.0}
+                          step={0.5}
+                          onValueChange={(value) =>
+                            updateCameras({ targetMemoryGb: value[0] })
+                          }
+                        />
+                      </div>
+
+                      <div className="flex gap-4 items-center">
+                        <span className="text-xs text-muted-foreground">1 GB</span>
+                        <div className="flex-1" />
+                        <span className="text-xs text-muted-foreground">
+                          {status?.memory_total_gb ? Math.ceil(status.memory_total_gb) : 16} GB
+                        </span>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="targetMemoryGbInput" className="text-xs text-muted-foreground">
+                          Or enter precise Memory limit (GB)
+                        </Label>
+                        <Input
+                          id="targetMemoryGbInput"
+                          type="number"
+                          min={1}
+                          max={status?.memory_total_gb ? Math.ceil(status.memory_total_gb) : 16.0}
+                          step={0.1}
+                          value={settings.cameras?.targetMemoryGb || 8.0}
+                          onChange={(e) =>
+                            updateCameras({
+                              targetMemoryGb: Math.max(1, Math.min(status?.memory_total_gb ? Math.ceil(status.memory_total_gb) : 16.0, Number(e.target.value) || 1)),
+                            })
+                          }
+                          className="w-24 bg-background/50 font-mono text-sm"
+                        />
+                      </div>
+
+                      <p className="text-xs text-muted-foreground">
+                        Sets the RAM usage ceiling for model execution. Exceeding this triggers warnings or critical alerts.
+                      </p>
+                    </div>
+
+                    {/* False Positive Rate Target */}
+                    <div className="rounded-xl border border-white/5 bg-secondary/10 p-5 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="targetFalsePositiveRate" className="text-base font-semibold">
+                          Target False Positive Rate Threshold
+                        </Label>
+                        <span className="text-sm font-mono bg-secondary px-2 py-0.5 rounded text-primary font-bold">
+                          {settings.cameras?.targetFalsePositiveRate || 5.0}%
+                        </span>
+                      </div>
+                      
+                      <div className="py-2">
+                        <Slider
+                          value={[settings.cameras?.targetFalsePositiveRate || 5.0]}
+                          min={0.5}
+                          max={30.0}
+                          step={0.5}
+                          onValueChange={(value) =>
+                            updateCameras({ targetFalsePositiveRate: value[0] })
+                          }
+                        />
+                      </div>
+
+                      <div className="flex gap-4 items-center">
+                        <span className="text-xs text-muted-foreground">0.5%</span>
+                        <div className="flex-1" />
+                        <span className="text-xs text-muted-foreground">30.0%</span>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="targetFalsePositiveRateInput" className="text-xs text-muted-foreground">
+                          Or enter precise False Positive Rate (%)
+                        </Label>
+                        <Input
+                          id="targetFalsePositiveRateInput"
+                          type="number"
+                          min={0.5}
+                          max={30}
+                          step={0.1}
+                          value={settings.cameras?.targetFalsePositiveRate || 5.0}
+                          onChange={(e) =>
+                            updateCameras({
+                              targetFalsePositiveRate: Math.max(0.5, Math.min(30, Number(e.target.value) || 0.5)),
+                            })
+                          }
+                          className="w-24 bg-background/50 font-mono text-sm"
+                        />
+                      </div>
+
+                      <p className="text-xs text-muted-foreground">
+                        Defines the target maximum proportion of system events classified as false positives.
+                      </p>
                     </div>
                   </div>
                 </div>

@@ -36,6 +36,8 @@ interface EventsStatsResponse {
   by_severity: Record<string, number>;
   avg_confidence?: number;
   confidence_history?: ConfidenceHistoryItem[];
+  avg_processing_delay?: number;
+  false_positive_rate?: number;
 }
 
 interface CameraItem {
@@ -124,8 +126,8 @@ export default function Analytics() {
 
     // 1. Memory Usage (Real)
     const memUsed = systemStatus.memory_used_gb || 0;
-    const memTotal = systemStatus.memory_total_gb || 8;
-    const memStatus = memUsed > memTotal * 0.9 ? 'critical' : memUsed > memTotal * 0.7 ? 'warning' : 'good';
+    const memTarget = settings?.cameras?.targetMemoryGb || 8.0;
+    const memStatus = memUsed > memTarget ? 'critical' : memUsed > memTarget * 0.8 ? 'warning' : 'good';
 
     // 2. Processing FPS (Real Config Based)
     const cameraDetails = systemStatus.components?.cameras?.details;
@@ -133,56 +135,51 @@ export default function Analytics() {
     const runningCamerasList = Object.values(camerasMap);
     const runningCameras = runningCamerasList.filter((c: any) => c.is_running && c.enabled);
     
-    // Sum up the configured FPS for all cameras that SHOULD be running (enabled)
-    // We use the 'cameras' query here because it is linked directly to cameras.json
-    const targetFpsTotal = cameras?.filter(c => c.enabled).reduce((sum, c) => sum + (c.fps || 0), 0) || 5;
-    
-    // Sum up the ACTUAL observed FPS from the camera service
+    // Target FPS is now driven by the global setting, not the sum of individual cameras
+    const targetFpsTotal = settings?.cameras?.globalFpsTarget || 15;
     const currentFps = runningCameras.reduce((sum, c: any) => sum + (c.fps_actual || 0), 0);
     
-    // Status Logic: Good if >= 80% of target
-    const fpsStatus = currentFps >= (targetFpsTotal * 0.8) ? 'good' : currentFps > 0 ? 'warning' : 'critical';
+    const isIdle = runningCameras.length === 0;
 
-    // 3. End-to-end Latency (Heuristic)
-    // Increases slightly with CPU usage
-    const baseLatency = 240; // ms
-    const cpuFactor = (systemStatus.cpu_usage || 10) * 1.5;
-    const currentLatency = baseLatency + cpuFactor + (Math.random() * 50);
-    const latencyStatus = currentLatency < 500 ? 'good' : currentLatency < 800 ? 'warning' : 'critical';
+    const fpsStatus = isIdle ? 'good' : currentFps >= (targetFpsTotal * 0.8) ? 'good' : currentFps > 0 ? 'warning' : 'critical';
 
-    // 4. False Positive Rate (Stability Heuristic)
-    // Based on uptime and CPU stability
-    const baseFPR = 3.8;
-    const loadVariation = (systemStatus.cpu_usage || 0) / 100;
-    const currentFPR = Math.max(0.5, baseFPR + loadVariation + (Math.random() * 0.5));
+    // 3. End-to-end Latency (Real)
+    const targetLatency = settings?.cameras?.targetLatencyMs || 500;
+    const currentLatency = stats?.avg_processing_delay ? (stats.avg_processing_delay * 1000) : 0;
+    const latencyStatus = isIdle ? 'good' : currentLatency === 0 ? 'warning' : currentLatency < targetLatency ? 'good' : currentLatency < targetLatency * 1.5 ? 'warning' : 'critical';
+
+    // 4. False Positive Rate (Real Proxy)
+    const targetFPR = settings?.cameras?.targetFalsePositiveRate || 5.0;
+    const currentFPR = stats?.false_positive_rate || 0.0;
+    const fprStatus = isIdle ? 'good' : currentFPR < targetFPR ? 'good' : currentFPR < targetFPR * 2 ? 'warning' : 'critical';
 
     return [
       {
         metric: 'End-to-end Latency',
-        target: '<500ms',
-        current: `${currentLatency.toFixed(0)}ms`,
+        target: `<${targetLatency.toFixed(0)}ms`,
+        current: isIdle ? 'Idle' : currentLatency > 0 ? `${currentLatency.toFixed(0)}ms` : 'No Recent Data',
         status: latencyStatus
       },
       {
         metric: 'Processing FPS',
         target: `>${targetFpsTotal.toFixed(0)} FPS`,
-        current: `${currentFps.toFixed(1)} FPS`,
+        current: isIdle ? 'Idle' : `${currentFps.toFixed(1)} FPS`,
         status: fpsStatus
       },
       {
         metric: 'Memory Usage',
-        target: `<${memTotal.toFixed(0)}GB`,
+        target: `<${memTarget.toFixed(1)}GB`,
         current: `${memUsed.toFixed(1)}GB`,
         status: memStatus
       },
       {
         metric: 'False Positive Rate',
-        target: '<5%',
-        current: `${currentFPR.toFixed(1)}%`,
-        status: currentFPR < 5 ? 'good' : 'warning'
+        target: `<${targetFPR.toFixed(1)}%`,
+        current: isIdle ? 'Idle' : `${currentFPR.toFixed(1)}%`,
+        status: fprStatus
       },
     ];
-  }, [systemStatus]);
+  }, [systemStatus, stats, cameras, settings]);
 
   if (error) {
     return (
