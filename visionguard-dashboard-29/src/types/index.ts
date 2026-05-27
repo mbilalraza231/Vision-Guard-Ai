@@ -154,11 +154,15 @@ export interface PerformanceMetric {
 export interface SystemSettings {
   general: GeneralSettings;
   cameras: CameraSettings;
+  ecs: EcsSettings;
+  cameraCapture: CameraCaptureSettings;
+  clips: ClipSettings;
   alerts: AlertSettings;
   storage: StorageSettings;
   models: ModelSettings;
   privacy: PrivacySettings;
   system: SystemInfo;
+  systemOverrides: SystemOverrides;
   notifications: NotificationSettings;
 }
 
@@ -167,6 +171,34 @@ export interface CameraSettings {
   targetLatencyMs: number;
   targetMemoryGb: number;
   targetFalsePositiveRate: number;
+}
+
+export interface EcsSettings {
+  thresholds: {
+    weapon: number;
+    fire: number;
+    fall: number;
+  };
+  correlationWindowMs: number;
+  hardTtlSeconds: number;
+  enableAlerts: boolean;
+  enableDatabase: boolean;
+  enableFrontend: boolean;
+}
+
+export interface CameraCaptureSettings {
+  defaultFps: number;
+  motionThreshold: number;
+}
+
+export interface ClipSettings {
+  preSeconds: number;
+  postSeconds: number;
+  enableBackgroundBuffer: boolean;
+}
+
+export interface SystemOverrides {
+  memoryTotalGbOverride: number;
 }
 
 export interface GeneralSettings {
@@ -216,16 +248,6 @@ export interface NotificationSettings {
     emailAlert: boolean;
     minSeverity: 'critical' | 'high' | 'medium' | 'low';
   }>;
-  twilio: {
-    sid: string;
-    token: string;
-    from: string;
-  };
-  gmail: {
-    server: string;
-    user: string;
-    pass: string;
-  };
 }
 
 // WebSocket Event Types

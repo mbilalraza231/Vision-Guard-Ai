@@ -8,8 +8,10 @@ PUT  /api/v1/settings          → upsert settings JSON
 All routes require an admin JWT.
 """
 
+import copy
 import json
 import logging
+import os
 import time
 from typing import Any, Dict
 
@@ -31,44 +33,110 @@ router = APIRouter(prefix="/api/v1/settings", tags=["Settings"])
 # Must stay in sync with the frontend's `defaultSettings` object.    #
 # ------------------------------------------------------------------ #
 
-DEFAULT_SETTINGS: Dict[str, Any] = {
-    "general": {
-        "siteName": "VisionGuard AI",
-        "timezone": "UTC",
-        "language": "en",
-    },
-    "cameras": {
-        "globalFpsTarget": 15,
-        "targetLatencyMs": 500,
-        "targetMemoryGb": 8.0,
-        "targetFalsePositiveRate": 5.0,
-    },
-    "alerts": {
-        "emailNotifications": False,
-        "smsNotifications": False,
-        "pushNotifications": False,
-        "alertThreshold": "low",
-    },
-    "storage": {
-        "retentionDays": 30,
-        "autoDelete": False,
-        "maxStorage": 50,
-    },
-    "models": {
-        "detectionModel": "yolo-edge-v2",
-        "confidenceThreshold": 0.7,
-        "processingMode": "realtime",
-    },
-    "privacy": {
-        "maskFaces": False,
-        "anonymizeData": False,
-        "gdprCompliant": False,
-    },
-    "notifications": {
-        "twilio": {"sid": "", "token": "", "from": ""},
-        "gmail": {"server": "smtp.gmail.com", "user": "", "pass": ""},
-    },
-}
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        return int(float(raw))
+    except Exception:
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        return float(raw)
+    except Exception:
+        return default
+
+
+def _load_default_settings() -> Dict[str, Any]:
+    """
+    Build defaults from environment (deployment) values.
+
+    This keeps the "Reset" behavior aligned with .env defaults, while still
+    allowing users to override runtime tuning knobs via the dashboard settings.
+    """
+    return {
+        "general": {
+            "siteName": os.environ.get("VG_SITE_NAME", "VisionGuard AI"),
+            "timezone": os.environ.get("VG_TIMEZONE", "UTC"),
+            "language": os.environ.get("VG_LANGUAGE", "en"),
+        },
+        # UI targets/caps (safe to be dashboard-managed)
+        "cameras": {
+            "globalFpsTarget": _env_int("VG_GLOBAL_FPS_TARGET", 15),
+            "targetLatencyMs": _env_int("VG_TARGET_LATENCY_MS", 500),
+            "targetMemoryGb": _env_float("VG_TARGET_MEMORY_GB", 8.0),
+            "targetFalsePositiveRate": _env_float("VG_TARGET_FALSE_POSITIVE_RATE", 5.0),
+        },
+        # ECS tuning knobs
+        "ecs": {
+            "thresholds": {
+                "weapon": _env_float("ECS_WEAPON_THRESHOLD", 0.85),
+                "fire": _env_float("ECS_FIRE_THRESHOLD", 0.75),
+                "fall": _env_float("ECS_FALL_THRESHOLD", 0.80),
+            },
+            "correlationWindowMs": _env_int("ECS_CORRELATION_WINDOW_MS", 400),
+            "hardTtlSeconds": _env_float("ECS_HARD_TTL_SECONDS", 2.0),
+            "enableAlerts": _env_bool("ECS_ENABLE_ALERTS", True),
+            "enableDatabase": _env_bool("ECS_ENABLE_DATABASE", True),
+            "enableFrontend": _env_bool("ECS_ENABLE_FRONTEND", True),
+        },
+        # Camera capture defaults
+        "cameraCapture": {
+            "defaultFps": _env_int("CAMERA_DEFAULT_FPS", 5),
+            "motionThreshold": _env_float("CAMERA_MOTION_THRESHOLD", 0.02),
+        },
+        # Clip/recording policy
+        "clips": {
+            "preSeconds": _env_int("CLIP_PRE_SECONDS", 2),
+            "postSeconds": _env_int("CLIP_POST_SECONDS", 10),
+            "enableBackgroundBuffer": _env_bool("CLIP_ENABLE_BACKGROUND_BUFFER", False),
+        },
+        # System/UI-related overrides (kept separate from frontend "system info")
+        "systemOverrides": {
+            "memoryTotalGbOverride": _env_float("VG_SYSTEM_MEMORY_GB", 0.0),
+        },
+        "alerts": {
+            "emailNotifications": False,
+            "smsNotifications": False,
+            "pushNotifications": False,
+            "alertThreshold": "low",
+        },
+        "storage": {
+            "retentionDays": 30,
+            "autoDelete": False,
+            "maxStorage": 50,
+        },
+        "models": {
+            "detectionModel": "yolo-edge-v2",
+            "confidenceThreshold": 0.7,
+            "processingMode": "realtime",
+        },
+        "privacy": {
+            "maskFaces": False,
+            "anonymizeData": False,
+            "gdprCompliant": False,
+        },
+        # Secrets (Twilio/Gmail/etc.) must NOT live in settings.
+        "notifications": {
+            "recipients": [],
+        },
+    }
+
+
+DEFAULT_SETTINGS: Dict[str, Any] = _load_default_settings()
 
 
 # ------------------------------------------------------------------ #
@@ -86,14 +154,19 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return merged
 
 
-async def _read_settings() -> Dict[str, Any]:
-    """Read settings from DB, merged with defaults."""
+async def _read_stored_settings() -> Dict[str, Any]:
+    """Read raw settings JSON from DB (no merge with defaults)."""
     row = await db.fetch_one("SELECT data FROM system_settings ORDER BY id LIMIT 1")
     stored = row["data"] if row and row.get("data") else {}
-    # asyncpg returns JSONB as a string or dict depending on the driver version
     if isinstance(stored, str):
         stored = json.loads(stored)
-    return _deep_merge(DEFAULT_SETTINGS, stored)
+    return stored if isinstance(stored, dict) else {}
+
+
+async def _read_settings() -> Dict[str, Any]:
+    """Read settings from DB, merged with defaults."""
+    stored = await _read_stored_settings()
+    return _deep_merge(_load_default_settings(), stored)
 
 
 async def _write_settings(data: Dict[str, Any]) -> None:
@@ -133,6 +206,10 @@ async def sync_settings_to_redis() -> Dict[str, Any]:
 class SettingsPayload(BaseModel):
     general: Dict[str, Any] | None = None
     cameras: Dict[str, Any] | None = None
+    ecs: Dict[str, Any] | None = None
+    cameraCapture: Dict[str, Any] | None = None
+    clips: Dict[str, Any] | None = None
+    systemOverrides: Dict[str, Any] | None = None
     alerts: Dict[str, Any] | None = None
     storage: Dict[str, Any] | None = None
     models: Dict[str, Any] | None = None
@@ -154,13 +231,13 @@ async def get_settings(_user=Depends(admin_jwt_required)):
     except Exception as e:
         logger.error(f"Failed to read settings: {e}")
         # Fall back to defaults if the table doesn't exist yet
-        return DEFAULT_SETTINGS
+        return _load_default_settings()
 
 
 @router.get("/defaults")
 async def get_defaults(_user=Depends(admin_jwt_required)):
     """Return hard-coded default settings (useful for the Reset button)."""
-    return DEFAULT_SETTINGS
+    return _load_default_settings()
 
 
 @router.get("/gdpr/export")
@@ -233,10 +310,47 @@ async def update_settings(
 async def reset_settings(_user=Depends(admin_jwt_required)):
     """Reset settings to defaults in DB and sync to Redis."""
     try:
-        await _write_settings(DEFAULT_SETTINGS)
+        defaults = _load_default_settings()
+        await _write_settings(defaults)
         await sync_settings_to_redis()
-        return DEFAULT_SETTINGS
+        return defaults
     except Exception as e:
         logger.error(f"Failed to reset settings: {e}")
         raise HTTPException(status_code=500, detail="Failed to reset settings")
+
+
+@router.post("/reset/{section}")
+async def reset_settings_section(section: str, _user=Depends(admin_jwt_required)):
+    """
+    Reset one settings section to env-driven defaults.
+
+    This is intentionally a REPLACE (not merge) for that section, so the
+    dashboard's per-tab Reset always returns to .env defaults.
+    """
+    allowed = {
+        "general",
+        "cameras",
+        "alerts",
+        "storage",
+        "models",
+        "privacy",
+        "notifications",
+        "ecs",
+        "cameraCapture",
+        "clips",
+        "systemOverrides",
+    }
+    if section not in allowed:
+        raise HTTPException(status_code=400, detail=f"Unknown section: {section}")
+
+    try:
+        defaults = _load_default_settings()
+        stored = await _read_stored_settings()
+        stored[section] = copy.deepcopy(defaults.get(section, {}))
+        await _write_settings(stored)
+        await sync_settings_to_redis()
+        return _deep_merge(defaults, stored)
+    except Exception as e:
+        logger.error(f"Failed to reset section {section}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to reset settings section")
 

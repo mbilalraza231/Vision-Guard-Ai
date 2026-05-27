@@ -91,15 +91,37 @@ const defaultSettings: SystemSettings = {
     targetMemoryGb: 8.0,
     targetFalsePositiveRate: 5,
   },
+  ecs: {
+    thresholds: {
+      weapon: 0.85,
+      fire: 0.75,
+      fall: 0.8,
+    },
+    correlationWindowMs: 400,
+    hardTtlSeconds: 2.0,
+    enableAlerts: true,
+    enableDatabase: true,
+    enableFrontend: true,
+  },
+  cameraCapture: {
+    defaultFps: 5,
+    motionThreshold: 0.02,
+  },
+  clips: {
+    preSeconds: 2,
+    postSeconds: 10,
+    enableBackgroundBuffer: false,
+  },
   system: {
     version: '-',
     build: '-',
     uptime: '-',
   },
+  systemOverrides: {
+    memoryTotalGbOverride: 0.0,
+  },
   notifications: {
     recipients: [],
-    twilio: { sid: '', token: '', from: '' },
-    gmail: { server: 'smtp.gmail.com', user: '', pass: '' }
   }
 };
 
@@ -278,13 +300,25 @@ export default function Settings() {
       const payload: Partial<SystemSettings> = {};
       if (activeTab === 'general') payload.general = settings.general;
       else if (activeTab === 'alerts') payload.alerts = settings.alerts;
-      else if (activeTab === 'storage') payload.storage = settings.storage;
-      else if (activeTab === 'models') payload.models = settings.models;
-      else if (activeTab === 'cameras') payload.cameras = settings.cameras;
+      else if (activeTab === 'storage') {
+        payload.storage = settings.storage;
+        payload.clips = settings.clips;
+      }
+      else if (activeTab === 'models') {
+        payload.models = settings.models;
+        payload.ecs = settings.ecs;
+      }
+      else if (activeTab === 'cameras') {
+        payload.cameras = settings.cameras;
+        payload.cameraCapture = settings.cameraCapture;
+      }
       else if (activeTab === 'performance') payload.cameras = settings.cameras;
       else if (activeTab === 'privacy') payload.privacy = settings.privacy;
       else if (activeTab === 'notifications') payload.notifications = settings.notifications;
-      else return; // 'system' tab has no settings
+      else if (activeTab === 'system') {
+        payload.ecs = settings.ecs;
+        payload.systemOverrides = settings.systemOverrides;
+      } else return;
 
       const saved = await apiService.putData<SystemSettings>('/api/v1/settings', payload);
       setSettings((prev: SystemSettings) => ({ ...prev, ...saved }));
@@ -327,28 +361,53 @@ export default function Settings() {
 
   const resetSettings = async () => {
     try {
-      // Fetch pure defaults without modifying the DB
-      const defaults = await apiService.getData<SystemSettings>('/api/v1/settings/defaults');
-      
-      // Override general defaults with our new UI defaults if resetting general
-      if (activeTab === 'general') {
-        defaults.general.timezone = 'Asia/Karachi';
-        defaults.general.siteName = 'VisionGuard AI';
+      // Prefer backend section-reset endpoint so Reset is a true REPLACE back to .env defaults.
+      // Fallback to defaults+PUT if the backend is not yet updated.
+      const sectionByTab: Record<string, string[]> = {
+        general: ['general'],
+        alerts: ['alerts'],
+        storage: ['storage', 'clips'],
+        models: ['models', 'ecs'],
+        cameras: ['cameras', 'cameraCapture'],
+        performance: ['cameras'],
+        privacy: ['privacy'],
+        notifications: ['notifications'],
+        system: ['ecs', 'systemOverrides'],
+      };
+
+      const sections = sectionByTab[activeTab] ?? [];
+      if (sections.length === 0) return;
+
+      let saved: SystemSettings | null = null;
+      try {
+        for (const section of sections) {
+          saved = await apiService.postData<SystemSettings>(`/api/v1/settings/reset/${section}`);
+        }
+      } catch (sectionResetErr) {
+        console.warn('Section reset endpoint unavailable, falling back to defaults+PUT', sectionResetErr);
+        const defaults = await apiService.getData<SystemSettings>('/api/v1/settings/defaults');
+        const payload: Partial<SystemSettings> = {};
+        if (activeTab === 'general') payload.general = defaults.general;
+        else if (activeTab === 'alerts') payload.alerts = defaults.alerts;
+        else if (activeTab === 'storage') {
+          payload.storage = defaults.storage;
+          payload.clips = defaults.clips;
+        } else if (activeTab === 'models') {
+          payload.models = defaults.models;
+          payload.ecs = defaults.ecs;
+        } else if (activeTab === 'cameras') {
+          payload.cameras = defaults.cameras;
+          payload.cameraCapture = defaults.cameraCapture;
+        } else if (activeTab === 'performance') payload.cameras = defaults.cameras;
+        else if (activeTab === 'privacy') payload.privacy = defaults.privacy;
+        else if (activeTab === 'notifications') payload.notifications = defaults.notifications;
+        else if (activeTab === 'system') {
+          payload.ecs = defaults.ecs;
+          payload.systemOverrides = defaults.systemOverrides;
+        }
+        saved = await apiService.putData<SystemSettings>('/api/v1/settings', payload);
       }
-      
-      const payload: Partial<SystemSettings> = {};
-      if (activeTab === 'general') payload.general = defaults.general;
-      else if (activeTab === 'alerts') payload.alerts = defaults.alerts;
-      else if (activeTab === 'storage') payload.storage = defaults.storage;
-      else if (activeTab === 'models') payload.models = defaults.models;
-      else if (activeTab === 'cameras') payload.cameras = defaults.cameras;
-      else if (activeTab === 'performance') payload.cameras = defaults.cameras;
-      else if (activeTab === 'privacy') payload.privacy = defaults.privacy;
-      else if (activeTab === 'notifications') payload.notifications = defaults.notifications;
-      else return; // 'system' tab has no settings
-      
-      // Persist ONLY the active tab's defaults back to the backend
-      const saved = await apiService.putData<SystemSettings>('/api/v1/settings', payload);
+      if (!saved) return;
       
       setSettings((prev: SystemSettings) => ({ ...prev, ...saved }));
       const tabName = activeTab.charAt(0).toUpperCase() + activeTab.slice(1);
@@ -387,19 +446,29 @@ export default function Settings() {
   const updateCameras = (patch: Partial<SystemSettings['cameras']>) => {
     setSettings((prev: SystemSettings) => ({ ...prev, cameras: { ...prev.cameras, ...patch } }));
   };
+  // Provider credentials (Twilio/Gmail/etc.) are intentionally NOT editable from the dashboard.
 
-  const updateTwilio = (patch: Partial<SystemSettings['notifications']['twilio']>) => {
-    setSettings((prev: SystemSettings) => ({ 
-      ...prev, 
-      notifications: { ...prev.notifications, twilio: { ...prev.notifications.twilio, ...patch } } 
+  const updateEcs = (patch: Partial<SystemSettings['ecs']>) => {
+    setSettings((prev: SystemSettings) => ({ ...prev, ecs: { ...prev.ecs, ...patch } as any }));
+  };
+
+  const updateEcsThresholds = (patch: Partial<SystemSettings['ecs']['thresholds']>) => {
+    setSettings((prev: SystemSettings) => ({
+      ...prev,
+      ecs: { ...prev.ecs, thresholds: { ...prev.ecs.thresholds, ...patch } },
     }));
   };
 
-  const updateGmail = (patch: Partial<SystemSettings['notifications']['gmail']>) => {
-    setSettings((prev: SystemSettings) => ({ 
-      ...prev, 
-      notifications: { ...prev.notifications, gmail: { ...prev.notifications.gmail, ...patch } } 
-    }));
+  const updateCameraCapture = (patch: Partial<SystemSettings['cameraCapture']>) => {
+    setSettings((prev: SystemSettings) => ({ ...prev, cameraCapture: { ...prev.cameraCapture, ...patch } }));
+  };
+
+  const updateClips = (patch: Partial<SystemSettings['clips']>) => {
+    setSettings((prev: SystemSettings) => ({ ...prev, clips: { ...prev.clips, ...patch } }));
+  };
+
+  const updateSystemOverrides = (patch: Partial<SystemSettings['systemOverrides']>) => {
+    setSettings((prev: SystemSettings) => ({ ...prev, systemOverrides: { ...prev.systemOverrides, ...patch } }));
   };
 
   return (
@@ -565,6 +634,104 @@ export default function Settings() {
                           )}
                         </div>
                       </div>
+
+                      {/* ECS + System Overrides (dashboard-managed tuning knobs) */}
+                      <div className="mt-10 max-w-3xl">
+                        <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                          <Activity className="h-5 w-5 text-primary" />
+                          ECS & System Tuning
+                        </h3>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="rounded-xl border border-white/5 bg-secondary/10 p-5 space-y-3">
+                            <Label className="text-base font-semibold">Correlation Window (ms)</Label>
+                            <Input
+                              type="number"
+                              min={50}
+                              max={5000}
+                              value={settings.ecs?.correlationWindowMs ?? 400}
+                              onChange={(e) =>
+                                updateEcs({ correlationWindowMs: Math.max(50, Math.min(5000, Number(e.target.value) || 50)) })
+                              }
+                              className="bg-background/50 font-mono text-sm w-40"
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Time window to correlate multiple detections into a single event.
+                            </p>
+                          </div>
+
+                          <div className="rounded-xl border border-white/5 bg-secondary/10 p-5 space-y-3">
+                            <Label className="text-base font-semibold">Hard TTL (seconds)</Label>
+                            <Input
+                              type="number"
+                              min={0.1}
+                              max={30}
+                              step={0.1}
+                              value={settings.ecs?.hardTtlSeconds ?? 2.0}
+                              onChange={(e) =>
+                                updateEcs({ hardTtlSeconds: Math.max(0.1, Math.min(30, Number(e.target.value) || 0.1)) })
+                              }
+                              className="bg-background/50 font-mono text-sm w-40"
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Upper bound on how long ECS will wait before finalizing an event.
+                            </p>
+                          </div>
+
+                          <div className="rounded-xl border border-white/5 bg-secondary/10 p-5 flex items-start justify-between gap-4">
+                            <div className="space-y-1">
+                              <Label className="text-base font-semibold">Enable Alerts</Label>
+                              <p className="text-xs text-muted-foreground">Allow ECS to generate alerts.</p>
+                            </div>
+                            <Switch
+                              checked={settings.ecs?.enableAlerts ?? true}
+                              onCheckedChange={(checked) => updateEcs({ enableAlerts: checked })}
+                            />
+                          </div>
+
+                          <div className="rounded-xl border border-white/5 bg-secondary/10 p-5 flex items-start justify-between gap-4">
+                            <div className="space-y-1">
+                              <Label className="text-base font-semibold">Enable Database</Label>
+                              <p className="text-xs text-muted-foreground">Allow ECS to write events to DB.</p>
+                            </div>
+                            <Switch
+                              checked={settings.ecs?.enableDatabase ?? true}
+                              onCheckedChange={(checked) => updateEcs({ enableDatabase: checked })}
+                            />
+                          </div>
+
+                          <div className="rounded-xl border border-white/5 bg-secondary/10 p-5 flex items-start justify-between gap-4">
+                            <div className="space-y-1">
+                              <Label className="text-base font-semibold">Enable Frontend</Label>
+                              <p className="text-xs text-muted-foreground">Allow ECS to publish updates for UI.</p>
+                            </div>
+                            <Switch
+                              checked={settings.ecs?.enableFrontend ?? true}
+                              onCheckedChange={(checked) => updateEcs({ enableFrontend: checked })}
+                            />
+                          </div>
+
+                          <div className="rounded-xl border border-white/5 bg-secondary/10 p-5 space-y-3">
+                            <Label className="text-base font-semibold">Memory Total Override (GB)</Label>
+                            <Input
+                              type="number"
+                              min={0}
+                              max={2048}
+                              step={0.1}
+                              value={settings.systemOverrides?.memoryTotalGbOverride ?? 0}
+                              onChange={(e) =>
+                                updateSystemOverrides({
+                                  memoryTotalGbOverride: Math.max(0, Math.min(2048, Number(e.target.value) || 0)),
+                                })
+                              }
+                              className="bg-background/50 font-mono text-sm w-40"
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Set to 0 to auto-detect. Useful when Docker reports incorrect host RAM.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
                     </>
                   )}
                 </div>
@@ -727,6 +894,56 @@ export default function Settings() {
                         onCheckedChange={(checked) => updateStorage({ autoDelete: checked })}
                       />
                     </div>
+
+                    <div className="pt-6 border-t border-white/5">
+                      <h3 className="text-lg font-semibold mb-3">Clip Recording Policy</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="clipPreSeconds">Pre Seconds</Label>
+                          <Input
+                            id="clipPreSeconds"
+                            type="number"
+                            min={0}
+                            max={60}
+                            value={settings.clips?.preSeconds ?? 2}
+                            onChange={(e) =>
+                              updateClips({ preSeconds: Math.max(0, Math.min(60, Number(e.target.value) || 0)) })
+                            }
+                            className="bg-background/50 font-mono text-sm w-40"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Pre seconds requires Background Buffer.
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="clipPostSeconds">Post Seconds</Label>
+                          <Input
+                            id="clipPostSeconds"
+                            type="number"
+                            min={0}
+                            max={120}
+                            value={settings.clips?.postSeconds ?? 10}
+                            onChange={(e) =>
+                              updateClips({ postSeconds: Math.max(0, Math.min(120, Number(e.target.value) || 0)) })
+                            }
+                            className="bg-background/50 font-mono text-sm w-40"
+                          />
+                        </div>
+                        <div className="md:col-span-2 flex items-center justify-between rounded-lg bg-secondary/30 px-4 py-3">
+                          <div className="space-y-0.5">
+                            <Label htmlFor="clipBackgroundBuffer">Background Buffer</Label>
+                            <p className="text-xs text-muted-foreground">
+                              Keeps a rolling buffer so clips can include a few seconds before the event.
+                            </p>
+                          </div>
+                          <Switch
+                            id="clipBackgroundBuffer"
+                            checked={settings.clips?.enableBackgroundBuffer ?? false}
+                            onCheckedChange={(checked) => updateClips({ enableBackgroundBuffer: checked })}
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -776,6 +993,45 @@ export default function Settings() {
                           <SelectItem value="realtime">Realtime</SelectItem>
                         </SelectContent>
                       </Select>
+                    </div>
+
+                    <div className="pt-6 border-t border-white/5">
+                      <h3 className="text-lg font-semibold mb-3">ECS Thresholds</h3>
+
+                      <div className="space-y-5">
+                        <div className="space-y-2">
+                          <Label>Weapon Threshold ({Math.round((settings.ecs?.thresholds?.weapon ?? 0.85) * 100)}%)</Label>
+                          <Slider
+                            value={[(settings.ecs?.thresholds?.weapon ?? 0.85) * 100]}
+                            min={10}
+                            max={99}
+                            step={1}
+                            onValueChange={(value) => updateEcsThresholds({ weapon: value[0] / 100 })}
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Fire Threshold ({Math.round((settings.ecs?.thresholds?.fire ?? 0.75) * 100)}%)</Label>
+                          <Slider
+                            value={[(settings.ecs?.thresholds?.fire ?? 0.75) * 100]}
+                            min={10}
+                            max={99}
+                            step={1}
+                            onValueChange={(value) => updateEcsThresholds({ fire: value[0] / 100 })}
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Fall Threshold ({Math.round((settings.ecs?.thresholds?.fall ?? 0.8) * 100)}%)</Label>
+                          <Slider
+                            value={[(settings.ecs?.thresholds?.fall ?? 0.8) * 100]}
+                            min={10}
+                            max={99}
+                            step={1}
+                            onValueChange={(value) => updateEcsThresholds({ fall: value[0] / 100 })}
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -873,87 +1129,12 @@ export default function Settings() {
               )}
 
               {activeTab === 'notifications' && (
-                <div className="animate-fade-in space-y-8">
+                <div className="animate-fade-in space-y-6">
                   <div className="pt-2">
-                    <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+                    <h2 className="text-xl font-bold mb-2 flex items-center gap-2">
                       <ShieldCheck className="h-5 w-5 text-primary" />
-                      Alert Credentials
+                      Notifications
                     </h2>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                      {/* Twilio Config */}
-                      <div className="space-y-4 rounded-xl border border-white/5 bg-secondary/10 p-5">
-                        <div className="flex items-center gap-2 font-semibold text-status-online">
-                          Twilio (WhatsApp)
-                        </div>
-                        <div className="space-y-3">
-                          <div className="space-y-1.5">
-                            <Label className="text-xs text-muted-foreground">Account SID</Label>
-                            <Input 
-                              placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" 
-                              className="bg-background/50" 
-                              value={settings.notifications.twilio.sid}
-                              onChange={(e) => updateTwilio({ sid: e.target.value })}
-                            />
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label className="text-xs text-muted-foreground">Auth Token</Label>
-                            <Input 
-                              type="password" 
-                              placeholder="••••••••••••••••••••••••••••••••" 
-                              className="bg-background/50" 
-                              value={settings.notifications.twilio.token}
-                              onChange={(e) => updateTwilio({ token: e.target.value })}
-                            />
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label className="text-xs text-muted-foreground">From Number</Label>
-                            <Input 
-                              placeholder="whatsapp:+14155238886" 
-                              className="bg-background/50" 
-                              value={settings.notifications.twilio.from}
-                              onChange={(e) => updateTwilio({ from: e.target.value })}
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Gmail Config */}
-                      <div className="space-y-4 rounded-xl border border-white/5 bg-secondary/10 p-5">
-                        <div className="flex items-center gap-2 font-semibold text-primary">
-                          Gmail (SMTP)
-                        </div>
-                        <div className="space-y-3">
-                          <div className="space-y-1.5">
-                            <Label className="text-xs text-muted-foreground">SMTP Server</Label>
-                            <Input 
-                              className="bg-background/50" 
-                              value={settings.notifications.gmail.server}
-                              onChange={(e) => updateGmail({ server: e.target.value })}
-                            />
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label className="text-xs text-muted-foreground">Sender Email</Label>
-                            <Input 
-                              placeholder="your-email@gmail.com" 
-                              className="bg-background/50" 
-                              value={settings.notifications.gmail.user}
-                              onChange={(e) => updateGmail({ user: e.target.value })}
-                            />
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label className="text-xs text-muted-foreground">App Password</Label>
-                            <Input 
-                              type="password" 
-                              placeholder="xxxx xxxx xxxx xxxx" 
-                              className="bg-background/50" 
-                              value={settings.notifications.gmail.pass}
-                              onChange={(e) => updateGmail({ pass: e.target.value })}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
                   </div>
                 </div>
               )}
@@ -1045,6 +1226,56 @@ export default function Settings() {
 
                       <p className="text-xs text-muted-foreground">
                         This limits the total combined frames the AI will process per second across all cameras, preventing CPU/GPU resource exhaustion and stabilizing system performance.
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-white/5 bg-secondary/10 p-5 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="cameraDefaultFps" className="text-base font-semibold">
+                          Default Camera FPS
+                        </Label>
+                        <span className="text-sm font-mono bg-secondary px-2 py-0.5 rounded text-primary font-bold">
+                          {settings.cameraCapture?.defaultFps ?? 5} FPS
+                        </span>
+                      </div>
+
+                      <div className="py-2">
+                        <Slider
+                          value={[settings.cameraCapture?.defaultFps ?? 5]}
+                          min={1}
+                          max={60}
+                          step={1}
+                          onValueChange={(value) => updateCameraCapture({ defaultFps: value[0] })}
+                        />
+                      </div>
+
+                      <p className="text-xs text-muted-foreground">
+                        Default stream FPS used when registering new cameras (unless overridden per-camera).
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-white/5 bg-secondary/10 p-5 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="cameraMotionThreshold" className="text-base font-semibold">
+                          Motion Threshold
+                        </Label>
+                        <span className="text-sm font-mono bg-secondary px-2 py-0.5 rounded text-primary font-bold">
+                          {(settings.cameraCapture?.motionThreshold ?? 0.02).toFixed(2)}
+                        </span>
+                      </div>
+
+                      <div className="py-2">
+                        <Slider
+                          value={[Math.round((settings.cameraCapture?.motionThreshold ?? 0.02) * 100)]}
+                          min={0}
+                          max={20}
+                          step={1}
+                          onValueChange={(value) => updateCameraCapture({ motionThreshold: value[0] / 100 })}
+                        />
+                      </div>
+
+                      <p className="text-xs text-muted-foreground">
+                        Higher values reduce motion sensitivity (fewer frames processed in low-motion scenes).
                       </p>
                     </div>
                   </div>
