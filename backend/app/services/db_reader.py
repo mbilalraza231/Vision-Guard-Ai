@@ -222,12 +222,32 @@ class DatabaseReader:
                 for r in reversed(trend_rows)
             ]
             
+            # Calculate average processing delay (latency) over the last 50 events to reflect real-time performance
+            avg_delay_row = await db.fetch_one("""
+                SELECT AVG(created_at - start_ts) as avg 
+                FROM (
+                    SELECT created_at, start_ts 
+                    FROM events 
+                    WHERE created_at > start_ts 
+                    ORDER BY created_at DESC 
+                    LIMIT 50
+                ) as recent
+            """)
+            avg_processing_delay = avg_delay_row['avg'] if avg_delay_row and avg_delay_row['avg'] is not None else 0.0
+            
+            # Calculate False Positive Rate (proxy: % of events with confidence < 0.50)
+            low_conf_row = await db.fetch_one("SELECT COUNT(*) FROM events WHERE confidence < 0.50")
+            low_conf_count = low_conf_row['count'] if low_conf_row else 0
+            false_positive_rate = (low_conf_count / total_events * 100) if total_events > 0 else 0.0
+
             return {
                 "total_events": total_events,
                 "by_type": by_type,
                 "by_severity": by_severity,
                 "avg_confidence": avg_confidence,
-                "confidence_history": confidence_history
+                "confidence_history": confidence_history,
+                "avg_processing_delay": avg_processing_delay,
+                "false_positive_rate": false_positive_rate
             }
             
         except Exception as e:
