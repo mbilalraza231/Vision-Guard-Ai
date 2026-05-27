@@ -80,6 +80,14 @@ def _load_default_settings() -> Dict[str, Any]:
             "targetMemoryGb": _env_float("VG_TARGET_MEMORY_GB", 8.0),
             "targetFalsePositiveRate": _env_float("VG_TARGET_FALSE_POSITIVE_RATE", 5.0),
         },
+        # AI worker inference thresholds (per model container)
+        "workers": {
+            "thresholds": {
+                "weapon": _env_float("WORKER_WEAPON_THRESHOLD", _env_float("WORKER_CONFIDENCE_THRESHOLD", 0.70)),
+                "fire": _env_float("WORKER_FIRE_THRESHOLD", _env_float("WORKER_CONFIDENCE_THRESHOLD", 0.40)),
+                "fall": _env_float("WORKER_FALL_THRESHOLD", _env_float("WORKER_CONFIDENCE_THRESHOLD", 0.80)),
+            },
+        },
         # ECS tuning knobs
         "ecs": {
             "thresholds": {
@@ -203,9 +211,14 @@ async def sync_settings_to_redis() -> Dict[str, Any]:
 # Pydantic model for the PUT body                                    #
 # ------------------------------------------------------------------ #
 
+class ResetSectionsPayload(BaseModel):
+    sections: list[str]
+
+
 class SettingsPayload(BaseModel):
     general: Dict[str, Any] | None = None
     cameras: Dict[str, Any] | None = None
+    workers: Dict[str, Any] | None = None
     ecs: Dict[str, Any] | None = None
     cameraCapture: Dict[str, Any] | None = None
     clips: Dict[str, Any] | None = None
@@ -295,12 +308,12 @@ async def update_settings(
     """Save the supplied settings to the database and sync to Redis."""
     try:
         incoming = payload.model_dump(exclude_none=True)
-        # Merge with existing stored values so partial updates work
-        current = await _read_settings()
-        merged = _deep_merge(current, incoming)
-        await _write_settings(merged)
+        # Merge partial tab updates into raw DB JSON (not into default-filled view)
+        stored = await _read_stored_settings()
+        stored = _deep_merge(stored, incoming)
+        await _write_settings(stored)
         await sync_settings_to_redis()
-        return merged
+        return _deep_merge(_load_default_settings(), stored)
     except Exception as e:
         logger.error(f"Failed to save settings: {e}")
         raise HTTPException(status_code=500, detail="Failed to save settings")
@@ -319,6 +332,48 @@ async def reset_settings(_user=Depends(admin_jwt_required)):
         raise HTTPException(status_code=500, detail="Failed to reset settings")
 
 
+_RESET_ALLOWED_SECTIONS = {
+    "general",
+    "cameras",
+    "alerts",
+    "storage",
+    "models",
+    "privacy",
+    "notifications",
+    "workers",
+    "ecs",
+    "cameraCapture",
+    "clips",
+    "systemOverrides",
+}
+
+
+@router.post("/reset-sections")
+async def reset_settings_sections(
+    payload: ResetSectionsPayload,
+    _user=Depends(admin_jwt_required),
+):
+    """Reset multiple settings sections in one atomic write (e.g. Models tab)."""
+    if not payload.sections:
+        raise HTTPException(status_code=400, detail="No sections provided")
+
+    try:
+        defaults = _load_default_settings()
+        stored = await _read_stored_settings()
+        for section in payload.sections:
+            if section not in _RESET_ALLOWED_SECTIONS:
+                raise HTTPException(status_code=400, detail=f"Unknown section: {section}")
+            stored[section] = copy.deepcopy(defaults.get(section, {}))
+        await _write_settings(stored)
+        await sync_settings_to_redis()
+        return _deep_merge(defaults, stored)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to reset sections {payload.sections}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to reset settings sections")
+
+
 @router.post("/reset/{section}")
 async def reset_settings_section(section: str, _user=Depends(admin_jwt_required)):
     """
@@ -327,20 +382,7 @@ async def reset_settings_section(section: str, _user=Depends(admin_jwt_required)
     This is intentionally a REPLACE (not merge) for that section, so the
     dashboard's per-tab Reset always returns to .env defaults.
     """
-    allowed = {
-        "general",
-        "cameras",
-        "alerts",
-        "storage",
-        "models",
-        "privacy",
-        "notifications",
-        "ecs",
-        "cameraCapture",
-        "clips",
-        "systemOverrides",
-    }
-    if section not in allowed:
+    if section not in _RESET_ALLOWED_SECTIONS:
         raise HTTPException(status_code=400, detail=f"Unknown section: {section}")
 
     try:

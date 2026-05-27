@@ -25,6 +25,7 @@ from ..inference.model_loader import ModelLoader
 from ..inference.preprocessor import Preprocessor
 from ..inference.inference_engine import InferenceEngine
 from ..inference.postprocessor import Postprocessor
+from ..settings_runtime import load_worker_confidence_threshold
 
 
 class AIWorker:
@@ -217,6 +218,23 @@ class AIWorker:
             )
             return False
     
+    def _apply_runtime_threshold(self) -> None:
+        """Reload confidence threshold from Redis settings (dashboard overrides)."""
+        try:
+            new_thr = load_worker_confidence_threshold(self.config.model_type)
+            if abs(new_thr - self.config.confidence_threshold) < 1e-6:
+                return
+            self.config.confidence_threshold = new_thr
+            if self.postprocessor is not None:
+                self.postprocessor.confidence_threshold = new_thr
+            if self.logger:
+                self.logger.info(
+                    f"Updated confidence threshold to {new_thr:.2f}",
+                    extra={"model_type": self.config.model_type},
+                )
+        except Exception:
+            pass
+
     def _inference_loop(self) -> None:
         """Main inference loop."""
         self.logger.info("Starting inference loop")
@@ -225,16 +243,23 @@ class AIWorker:
         base_logger = self.logger
 
         last_heartbeat = time.time()
+        last_settings_refresh = 0.0
         heartbeat_interval_sec = 30.0
+        settings_refresh_interval_sec = 10.0
         
         while not self.stop_event.is_set():
             try:
+                now = time.time()
+                if now - last_settings_refresh >= settings_refresh_interval_sec:
+                    self._apply_runtime_threshold()
+                    last_settings_refresh = now
+
                 # 1. Consume task from Redis queue
                 task = self.task_consumer.consume()
                 
                 if task is None:
                     # Timeout - no task available
-                    if time.time() - last_heartbeat >= heartbeat_interval_sec:
+                    if now - last_heartbeat >= heartbeat_interval_sec:
                         base_logger.info(
                             "AI worker heartbeat (idle)",
                             extra={

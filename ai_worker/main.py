@@ -21,6 +21,7 @@ import redis
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ai_worker import start_worker, stop_worker, WorkerConfig
+from ai_worker.settings_runtime import load_worker_confidence_threshold
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -130,7 +131,7 @@ def main():
         onnx_model_path=model_path,
         redis_host=os.getenv("REDIS_HOST", "localhost"),
         redis_port=int(os.getenv("REDIS_PORT", "6379")),
-        confidence_threshold=float(os.getenv("WORKER_CONFIDENCE_THRESHOLD", "0.40")),
+        confidence_threshold=load_worker_confidence_threshold(model_type),
         iou_threshold=float(os.getenv("WORKER_IOU_THRESHOLD", "0.45")),
         agnostic_nms=os.getenv("WORKER_AGNOSTIC_NMS", "false").lower() == "true",
         allowed_class_ids=os.getenv("WORKER_ALLOWED_CLASS_IDS", ""),

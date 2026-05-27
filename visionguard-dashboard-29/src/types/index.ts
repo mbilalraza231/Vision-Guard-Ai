@@ -154,6 +154,7 @@ export interface PerformanceMetric {
 export interface SystemSettings {
   general: GeneralSettings;
   cameras: CameraSettings;
+  workers: WorkerSettings;
   ecs: EcsSettings;
   cameraCapture: CameraCaptureSettings;
   clips: ClipSettings;
@@ -171,6 +172,14 @@ export interface CameraSettings {
   targetLatencyMs: number;
   targetMemoryGb: number;
   targetFalsePositiveRate: number;
+}
+
+export interface WorkerSettings {
+  thresholds: {
+    weapon: number;
+    fire: number;
+    fall: number;
+  };
 }
 
 export interface EcsSettings {

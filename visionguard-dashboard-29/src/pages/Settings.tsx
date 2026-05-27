@@ -37,7 +37,7 @@ import type {
   SystemSettings,
 } from '@/types';
 
-type SettingsTab = 'general' | 'alerts' | 'notifications' | 'cameras' | 'performance' | 'storage' | 'models' | 'privacy' | 'system';
+type SettingsTab = 'general' | 'alerts' | 'cameras' | 'performance' | 'storage' | 'models' | 'privacy' | 'system';
 
 interface TabItem {
   id: SettingsTab;
@@ -47,7 +47,6 @@ interface TabItem {
 const tabs: TabItem[] = [
   { id: 'general', label: 'General' },
   { id: 'alerts', label: 'Alert Rules' },
-  { id: 'notifications', label: 'Notifications' },
   { id: 'cameras', label: 'Camera Rules' },
   { id: 'performance', label: 'Performance' },
   { id: 'storage', label: 'Storage' },
@@ -91,6 +90,13 @@ const defaultSettings: SystemSettings = {
     targetMemoryGb: 8.0,
     targetFalsePositiveRate: 5,
   },
+  workers: {
+    thresholds: {
+      weapon: 0.70,
+      fire: 0.40,
+      fall: 0.80,
+    },
+  },
   ecs: {
     thresholds: {
       weapon: 0.85,
@@ -124,6 +130,44 @@ const defaultSettings: SystemSettings = {
     recipients: [],
   }
 };
+
+/** Deep-merge API settings into defaults so nested keys (workers/ecs) never go missing. */
+function mergeSettingsFromApi(data: Partial<SystemSettings>): SystemSettings {
+  return {
+    ...defaultSettings,
+    ...data,
+    general: { ...defaultSettings.general, ...data.general },
+    alerts: { ...defaultSettings.alerts, ...data.alerts },
+    storage: { ...defaultSettings.storage, ...data.storage },
+    models: { ...defaultSettings.models, ...data.models },
+    privacy: { ...defaultSettings.privacy, ...data.privacy },
+    cameras: { ...defaultSettings.cameras, ...data.cameras },
+    workers: {
+      ...defaultSettings.workers,
+      ...data.workers,
+      thresholds: {
+        ...defaultSettings.workers.thresholds,
+        ...data.workers?.thresholds,
+      },
+    },
+    ecs: {
+      ...defaultSettings.ecs,
+      ...data.ecs,
+      thresholds: {
+        ...defaultSettings.ecs.thresholds,
+        ...data.ecs?.thresholds,
+      },
+    },
+    cameraCapture: { ...defaultSettings.cameraCapture, ...data.cameraCapture },
+    clips: { ...defaultSettings.clips, ...data.clips },
+    systemOverrides: { ...defaultSettings.systemOverrides, ...data.systemOverrides },
+    notifications: {
+      ...defaultSettings.notifications,
+      ...data.notifications,
+      recipients: data.notifications?.recipients ?? defaultSettings.notifications.recipients,
+    },
+  };
+}
 
 interface HealthResponse {
   status: string;
@@ -204,8 +248,7 @@ export default function Settings() {
         const data = await apiService.getData<SystemSettings>('/api/v1/settings');
         if (!cancelled) {
           setSettings((prev: SystemSettings) => ({
-            ...prev,
-            ...data,
+            ...mergeSettingsFromApi(data),
             system: prev.system, // system info comes from /health, /status, /metrics
           }));
           // Sync i18n with loaded setting
@@ -306,6 +349,7 @@ export default function Settings() {
       }
       else if (activeTab === 'models') {
         payload.models = settings.models;
+        payload.workers = settings.workers;
         payload.ecs = settings.ecs;
       }
       else if (activeTab === 'cameras') {
@@ -314,14 +358,16 @@ export default function Settings() {
       }
       else if (activeTab === 'performance') payload.cameras = settings.cameras;
       else if (activeTab === 'privacy') payload.privacy = settings.privacy;
-      else if (activeTab === 'notifications') payload.notifications = settings.notifications;
       else if (activeTab === 'system') {
         payload.ecs = settings.ecs;
         payload.systemOverrides = settings.systemOverrides;
       } else return;
 
       const saved = await apiService.putData<SystemSettings>('/api/v1/settings', payload);
-      setSettings((prev: SystemSettings) => ({ ...prev, ...saved }));
+      setSettings((prev: SystemSettings) => ({
+        ...mergeSettingsFromApi(saved),
+        system: prev.system,
+      }));
       const tabName = activeTab.charAt(0).toUpperCase() + activeTab.slice(1);
       setSaveMessage(`Save ${tabName} settings Successful`);
       i18n.changeLanguage(saved.general.language);
@@ -367,11 +413,10 @@ export default function Settings() {
         general: ['general'],
         alerts: ['alerts'],
         storage: ['storage', 'clips'],
-        models: ['models', 'ecs'],
+        models: ['models', 'workers', 'ecs'],
         cameras: ['cameras', 'cameraCapture'],
         performance: ['cameras'],
         privacy: ['privacy'],
-        notifications: ['notifications'],
         system: ['ecs', 'systemOverrides'],
       };
 
@@ -380,8 +425,12 @@ export default function Settings() {
 
       let saved: SystemSettings | null = null;
       try {
-        for (const section of sections) {
-          saved = await apiService.postData<SystemSettings>(`/api/v1/settings/reset/${section}`);
+        if (sections.length > 1) {
+          saved = await apiService.postData<SystemSettings>('/api/v1/settings/reset-sections', {
+            sections,
+          });
+        } else if (sections.length === 1) {
+          saved = await apiService.postData<SystemSettings>(`/api/v1/settings/reset/${sections[0]}`);
         }
       } catch (sectionResetErr) {
         console.warn('Section reset endpoint unavailable, falling back to defaults+PUT', sectionResetErr);
@@ -394,13 +443,13 @@ export default function Settings() {
           payload.clips = defaults.clips;
         } else if (activeTab === 'models') {
           payload.models = defaults.models;
+          payload.workers = defaults.workers;
           payload.ecs = defaults.ecs;
         } else if (activeTab === 'cameras') {
           payload.cameras = defaults.cameras;
           payload.cameraCapture = defaults.cameraCapture;
         } else if (activeTab === 'performance') payload.cameras = defaults.cameras;
         else if (activeTab === 'privacy') payload.privacy = defaults.privacy;
-        else if (activeTab === 'notifications') payload.notifications = defaults.notifications;
         else if (activeTab === 'system') {
           payload.ecs = defaults.ecs;
           payload.systemOverrides = defaults.systemOverrides;
@@ -409,7 +458,10 @@ export default function Settings() {
       }
       if (!saved) return;
       
-      setSettings((prev: SystemSettings) => ({ ...prev, ...saved }));
+      setSettings((prev: SystemSettings) => ({
+        ...mergeSettingsFromApi(saved),
+        system: prev.system,
+      }));
       const tabName = activeTab.charAt(0).toUpperCase() + activeTab.slice(1);
       setSaveMessage(`Reset ${tabName} settings Successful`);
       i18n.changeLanguage(saved.general.language);
@@ -452,10 +504,25 @@ export default function Settings() {
     setSettings((prev: SystemSettings) => ({ ...prev, ecs: { ...prev.ecs, ...patch } as any }));
   };
 
+  const updateWorkerThresholds = (patch: Partial<SystemSettings['workers']['thresholds']>) => {
+    setSettings((prev: SystemSettings) => ({
+      ...prev,
+      workers: {
+        ...defaultSettings.workers,
+        ...prev.workers,
+        thresholds: { ...defaultSettings.workers.thresholds, ...prev.workers?.thresholds, ...patch },
+      },
+    }));
+  };
+
   const updateEcsThresholds = (patch: Partial<SystemSettings['ecs']['thresholds']>) => {
     setSettings((prev: SystemSettings) => ({
       ...prev,
-      ecs: { ...prev.ecs, thresholds: { ...prev.ecs.thresholds, ...patch } },
+      ecs: {
+        ...defaultSettings.ecs,
+        ...prev.ecs,
+        thresholds: { ...defaultSettings.ecs.thresholds, ...prev.ecs?.thresholds, ...patch },
+      },
     }));
   };
 
@@ -969,17 +1036,6 @@ export default function Settings() {
                       </Select>
                     </div>
 
-                    <div className="space-y-3">
-                      <Label>Confidence Threshold ({(settings.models.confidenceThreshold * 100).toFixed(0)}%)</Label>
-                      <Slider
-                        value={[settings.models.confidenceThreshold * 100]}
-                        min={10}
-                        max={99}
-                        step={1}
-                        onValueChange={(value) => updateModels({ confidenceThreshold: value[0] / 100 })}
-                      />
-                    </div>
-
                     <div className="space-y-2">
                       <Label>Processing Mode</Label>
                       <Select
@@ -996,7 +1052,52 @@ export default function Settings() {
                     </div>
 
                     <div className="pt-6 border-t border-white/5">
-                      <h3 className="text-lg font-semibold mb-3">ECS Thresholds</h3>
+                      <h3 className="text-lg font-semibold mb-1">AI Worker Thresholds</h3>
+                      <p className="text-xs text-muted-foreground mb-3">
+                        Minimum model confidence before a worker publishes a detection. Applied live via Redis after Save.
+                      </p>
+
+                      <div className="space-y-5">
+                        <div className="space-y-2">
+                          <Label>Weapon Worker ({Math.round((settings.workers?.thresholds?.weapon ?? 0.70) * 100)}%)</Label>
+                          <Slider
+                            value={[(settings.workers?.thresholds?.weapon ?? 0.70) * 100]}
+                            min={10}
+                            max={99}
+                            step={1}
+                            onValueChange={(value) => updateWorkerThresholds({ weapon: value[0] / 100 })}
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Fire Worker ({Math.round((settings.workers?.thresholds?.fire ?? 0.40) * 100)}%)</Label>
+                          <Slider
+                            value={[(settings.workers?.thresholds?.fire ?? 0.40) * 100]}
+                            min={10}
+                            max={99}
+                            step={1}
+                            onValueChange={(value) => updateWorkerThresholds({ fire: value[0] / 100 })}
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Fall Worker ({Math.round((settings.workers?.thresholds?.fall ?? 0.80) * 100)}%)</Label>
+                          <Slider
+                            value={[(settings.workers?.thresholds?.fall ?? 0.80) * 100]}
+                            min={10}
+                            max={99}
+                            step={1}
+                            onValueChange={(value) => updateWorkerThresholds({ fall: value[0] / 100 })}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-6 border-t border-white/5">
+                      <h3 className="text-lg font-semibold mb-1">ECS Thresholds</h3>
+                      <p className="text-xs text-muted-foreground mb-3">
+                        Minimum confidence before ECS creates an incident (second filter after workers).
+                      </p>
 
                       <div className="space-y-5">
                         <div className="space-y-2">
@@ -1124,17 +1225,6 @@ export default function Settings() {
                         )}
                       </Button>
                     </div>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'notifications' && (
-                <div className="animate-fade-in space-y-6">
-                  <div className="pt-2">
-                    <h2 className="text-xl font-bold mb-2 flex items-center gap-2">
-                      <ShieldCheck className="h-5 w-5 text-primary" />
-                      Notifications
-                    </h2>
                   </div>
                 </div>
               )}
