@@ -23,7 +23,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Loader2, RefreshCw, Save, RotateCcw, Bell, ShieldCheck, Mail, Phone, Plus, Trash2, Download, FileJson, Camera } from 'lucide-react';
+import { Loader2, RefreshCw, Save, RotateCcw, Bell, ShieldCheck, Mail, Phone, Plus, Trash2, Download, FileJson, Camera, Activity } from 'lucide-react';
 import { apiService } from '@/services/api.service';
 import { buildApiUrl } from '@/config/api';
 import { formatTimeString } from '@/lib/utils';
@@ -37,7 +37,7 @@ import type {
   SystemSettings,
 } from '@/types';
 
-type SettingsTab = 'general' | 'alerts' | 'notifications' | 'cameras' | 'storage' | 'models' | 'privacy' | 'system';
+type SettingsTab = 'general' | 'alerts' | 'notifications' | 'cameras' | 'performance' | 'storage' | 'models' | 'privacy' | 'system';
 
 interface TabItem {
   id: SettingsTab;
@@ -49,6 +49,7 @@ const tabs: TabItem[] = [
   { id: 'alerts', label: 'Alert Rules' },
   { id: 'notifications', label: 'Notifications' },
   { id: 'cameras', label: 'Camera Rules' },
+  { id: 'performance', label: 'Performance' },
   { id: 'storage', label: 'Storage' },
   { id: 'models', label: 'Models' },
   { id: 'privacy', label: 'Privacy' },
@@ -340,6 +341,7 @@ export default function Settings() {
       else if (activeTab === 'storage') payload.storage = defaults.storage;
       else if (activeTab === 'models') payload.models = defaults.models;
       else if (activeTab === 'cameras') payload.cameras = defaults.cameras;
+      else if (activeTab === 'performance') payload.cameras = defaults.cameras;
       else if (activeTab === 'privacy') payload.privacy = defaults.privacy;
       else if (activeTab === 'notifications') payload.notifications = defaults.notifications;
       else return; // 'system' tab has no settings
@@ -960,14 +962,14 @@ export default function Settings() {
                   <div>
                     <h2 className="text-2xl font-bold mb-1 flex items-center gap-2">
                       <Camera className="h-6 w-6 text-primary" />
-                      Camera Rules & Performance
+                      Camera Rules
                     </h2>
                     <p className="text-sm text-muted-foreground">
-                      Manage system capacity limits and processing rules for your camera feeds.
+                      Manage system-wide defaults for camera streams, recording policies, and detection zones.
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="rounded-xl bg-secondary/20 border border-white/5 p-4">
                       <p className="text-xs text-muted-foreground mb-1">Total Configured Cameras</p>
                       <p className="text-2xl font-bold text-foreground">
@@ -980,15 +982,34 @@ export default function Settings() {
                         {metrics?.cameras?.running ?? 0}
                       </p>
                     </div>
-                    <div className="rounded-xl bg-secondary/20 border border-white/5 p-4">
-                      <p className="text-xs text-muted-foreground mb-1">Avg. Target FPS Per Stream</p>
-                      <p className="text-2xl font-bold text-primary">
-                        {metrics?.cameras?.running && metrics.cameras.running > 0
-                          ? ((settings.cameras?.globalFpsTarget || 15) / metrics.cameras.running).toFixed(1)
-                          : (settings.cameras?.globalFpsTarget || 15).toFixed(1)}{' '}
-                        FPS
-                      </p>
-                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-dashed border-white/10 p-8 text-center text-muted-foreground">
+                    <p>Specific rule overrides (motion zones, schedules) are managed directly on individual Camera pages.</p>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'performance' && (
+                <div className="animate-fade-in space-y-6">
+                  <div>
+                    <h2 className="text-2xl font-bold mb-1 flex items-center gap-2">
+                      <Activity className="h-6 w-6 text-primary" />
+                      System Performance Target Limits
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      Manage resource limits and target processing thresholds to keep the system stable.
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl bg-secondary/20 border border-white/5 p-4 max-w-xl">
+                    <p className="text-xs text-muted-foreground mb-1">Avg. Target FPS Per Stream</p>
+                    <p className="text-2xl font-bold text-primary">
+                      {metrics?.cameras?.running && metrics.cameras.running > 0
+                        ? ((settings.cameras?.globalFpsTarget || 15) / metrics.cameras.running).toFixed(1)
+                        : (settings.cameras?.globalFpsTarget || 15).toFixed(1)}{' '}
+                      FPS
+                    </p>
                   </div>
 
                   <div className="space-y-4 max-w-xl">
