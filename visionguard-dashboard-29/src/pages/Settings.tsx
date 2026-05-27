@@ -281,6 +281,7 @@ export default function Settings() {
       else if (activeTab === 'storage') payload.storage = settings.storage;
       else if (activeTab === 'models') payload.models = settings.models;
       else if (activeTab === 'cameras') payload.cameras = settings.cameras;
+      else if (activeTab === 'performance') payload.cameras = settings.cameras;
       else if (activeTab === 'privacy') payload.privacy = settings.privacy;
       else if (activeTab === 'notifications') payload.notifications = settings.notifications;
       else return; // 'system' tab has no settings
