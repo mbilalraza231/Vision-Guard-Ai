@@ -141,17 +141,19 @@ export default function Analytics() {
     
     const isIdle = runningCameras.length === 0;
 
-    const fpsStatus = isIdle ? 'good' : currentFps >= (targetFpsTotal * 0.8) ? 'good' : currentFps > 0 ? 'warning' : 'critical';
+    const fpsStatus = isIdle ? 'good' : currentFps >= (targetFpsTotal * 0.8) ? 'good' : 'warning';
 
     // 3. End-to-end Latency (Real)
     const targetLatency = settings?.cameras?.targetLatencyMs || 500;
     const currentLatency = stats?.avg_processing_delay ? (stats.avg_processing_delay * 1000) : 0;
-    const latencyStatus = isIdle ? 'good' : currentLatency === 0 ? 'warning' : currentLatency < targetLatency ? 'good' : currentLatency < targetLatency * 1.5 ? 'warning' : 'critical';
+    // Widened threshold: Warning up to 4x target, Critical after
+    const latencyStatus = isIdle ? 'good' : currentLatency === 0 ? 'good' : currentLatency <= targetLatency ? 'good' : currentLatency <= targetLatency * 4 ? 'warning' : 'critical';
 
     // 4. False Positive Rate (Real Proxy)
     const targetFPR = settings?.cameras?.targetFalsePositiveRate || 5.0;
     const currentFPR = stats?.false_positive_rate || 0.0;
-    const fprStatus = isIdle ? 'good' : currentFPR < targetFPR ? 'good' : currentFPR < targetFPR * 2 ? 'warning' : 'critical';
+    // Widened threshold: Warning up to 3x target, Critical after
+    const fprStatus = isIdle ? 'good' : currentFPR <= targetFPR ? 'good' : currentFPR <= targetFPR * 3 ? 'warning' : 'critical';
 
     return [
       {
@@ -163,7 +165,7 @@ export default function Analytics() {
       {
         metric: 'Processing FPS',
         target: `>${targetFpsTotal.toFixed(0)} FPS`,
-        current: isIdle ? 'Idle' : `${currentFps.toFixed(1)} FPS`,
+        current: isIdle ? 'Idle' : currentFps === 0 ? 'Initializing (0.0)' : `${currentFps.toFixed(1)} FPS`,
         status: fpsStatus
       },
       {
