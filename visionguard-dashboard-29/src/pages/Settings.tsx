@@ -1047,10 +1047,6 @@ export default function Settings() {
                       </p>
                     </div>
                   </div>
-
-                  <div className="rounded-xl border border-dashed border-white/10 p-8 text-center text-muted-foreground">
-                    <p>Specific rule overrides (motion zones, schedules) are managed directly on individual Camera pages.</p>
-                  </div>
                 </div>
               )}
 
