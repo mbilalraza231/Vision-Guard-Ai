@@ -982,34 +982,15 @@ export default function Settings() {
                         {metrics?.cameras?.running ?? 0}
                       </p>
                     </div>
-                  </div>
-
-                  <div className="rounded-xl border border-dashed border-white/10 p-8 text-center text-muted-foreground">
-                    <p>Specific rule overrides (motion zones, schedules) are managed directly on individual Camera pages.</p>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'performance' && (
-                <div className="animate-fade-in space-y-6">
-                  <div>
-                    <h2 className="text-2xl font-bold mb-1 flex items-center gap-2">
-                      <Activity className="h-6 w-6 text-primary" />
-                      System Performance Target Limits
-                    </h2>
-                    <p className="text-sm text-muted-foreground">
-                      Manage resource limits and target processing thresholds to keep the system stable.
-                    </p>
-                  </div>
-
-                  <div className="rounded-xl bg-secondary/20 border border-white/5 p-4 max-w-xl">
-                    <p className="text-xs text-muted-foreground mb-1">Avg. Target FPS Per Stream</p>
-                    <p className="text-2xl font-bold text-primary">
-                      {metrics?.cameras?.running && metrics.cameras.running > 0
-                        ? ((settings.cameras?.globalFpsTarget || 15) / metrics.cameras.running).toFixed(1)
-                        : (settings.cameras?.globalFpsTarget || 15).toFixed(1)}{' '}
-                      FPS
-                    </p>
+                    <div className="rounded-xl bg-secondary/20 border border-white/5 p-4">
+                      <p className="text-xs text-muted-foreground mb-1">Avg. Target FPS Per Stream</p>
+                      <p className="text-2xl font-bold text-primary">
+                        {metrics?.cameras?.running && metrics.cameras.running > 0
+                          ? ((settings.cameras?.globalFpsTarget || 15) / metrics.cameras.running).toFixed(1)
+                          : (settings.cameras?.globalFpsTarget || 15).toFixed(1)}{' '}
+                        FPS
+                      </p>
+                    </div>
                   </div>
 
                   <div className="space-y-4 max-w-xl">
@@ -1065,7 +1046,27 @@ export default function Settings() {
                         This limits the total combined frames the AI will process per second across all cameras, preventing CPU/GPU resource exhaustion and stabilizing system performance.
                       </p>
                     </div>
+                  </div>
 
+                  <div className="rounded-xl border border-dashed border-white/10 p-8 text-center text-muted-foreground">
+                    <p>Specific rule overrides (motion zones, schedules) are managed directly on individual Camera pages.</p>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'performance' && (
+                <div className="animate-fade-in space-y-6">
+                  <div>
+                    <h2 className="text-2xl font-bold mb-1 flex items-center gap-2">
+                      <Activity className="h-6 w-6 text-primary" />
+                      System Performance Target Limits
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      Manage resource limits and target processing thresholds to keep the system stable.
+                    </p>
+                  </div>
+
+                  <div className="space-y-4 max-w-xl">
                     {/* End-to-end Latency Target */}
                     <div className="rounded-xl border border-white/5 bg-secondary/10 p-5 space-y-4">
                       <div className="flex items-center justify-between">
