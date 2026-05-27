@@ -400,13 +400,13 @@ export default function Settings() {
   };
 
   return (
-    <div className="min-h-screen">
+    <div className="flex flex-col" style={{ height: 'calc(100vh - 64px)' }}>
       <Header title={t('settings.title', 'Settings')} showDateNav={false} />
-      <div className="p-6">
-        <div className="dashboard-card">
-          <div className="flex flex-col md:flex-row">
-            {/* Sidebar Navigation */}
-            <div className="w-full md:w-48 border-b md:border-b-0 md:border-r border-border p-4 md:sticky md:top-16 self-start">
+      <div className="p-6 flex-1 overflow-hidden flex flex-col">
+        <div className="dashboard-card flex flex-col flex-1 overflow-hidden">
+          <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
+            {/* Sidebar Navigation – fixed in place, never scrolls */}
+            <div className="w-full md:w-48 border-b md:border-b-0 md:border-r border-border p-4 shrink-0">
               <nav className="flex md:flex-col gap-1.5 overflow-x-auto md:overflow-visible">
                 {tabs.map((tab) => (
                   <button
@@ -425,9 +425,9 @@ export default function Settings() {
               </nav>
             </div>
 
-            {/* Content Area */}
-            <div className="flex-1 p-6 min-h-[600px]">
-              <div className="sticky top-16 z-20 bg-card pt-2 pb-4 mb-6 border-b border-border/40 flex items-center justify-between gap-3 flex-wrap">
+            {/* Content Area – only this scrolls */}
+            <div className="flex-1 overflow-y-auto min-h-0">
+              <div className="sticky top-0 z-20 bg-card px-6 pt-4 pb-4 border-b border-border/40 flex items-center justify-between gap-3 flex-wrap">
                 <div className="text-sm text-muted-foreground">
                   {t('settings.syncedMessage', 'Settings are synced with the VisionGuard backend.')}
                 </div>
@@ -450,11 +450,12 @@ export default function Settings() {
                 </div>
               </div>
 
-              {saveMessage && (
-                <div className="mb-6 rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 text-sm text-primary">
-                  {saveMessage}
-                </div>
-              )}
+              <div className="px-6 pb-6">
+                {saveMessage && (
+                  <div className="mt-4 mb-4 rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 text-sm text-primary">
+                    {saveMessage}
+                  </div>
+                )}
 
               {activeTab === 'system' && (
                 <div className="animate-fade-in">
@@ -1216,7 +1217,8 @@ export default function Settings() {
                   </div>
                 </div>
               )}
-            </div>
+              </div>{/* end px-6 pb-6 */}
+            </div>{/* end content scroll area */}
           </div>
         </div>
       </div>
