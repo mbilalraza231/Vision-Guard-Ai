@@ -20,6 +20,7 @@ from collections import deque
 
 import cv2
 import subprocess
+import redis
 
 from .config import ClipConfig
 from .uploader import CloudinaryUploader
@@ -186,7 +187,23 @@ class ClipRecorder:
                 self._start_camera_buffer(source)
 
     def _get_mask_faces_setting(self) -> bool:
-        """Synchronously check if face masking is enabled (for use in sync thread methods)."""
+        """Synchronously check face masking (Redis -> Postgres -> env defaults)."""
+        try:
+            r = redis.Redis(
+                host=os.getenv("REDIS_HOST", "redis"),
+                port=int(os.getenv("REDIS_PORT", "6379")),
+                socket_connect_timeout=2,
+            )
+            raw = r.get("vg:system_settings")
+            r.close()
+            if raw:
+                import json
+                data = json.loads(raw)
+                if isinstance(data, dict):
+                    return bool(data.get("privacy", {}).get("maskFaces", False))
+        except Exception as e:
+            logger.debug(f"Redis mask_faces lookup failed in clip recorder: {e}")
+
         try:
             import json
             import psycopg2
@@ -200,13 +217,43 @@ class ClipRecorder:
                 stored = row[0]
                 if isinstance(stored, str):
                     stored = json.loads(stored)
-                return stored.get("privacy", {}).get("maskFaces", False)
+                return bool(stored.get("privacy", {}).get("maskFaces", False))
         except Exception as e:
-            logger.warning(f"Could not fetch mask_faces setting: {e}")
-        return False
+            logger.debug(f"Postgres mask_faces lookup failed in clip recorder: {e}")
+
+        # Final fallback: env default
+        return os.getenv("PRIVACY_MASK_FACES", "false").strip().lower() in {"1", "true", "yes", "on"}
 
     async def get_system_settings(self) -> dict:
-        """Fetch current settings from database."""
+        """Fetch settings using Redis -> Postgres -> env defaults fallback."""
+        defaults = {
+            "privacy": {
+                "maskFaces": os.getenv("PRIVACY_MASK_FACES", "false").strip().lower() in {"1", "true", "yes", "on"}
+            },
+            "clips": {
+                "preSeconds": int(float(os.getenv("CLIP_PRE_SECONDS", "0"))),
+                "postSeconds": int(float(os.getenv("CLIP_POST_SECONDS", "10"))),
+                "enableBackgroundBuffer": os.getenv("CLIP_ENABLE_BACKGROUND_BUFFER", "false").strip().lower() in {"1", "true", "yes", "on"},
+            },
+        }
+        try:
+            r = redis.Redis(
+                host=os.getenv("REDIS_HOST", "redis"),
+                port=int(os.getenv("REDIS_PORT", "6379")),
+                socket_connect_timeout=2,
+            )
+            raw = r.get("vg:system_settings")
+            r.close()
+            if raw:
+                import json
+                data = json.loads(raw)
+                if isinstance(data, dict):
+                    merged = dict(defaults)
+                    merged.update(data)
+                    return merged
+        except Exception as e:
+            logger.debug(f"Failed to fetch system settings from Redis in clip recorder: {e}")
+
         try:
             row = await self.db.fetch_one("SELECT data FROM system_settings ORDER BY id DESC LIMIT 1")
             if row and row.get("data"):
@@ -214,10 +261,13 @@ class ClipRecorder:
                 stored = row["data"]
                 if isinstance(stored, str):
                     stored = json.loads(stored)
-                return stored
+                if isinstance(stored, dict):
+                    merged = dict(defaults)
+                    merged.update(stored)
+                    return merged
         except Exception as e:
             logger.error(f"Failed to fetch system settings in clip recorder: {e}")
-        return {}
+        return defaults
 
     def _mask_faces(self, frame: 'cv2.Mat') -> 'cv2.Mat':
         """Blur all detected faces in the frame using OpenCV Haar Cascade."""

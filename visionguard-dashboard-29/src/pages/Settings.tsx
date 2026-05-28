@@ -114,7 +114,7 @@ const defaultSettings: SystemSettings = {
     motionThreshold: 0.02,
   },
   clips: {
-    preSeconds: 2,
+    preSeconds: 0,
     postSeconds: 10,
     enableBackgroundBuffer: false,
   },
@@ -972,7 +972,7 @@ export default function Settings() {
                             type="number"
                             min={0}
                             max={60}
-                            value={settings.clips?.preSeconds ?? 2}
+                            value={settings.clips?.preSeconds ?? 0}
                             onChange={(e) =>
                               updateClips({ preSeconds: Math.max(0, Math.min(60, Number(e.target.value) || 0)) })
                             }

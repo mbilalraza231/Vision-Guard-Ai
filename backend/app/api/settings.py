@@ -108,7 +108,7 @@ def _load_default_settings() -> Dict[str, Any]:
         },
         # Clip/recording policy
         "clips": {
-            "preSeconds": _env_int("CLIP_PRE_SECONDS", 2),
+            "preSeconds": _env_int("CLIP_PRE_SECONDS", 0),
             "postSeconds": _env_int("CLIP_POST_SECONDS", 10),
             "enableBackgroundBuffer": _env_bool("CLIP_ENABLE_BACKGROUND_BUFFER", False),
         },

@@ -10,7 +10,6 @@ Periodically enforces storage settings:
 """
 
 import asyncio
-import json
 import logging
 import os
 import time
@@ -142,17 +141,10 @@ class StorageCleaner:
     # ------------------------------------------------------------------ #
 
     async def _fetch_full_settings(self) -> Dict[str, Any]:
-        """Read full settings from the DB."""
+        """Read full settings (Redis -> Postgres -> env defaults)."""
         try:
-            from backend.app.core.database import db
-            row = await db.fetch_one(
-                "SELECT data FROM system_settings ORDER BY id DESC LIMIT 1"
-            )
-            if row and row["data"]:
-                data = row["data"]
-                if isinstance(data, str):
-                    data = json.loads(data)
-                return data
+            from backend.app.services.runtime_settings import resolve_runtime_settings
+            return await resolve_runtime_settings()
         except Exception as exc:
             logger.error("StorageCleaner: could not fetch full settings: %s", exc)
         return {}

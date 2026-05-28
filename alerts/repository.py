@@ -5,6 +5,7 @@ from typing import Optional, List, Dict, Any
 
 from .config import AlertConfig
 from backend.app.core.database import db
+from backend.app.services.runtime_settings import resolve_runtime_settings
 
 logger = logging.getLogger(__name__)
 
@@ -131,15 +132,9 @@ class AlertRepository:
             return []
     
     async def get_system_settings(self) -> Dict[str, Any]:
-        """Fetch global system settings."""
+        """Fetch global system settings (Redis -> Postgres -> env defaults)."""
         try:
-            import json
-            row = await db.fetch_one("SELECT data FROM system_settings ORDER BY id DESC LIMIT 1")
-            if row and row['data']:
-                if isinstance(row['data'], str):
-                    return json.loads(row['data'])
-                return dict(row['data'])
-            return {}
+            return await resolve_runtime_settings()
         except Exception as e:
             logger.error(f"Get system settings failed: {e}")
             return {}
