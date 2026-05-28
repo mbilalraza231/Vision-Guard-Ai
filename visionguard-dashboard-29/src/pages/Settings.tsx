@@ -99,9 +99,9 @@ const defaultSettings: SystemSettings = {
   },
   ecs: {
     thresholds: {
-      weapon: 0.85,
-      fire: 0.75,
-      fall: 0.8,
+      weapon: 0.30,
+      fire: 0.30,
+      fall: 0.30,
     },
     correlationWindowMs: 400,
     hardTtlSeconds: 2.0,
@@ -1101,9 +1101,9 @@ export default function Settings() {
 
                       <div className="space-y-5">
                         <div className="space-y-2">
-                          <Label>Weapon Threshold ({Math.round((settings.ecs?.thresholds?.weapon ?? 0.85) * 100)}%)</Label>
+                          <Label>Weapon Threshold ({Math.round((settings.ecs?.thresholds?.weapon ?? 0.30) * 100)}%)</Label>
                           <Slider
-                            value={[(settings.ecs?.thresholds?.weapon ?? 0.85) * 100]}
+                            value={[(settings.ecs?.thresholds?.weapon ?? 0.30) * 100]}
                             min={10}
                             max={99}
                             step={1}
@@ -1112,9 +1112,9 @@ export default function Settings() {
                         </div>
 
                         <div className="space-y-2">
-                          <Label>Fire Threshold ({Math.round((settings.ecs?.thresholds?.fire ?? 0.75) * 100)}%)</Label>
+                          <Label>Fire Threshold ({Math.round((settings.ecs?.thresholds?.fire ?? 0.30) * 100)}%)</Label>
                           <Slider
-                            value={[(settings.ecs?.thresholds?.fire ?? 0.75) * 100]}
+                            value={[(settings.ecs?.thresholds?.fire ?? 0.30) * 100]}
                             min={10}
                             max={99}
                             step={1}
@@ -1123,9 +1123,9 @@ export default function Settings() {
                         </div>
 
                         <div className="space-y-2">
-                          <Label>Fall Threshold ({Math.round((settings.ecs?.thresholds?.fall ?? 0.8) * 100)}%)</Label>
+                          <Label>Fall Threshold ({Math.round((settings.ecs?.thresholds?.fall ?? 0.30) * 100)}%)</Label>
                           <Slider
-                            value={[(settings.ecs?.thresholds?.fall ?? 0.8) * 100]}
+                            value={[(settings.ecs?.thresholds?.fall ?? 0.30) * 100]}
                             min={10}
                             max={99}
                             step={1}

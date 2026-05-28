@@ -24,6 +24,7 @@ from ..classification.rule_engine import RuleEngine
 from ..redis_client.stream_consumer import StreamConsumer
 from ..cleanup.cleanup_manager import CleanupManager
 from ..output.database_writer import DatabaseWriter
+from ..settings_runtime import apply_runtime_settings
 
 
 class ECSService:
@@ -232,8 +233,9 @@ class ECSService:
             # Initialize frame buffer
             self.frame_buffer = FrameBuffer()
             
-            # Initialize rule engine
+            # Initialize rule engine (thresholds may be overridden from Redis immediately after)
             self.rule_engine = RuleEngine(self.config)
+            self._apply_runtime_settings()
             
             # V2: Initialize camera history manager
             self.camera_history_manager = CameraHistoryManager(
@@ -317,6 +319,19 @@ class ECSService:
             )
             return False
     
+    def _apply_runtime_settings(self) -> None:
+        """Reload ECS thresholds/timing from Redis dashboard settings (~10s cadence)."""
+        try:
+            changed, snapshot = apply_runtime_settings(self.config)
+            if changed and self.logger:
+                self.logger.info(
+                    "ECS runtime settings updated from Redis",
+                    extra=snapshot,
+                )
+        except Exception as e:
+            if self.logger:
+                self.logger.debug(f"ECS runtime settings refresh skipped: {e}")
+
     def _classification_loop(self) -> None:
         """Main classification loop."""
         self.logger.info("Starting classification loop (v2)")
@@ -324,9 +339,19 @@ class ECSService:
         last_heartbeat = time.time()
         heartbeat_interval_sec = 30.0
         last_classification_scan = time.time()
+        last_settings_refresh = 0.0
+        settings_refresh_interval_sec = 10.0
+
+        # Apply dashboard settings once at loop start (may override container env).
+        self._apply_runtime_settings()
         
         while not self.stop_event.is_set():
             try:
+                now = time.time()
+                if now - last_settings_refresh >= settings_refresh_interval_sec:
+                    self._apply_runtime_settings()
+                    last_settings_refresh = now
+
                 # 1. Consume messages from Redis stream
                 messages = self.stream_consumer.consume()
                 

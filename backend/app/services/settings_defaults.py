@@ -10,6 +10,10 @@ from __future__ import annotations
 import os
 from typing import Any, Dict
 
+# Product defaults for dashboard Reset (not read from container env).
+# ECS/worker containers may still get thresholds from compose until recreated.
+ECS_THRESHOLD_DEFAULT = 0.30
+
 
 def _env_bool(name: str, default: bool) -> bool:
     raw = os.environ.get(name)
@@ -40,9 +44,11 @@ def _env_float(name: str, default: float) -> float:
 
 def _load_default_settings() -> Dict[str, Any]:
     """
-    Build defaults from environment (deployment) values.
+    Build defaults for dashboard Reset and API /defaults.
 
-    Keeps dashboard "Reset" aligned with .env defaults.
+    ECS confidence thresholds use fixed product defaults (0.30) so Reset is not
+    tied to stale ECS_* env vars inside a long-running backend container.
+    Other sections still honor deployment env where appropriate.
     """
     return {
         "general": {
@@ -74,9 +80,9 @@ def _load_default_settings() -> Dict[str, Any]:
         },
         "ecs": {
             "thresholds": {
-                "weapon": _env_float("ECS_WEAPON_THRESHOLD", 0.85),
-                "fire": _env_float("ECS_FIRE_THRESHOLD", 0.75),
-                "fall": _env_float("ECS_FALL_THRESHOLD", 0.80),
+                "weapon": ECS_THRESHOLD_DEFAULT,
+                "fire": ECS_THRESHOLD_DEFAULT,
+                "fall": ECS_THRESHOLD_DEFAULT,
             },
             "correlationWindowMs": _env_int("ECS_CORRELATION_WINDOW_MS", 400),
             "hardTtlSeconds": _env_float("ECS_HARD_TTL_SECONDS", 2.0),
