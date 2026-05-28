@@ -14,6 +14,11 @@ from typing import Any, Dict
 # ECS/worker containers may still get thresholds from compose until recreated.
 ECS_THRESHOLD_DEFAULT = 0.30
 
+# Fixed product defaults for Reset (match event_classification/config.py).
+ECS_WEAPON_PERSISTENCE = {"minDetections": 3, "windowSec": 5.0, "cooldownSec": 30.0}
+ECS_FIRE_PERSISTENCE = {"minDetections": 3, "windowSec": 8.0, "cooldownSec": 60.0}
+ECS_FALL_PERSISTENCE = {"minDetections": 3, "windowSec": 6.0, "cooldownSec": 30.0}
+
 
 def _env_bool(name: str, default: bool) -> bool:
     raw = os.environ.get(name)
@@ -77,6 +82,14 @@ def _load_default_settings() -> Dict[str, Any]:
                     _env_float("WORKER_CONFIDENCE_THRESHOLD", 0.80),
                 ),
             },
+            "imageSaveThreshold": _env_float("IMAGE_SAVE_THRESHOLD", 0.30),
+            "fireModel": {
+                "iouThreshold": _env_float("WORKER_IOU_THRESHOLD", 0.45),
+                "agnosticNms": _env_bool("WORKER_AGNOSTIC_NMS", True),
+                "allowedClassIds": os.environ.get("WORKER_ALLOWED_CLASS_IDS", "0"),
+                "inputWidth": _env_int("WORKER_INPUT_WIDTH", 416),
+                "inputHeight": _env_int("WORKER_INPUT_HEIGHT", 416),
+            },
         },
         "ecs": {
             "thresholds": {
@@ -89,6 +102,11 @@ def _load_default_settings() -> Dict[str, Any]:
             "enableAlerts": _env_bool("ECS_ENABLE_ALERTS", True),
             "enableDatabase": _env_bool("ECS_ENABLE_DATABASE", True),
             "enableFrontend": _env_bool("ECS_ENABLE_FRONTEND", True),
+            "maxSourceLagSec": _env_float("ECS_MAX_SOURCE_LAG_SEC", 20.0),
+            "resumeFromLatest": _env_bool("ECS_RESUME_FROM_LATEST", True),
+            "weaponPersistence": dict(ECS_WEAPON_PERSISTENCE),
+            "firePersistence": dict(ECS_FIRE_PERSISTENCE),
+            "fallPersistence": dict(ECS_FALL_PERSISTENCE),
         },
         "cameraCapture": {
             "defaultFps": _env_int("CAMERA_DEFAULT_FPS", 5),

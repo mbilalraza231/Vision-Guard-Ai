@@ -21,7 +21,7 @@ import redis
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ai_worker import start_worker, stop_worker, WorkerConfig
-from ai_worker.settings_runtime import load_worker_confidence_threshold
+from ai_worker.settings_runtime import load_worker_runtime_settings
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -125,18 +125,20 @@ def main():
     logger.info(f"Model path: {model_path}")
     logger.info(f"Input queue: {input_queue}")
     
+    runtime = load_worker_runtime_settings(model_type)
+    fire_model = runtime.get("fire_model", {})
     config = WorkerConfig(
         model_type=model_type,
         redis_input_queue=input_queue,
         onnx_model_path=model_path,
         redis_host=os.getenv("REDIS_HOST", "localhost"),
         redis_port=int(os.getenv("REDIS_PORT", "6379")),
-        confidence_threshold=load_worker_confidence_threshold(model_type),
-        iou_threshold=float(os.getenv("WORKER_IOU_THRESHOLD", "0.45")),
-        agnostic_nms=os.getenv("WORKER_AGNOSTIC_NMS", "false").lower() == "true",
-        allowed_class_ids=os.getenv("WORKER_ALLOWED_CLASS_IDS", ""),
-        input_width=int(os.getenv("WORKER_INPUT_WIDTH", "640")),
-        input_height=int(os.getenv("WORKER_INPUT_HEIGHT", "640")),
+        confidence_threshold=runtime["confidence_threshold"],
+        iou_threshold=float(fire_model.get("iouThreshold", os.getenv("WORKER_IOU_THRESHOLD", "0.45"))),
+        agnostic_nms=bool(fire_model.get("agnosticNms", os.getenv("WORKER_AGNOSTIC_NMS", "false").lower() == "true")),
+        allowed_class_ids=str(fire_model.get("allowedClassIds", os.getenv("WORKER_ALLOWED_CLASS_IDS", ""))),
+        input_width=int(fire_model.get("inputWidth", os.getenv("WORKER_INPUT_WIDTH", "640"))),
+        input_height=int(fire_model.get("inputHeight", os.getenv("WORKER_INPUT_HEIGHT", "640"))),
     )
     
     worker = None

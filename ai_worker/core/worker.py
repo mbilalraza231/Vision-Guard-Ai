@@ -25,7 +25,7 @@ from ..inference.model_loader import ModelLoader
 from ..inference.preprocessor import Preprocessor
 from ..inference.inference_engine import InferenceEngine
 from ..inference.postprocessor import Postprocessor
-from ..settings_runtime import load_worker_confidence_threshold
+from ..settings_runtime import load_worker_runtime_settings
 
 
 class AIWorker:
@@ -208,6 +208,7 @@ class AIWorker:
                 allowed_class_ids=self.config.allowed_class_ids
             )
             
+            self._apply_runtime_settings()
             self.logger.info("AI Worker initialized successfully")
             return True
             
@@ -218,19 +219,57 @@ class AIWorker:
             )
             return False
     
-    def _apply_runtime_threshold(self) -> None:
-        """Reload confidence threshold from Redis settings (dashboard overrides)."""
+    def _apply_runtime_settings(self) -> None:
+        """Reload worker tuning from Redis settings (dashboard overrides)."""
         try:
-            new_thr = load_worker_confidence_threshold(self.config.model_type)
-            if abs(new_thr - self.config.confidence_threshold) < 1e-6:
-                return
-            self.config.confidence_threshold = new_thr
-            if self.postprocessor is not None:
-                self.postprocessor.confidence_threshold = new_thr
-            if self.logger:
+            runtime = load_worker_runtime_settings(self.config.model_type)
+            changed = False
+
+            new_thr = runtime["confidence_threshold"]
+            if abs(new_thr - self.config.confidence_threshold) >= 1e-6:
+                self.config.confidence_threshold = new_thr
+                if self.postprocessor is not None:
+                    self.postprocessor.confidence_threshold = new_thr
+                changed = True
+
+            new_img_thr = runtime["image_save_threshold"]
+            if not hasattr(self, "_image_save_threshold"):
+                self._image_save_threshold = new_img_thr
+            elif abs(new_img_thr - self._image_save_threshold) >= 1e-6:
+                self._image_save_threshold = new_img_thr
+                changed = True
+
+            if self.config.model_type == "fire" and self.postprocessor is not None:
+                fm = runtime["fire_model"]
+                if abs(fm["iouThreshold"] - self.postprocessor.iou_threshold) >= 1e-6:
+                    self.config.iou_threshold = fm["iouThreshold"]
+                    self.postprocessor.iou_threshold = fm["iouThreshold"]
+                    changed = True
+                if fm["agnosticNms"] != self.postprocessor.agnostic_nms:
+                    self.config.agnostic_nms = fm["agnosticNms"]
+                    self.postprocessor.agnostic_nms = fm["agnosticNms"]
+                    changed = True
+                allowed = fm["allowedClassIds"]
+                if allowed != self.config.allowed_class_ids:
+                    self.config.allowed_class_ids = allowed
+                    try:
+                        self.postprocessor.allowed_classes = (
+                            {int(x.strip()) for x in allowed.split(",") if x.strip()}
+                            if allowed
+                            else None
+                        )
+                    except ValueError:
+                        self.postprocessor.allowed_classes = None
+                    changed = True
+
+            if changed and self.logger:
                 self.logger.info(
-                    f"Updated confidence threshold to {new_thr:.2f}",
-                    extra={"model_type": self.config.model_type},
+                    "Worker runtime settings updated from Redis",
+                    extra={
+                        "model_type": self.config.model_type,
+                        "confidence_threshold": self.config.confidence_threshold,
+                        "image_save_threshold": getattr(self, "_image_save_threshold", None),
+                    },
                 )
         except Exception:
             pass
@@ -251,7 +290,7 @@ class AIWorker:
             try:
                 now = time.time()
                 if now - last_settings_refresh >= settings_refresh_interval_sec:
-                    self._apply_runtime_threshold()
+                    self._apply_runtime_settings()
                     last_settings_refresh = now
 
                 # 1. Consume task from Redis queue
@@ -328,8 +367,13 @@ class AIWorker:
                 # Save JPEGs at a threshold aligned with ECS (often ~0.30), not only at the
                 # worker's high inference gate — otherwise events accumulate from weaker frames
                 # but no file exists for clip_recorder / UI to match.
-                default_img_thr = str(min(self.config.confidence_threshold, 0.30))
-                image_threshold = float(os.getenv("IMAGE_SAVE_THRESHOLD", default_img_thr))
+                image_threshold = float(
+                    getattr(
+                        self,
+                        "_image_save_threshold",
+                        min(self.config.confidence_threshold, 0.30),
+                    )
+                )
                 detection_image_path = ""
                 if result.get("confidence", 0) >= image_threshold:
                     detection_image_path = self._save_detection_image(

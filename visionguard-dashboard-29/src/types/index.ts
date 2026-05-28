@@ -174,12 +174,28 @@ export interface CameraSettings {
   targetFalsePositiveRate: number;
 }
 
+export interface FireModelSettings {
+  iouThreshold: number;
+  agnosticNms: boolean;
+  allowedClassIds: string;
+  inputWidth: number;
+  inputHeight: number;
+}
+
 export interface WorkerSettings {
   thresholds: {
     weapon: number;
     fire: number;
     fall: number;
   };
+  imageSaveThreshold: number;
+  fireModel: FireModelSettings;
+}
+
+export interface EcsPersistenceSettings {
+  minDetections: number;
+  windowSec: number;
+  cooldownSec: number;
 }
 
 export interface EcsSettings {
@@ -193,6 +209,11 @@ export interface EcsSettings {
   enableAlerts: boolean;
   enableDatabase: boolean;
   enableFrontend: boolean;
+  maxSourceLagSec: number;
+  resumeFromLatest: boolean;
+  weaponPersistence: EcsPersistenceSettings;
+  firePersistence: EcsPersistenceSettings;
+  fallPersistence: EcsPersistenceSettings;
 }
 
 export interface CameraCaptureSettings {

@@ -96,6 +96,14 @@ const defaultSettings: SystemSettings = {
       fire: 0.40,
       fall: 0.80,
     },
+    imageSaveThreshold: 0.30,
+    fireModel: {
+      iouThreshold: 0.45,
+      agnosticNms: true,
+      allowedClassIds: '0',
+      inputWidth: 416,
+      inputHeight: 416,
+    },
   },
   ecs: {
     thresholds: {
@@ -108,6 +116,11 @@ const defaultSettings: SystemSettings = {
     enableAlerts: true,
     enableDatabase: true,
     enableFrontend: true,
+    maxSourceLagSec: 20,
+    resumeFromLatest: true,
+    weaponPersistence: { minDetections: 3, windowSec: 5, cooldownSec: 30 },
+    firePersistence: { minDetections: 3, windowSec: 8, cooldownSec: 60 },
+    fallPersistence: { minDetections: 3, windowSec: 6, cooldownSec: 30 },
   },
   cameraCapture: {
     defaultFps: 5,
@@ -149,6 +162,10 @@ function mergeSettingsFromApi(data: Partial<SystemSettings>): SystemSettings {
         ...defaultSettings.workers.thresholds,
         ...data.workers?.thresholds,
       },
+      fireModel: {
+        ...defaultSettings.workers.fireModel,
+        ...data.workers?.fireModel,
+      },
     },
     ecs: {
       ...defaultSettings.ecs,
@@ -156,6 +173,18 @@ function mergeSettingsFromApi(data: Partial<SystemSettings>): SystemSettings {
       thresholds: {
         ...defaultSettings.ecs.thresholds,
         ...data.ecs?.thresholds,
+      },
+      weaponPersistence: {
+        ...defaultSettings.ecs.weaponPersistence,
+        ...data.ecs?.weaponPersistence,
+      },
+      firePersistence: {
+        ...defaultSettings.ecs.firePersistence,
+        ...data.ecs?.firePersistence,
+      },
+      fallPersistence: {
+        ...defaultSettings.ecs.fallPersistence,
+        ...data.ecs?.fallPersistence,
       },
     },
     cameraCapture: { ...defaultSettings.cameraCapture, ...data.cameraCapture },
@@ -512,6 +541,38 @@ export default function Settings() {
         ...prev.workers,
         thresholds: { ...defaultSettings.workers.thresholds, ...prev.workers?.thresholds, ...patch },
       },
+    }));
+  };
+
+  const updateWorkers = (patch: Partial<SystemSettings['workers']>) => {
+    setSettings((prev: SystemSettings) => ({
+      ...prev,
+      workers: { ...defaultSettings.workers, ...prev.workers, ...patch } as SystemSettings['workers'],
+    }));
+  };
+
+  const updateFireModel = (patch: Partial<SystemSettings['workers']['fireModel']>) => {
+    setSettings((prev: SystemSettings) => ({
+      ...prev,
+      workers: {
+        ...defaultSettings.workers,
+        ...prev.workers,
+        fireModel: { ...defaultSettings.workers.fireModel, ...prev.workers?.fireModel, ...patch },
+      },
+    }));
+  };
+
+  const updateEcsPersistence = (
+    kind: 'weaponPersistence' | 'firePersistence' | 'fallPersistence',
+    patch: Partial<SystemSettings['ecs']['weaponPersistence']>
+  ) => {
+    setSettings((prev: SystemSettings) => ({
+      ...prev,
+      ecs: {
+        ...defaultSettings.ecs,
+        ...prev.ecs,
+        [kind]: { ...defaultSettings.ecs[kind], ...prev.ecs?.[kind], ...patch },
+      } as SystemSettings['ecs'],
     }));
   };
 
@@ -1019,39 +1080,7 @@ export default function Settings() {
                 <div className="animate-fade-in">
                   <h2 className="text-2xl font-bold mb-6">AI Model Settings</h2>
                   <div className="space-y-5 max-w-xl">
-                    <div className="space-y-2">
-                      <Label>Detection Model</Label>
-                      <Select
-                        value={settings.models.detectionModel}
-                        onValueChange={(value) => updateModels({ detectionModel: value })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="yolo-edge-v2">YOLO Edge v2</SelectItem>
-                          <SelectItem value="yolo-fast-v1">YOLO Fast v1</SelectItem>
-                          <SelectItem value="openvino-fire-int8">OpenVINO Fire INT8</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Processing Mode</Label>
-                      <Select
-                        value={settings.models.processingMode || 'realtime'}
-                        onValueChange={(value) => updateModels({ processingMode: value as any })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="realtime">Realtime</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="pt-6 border-t border-white/5">
+                    <div>
                       <h3 className="text-lg font-semibold mb-1">AI Worker Thresholds</h3>
                       <p className="text-xs text-muted-foreground mb-3">
                         Minimum model confidence before a worker publishes a detection. Applied live via Redis after Save.
@@ -1130,6 +1159,167 @@ export default function Settings() {
                             max={99}
                             step={1}
                             onValueChange={(value) => updateEcsThresholds({ fall: value[0] / 100 })}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-6 border-t border-white/5">
+                      <h3 className="text-lg font-semibold mb-1">Detection image save</h3>
+                      <p className="text-xs text-muted-foreground mb-3">
+                        Minimum confidence to write a JPEG to disk (for clips/UI). Often lower than the worker publish gate so evidence exists for ECS incidents.
+                      </p>
+                      <div className="space-y-2 max-w-md">
+                        <Label>Image save threshold ({Math.round((settings.workers?.imageSaveThreshold ?? 0.30) * 100)}%)</Label>
+                        <Slider
+                          value={[(settings.workers?.imageSaveThreshold ?? 0.30) * 100]}
+                          min={5}
+                          max={99}
+                          step={1}
+                          onValueChange={(value) => updateWorkers({ imageSaveThreshold: value[0] / 100 })}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pt-6 border-t border-white/5">
+                      <h3 className="text-lg font-semibold mb-1">Fire worker (NMS & input)</h3>
+                      <p className="text-xs text-muted-foreground mb-3">
+                        Fire-model tuning. IoU and NMS apply live via Redis. Input size needs a worker container restart.
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
+                        <div className="space-y-2">
+                          <Label>IoU threshold ({(settings.workers?.fireModel?.iouThreshold ?? 0.45).toFixed(2)})</Label>
+                          <Slider
+                            value={[(settings.workers?.fireModel?.iouThreshold ?? 0.45) * 100]}
+                            min={10}
+                            max={90}
+                            step={1}
+                            onValueChange={(v) => updateFireModel({ iouThreshold: v[0] / 100 })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Allowed class IDs</Label>
+                          <Input
+                            value={settings.workers?.fireModel?.allowedClassIds ?? '0'}
+                            onChange={(e) => updateFireModel({ allowedClassIds: e.target.value })}
+                            className="font-mono text-sm"
+                            placeholder="0"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Input width</Label>
+                          <Input
+                            type="number"
+                            min={32}
+                            max={1280}
+                            value={settings.workers?.fireModel?.inputWidth ?? 416}
+                            onChange={(e) => updateFireModel({ inputWidth: Number(e.target.value) || 416 })}
+                            className="font-mono text-sm w-28"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Input height</Label>
+                          <Input
+                            type="number"
+                            min={32}
+                            max={1280}
+                            value={settings.workers?.fireModel?.inputHeight ?? 416}
+                            onChange={(e) => updateFireModel({ inputHeight: Number(e.target.value) || 416 })}
+                            className="font-mono text-sm w-28"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between rounded-lg border border-white/5 p-4 md:col-span-2">
+                          <div>
+                            <Label>Agnostic NMS</Label>
+                            <p className="text-xs text-muted-foreground">Merge overlapping fire/smoke boxes across classes.</p>
+                          </div>
+                          <Switch
+                            checked={settings.workers?.fireModel?.agnosticNms ?? true}
+                            onCheckedChange={(checked) => updateFireModel({ agnosticNms: checked })}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-6 border-t border-white/5">
+                      <h3 className="text-lg font-semibold mb-1">ECS persistence & deduplication</h3>
+                      <p className="text-xs text-muted-foreground mb-4">
+                        How many qualifying detections within a time window are required before an incident is created, and how long to suppress repeats. Applied live via Redis (~10s).
+                      </p>
+                      {(
+                        [
+                          ['weaponPersistence', 'Weapon', settings.ecs?.weaponPersistence] as const,
+                          ['firePersistence', 'Fire', settings.ecs?.firePersistence] as const,
+                          ['fallPersistence', 'Fall', settings.ecs?.fallPersistence] as const,
+                        ]
+                      ).map(([key, label, p]) => (
+                        <div key={key} className="mb-4 rounded-xl border border-white/5 bg-secondary/10 p-4">
+                          <h4 className="font-semibold text-sm mb-3">{label}</h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div className="space-y-1">
+                              <Label className="text-xs">Min detections</Label>
+                              <Input
+                                type="number"
+                                min={1}
+                                max={20}
+                                value={p?.minDetections ?? 3}
+                                onChange={(e) =>
+                                  updateEcsPersistence(key, { minDetections: Math.max(1, Number(e.target.value) || 1) })
+                                }
+                                className="font-mono text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Window (sec)</Label>
+                              <Input
+                                type="number"
+                                min={1}
+                                max={120}
+                                step={0.5}
+                                value={p?.windowSec ?? 5}
+                                onChange={(e) =>
+                                  updateEcsPersistence(key, { windowSec: Math.max(1, Number(e.target.value) || 1) })
+                                }
+                                className="font-mono text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Cooldown (sec)</Label>
+                              <Input
+                                type="number"
+                                min={0}
+                                max={600}
+                                value={p?.cooldownSec ?? 30}
+                                onChange={(e) =>
+                                  updateEcsPersistence(key, { cooldownSec: Math.max(0, Number(e.target.value) || 0) })
+                                }
+                                className="font-mono text-sm"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mt-2">
+                        <div className="space-y-2">
+                          <Label>Max source lag (sec)</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={600}
+                            value={settings.ecs?.maxSourceLagSec ?? 20}
+                            onChange={(e) => updateEcs({ maxSourceLagSec: Math.max(0, Number(e.target.value) || 0) })}
+                            className="font-mono text-sm w-28"
+                          />
+                          <p className="text-xs text-muted-foreground">Fallback timing when camera timestamps lag.</p>
+                        </div>
+                        <div className="flex items-center justify-between rounded-lg border border-white/5 p-4">
+                          <div>
+                            <Label>Resume from latest</Label>
+                            <p className="text-xs text-muted-foreground">On ECS restart, skip Redis stream backlog.</p>
+                          </div>
+                          <Switch
+                            checked={settings.ecs?.resumeFromLatest ?? true}
+                            onCheckedChange={(checked) => updateEcs({ resumeFromLatest: checked })}
                           />
                         </div>
                       </div>
