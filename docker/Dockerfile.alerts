@@ -16,6 +16,9 @@ RUN pip install --no-cache-dir -r /app/alerts/requirements.txt
 COPY alerts/ /app/alerts/
 COPY backend/app/core/ /app/backend/app/core/
 COPY backend/app/utils/ /app/backend/app/utils/
+COPY backend/app/services/settings_defaults.py /app/backend/app/services/settings_defaults.py
+COPY backend/app/services/runtime_settings.py /app/backend/app/services/runtime_settings.py
+COPY backend/app/services/__init__.py /app/backend/app/services/__init__.py
 
 # Environment variables
 ENV PYTHONUNBUFFERED=1

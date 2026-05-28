@@ -18,7 +18,7 @@ import redis
 
 from ..core.database import db
 from ..core.config import get_redis_config
-from ..api.settings import _deep_merge, _load_default_settings
+from .settings_defaults import _deep_merge, _load_default_settings
 
 logger = logging.getLogger(__name__)
 

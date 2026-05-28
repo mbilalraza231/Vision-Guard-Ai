@@ -1,0 +1,137 @@
+"""
+Environment-derived default system settings.
+
+Shared by the FastAPI settings API and lightweight workers (alert-worker, etc.)
+that must not import FastAPI.
+"""
+
+from __future__ import annotations
+
+import os
+from typing import Any, Dict
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        return int(float(raw))
+    except Exception:
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        return float(raw)
+    except Exception:
+        return default
+
+
+def _load_default_settings() -> Dict[str, Any]:
+    """
+    Build defaults from environment (deployment) values.
+
+    Keeps dashboard "Reset" aligned with .env defaults.
+    """
+    return {
+        "general": {
+            "siteName": os.environ.get("VG_SITE_NAME", "VisionGuard AI"),
+            "timezone": os.environ.get("VG_TIMEZONE", "UTC"),
+            "language": os.environ.get("VG_LANGUAGE", "en"),
+        },
+        "cameras": {
+            "globalFpsTarget": _env_int("VG_GLOBAL_FPS_TARGET", 15),
+            "targetLatencyMs": _env_int("VG_TARGET_LATENCY_MS", 500),
+            "targetMemoryGb": _env_float("VG_TARGET_MEMORY_GB", 8.0),
+            "targetFalsePositiveRate": _env_float("VG_TARGET_FALSE_POSITIVE_RATE", 5.0),
+        },
+        "workers": {
+            "thresholds": {
+                "weapon": _env_float(
+                    "WORKER_WEAPON_THRESHOLD",
+                    _env_float("WORKER_CONFIDENCE_THRESHOLD", 0.70),
+                ),
+                "fire": _env_float(
+                    "WORKER_FIRE_THRESHOLD",
+                    _env_float("WORKER_CONFIDENCE_THRESHOLD", 0.40),
+                ),
+                "fall": _env_float(
+                    "WORKER_FALL_THRESHOLD",
+                    _env_float("WORKER_CONFIDENCE_THRESHOLD", 0.80),
+                ),
+            },
+        },
+        "ecs": {
+            "thresholds": {
+                "weapon": _env_float("ECS_WEAPON_THRESHOLD", 0.85),
+                "fire": _env_float("ECS_FIRE_THRESHOLD", 0.75),
+                "fall": _env_float("ECS_FALL_THRESHOLD", 0.80),
+            },
+            "correlationWindowMs": _env_int("ECS_CORRELATION_WINDOW_MS", 400),
+            "hardTtlSeconds": _env_float("ECS_HARD_TTL_SECONDS", 2.0),
+            "enableAlerts": _env_bool("ECS_ENABLE_ALERTS", True),
+            "enableDatabase": _env_bool("ECS_ENABLE_DATABASE", True),
+            "enableFrontend": _env_bool("ECS_ENABLE_FRONTEND", True),
+        },
+        "cameraCapture": {
+            "defaultFps": _env_int("CAMERA_DEFAULT_FPS", 5),
+            "motionThreshold": _env_float("CAMERA_MOTION_THRESHOLD", 0.02),
+        },
+        "clips": {
+            "preSeconds": _env_int("CLIP_PRE_SECONDS", 0),
+            "postSeconds": _env_int("CLIP_POST_SECONDS", 10),
+            "enableBackgroundBuffer": _env_bool("CLIP_ENABLE_BACKGROUND_BUFFER", False),
+        },
+        "systemOverrides": {
+            "memoryTotalGbOverride": _env_float("VG_SYSTEM_MEMORY_GB", 0.0),
+        },
+        "alerts": {
+            "emailNotifications": False,
+            "smsNotifications": False,
+            "pushNotifications": False,
+            "alertThreshold": "low",
+        },
+        "storage": {
+            "retentionDays": 30,
+            "autoDelete": False,
+            "maxStorage": 50,
+        },
+        "models": {
+            "detectionModel": "yolo-edge-v2",
+            "confidenceThreshold": 0.7,
+            "processingMode": "realtime",
+        },
+        "privacy": {
+            "maskFaces": False,
+            "anonymizeData": False,
+            "gdprCompliant": False,
+        },
+        "notifications": {
+            "recipients": [],
+        },
+    }
+
+
+DEFAULT_SETTINGS: Dict[str, Any] = _load_default_settings()
+
+
+def _deep_merge(base: dict, override: dict) -> dict:
+    """Recursively merge *override* into *base*, returning a new dict."""
+    merged = dict(base)
+    for key, val in override.items():
+        if key in merged and isinstance(merged[key], dict) and isinstance(val, dict):
+            merged[key] = _deep_merge(merged[key], val)
+        else:
+            merged[key] = val
+    return merged
