@@ -220,14 +220,13 @@ class AlertWorker:
                 if event_rank < rank.get(min_sev, 0):
                     continue
                 
-                if contact.get('phone') and contact.get('whatsapp'):
-                    # If any contact succeeds on this channel, mark as True
+                # Must mirror the exact same guards used when building `tasks` above
+                if push_enabled and contact.get('phone') and contact.get('whatsapp'):
                     if task_idx < len(results) and results[task_idx] is True:
                         details['whatsapp'] = True
                     task_idx += 1
                 
-                if contact.get('email') and contact.get('email_alert'):
-                    # If any contact succeeds on this channel, mark as True
+                if email_enabled and contact.get('email') and contact.get('email_alert'):
                     if task_idx < len(results) and results[task_idx] is True:
                         details['email'] = True
                     task_idx += 1
