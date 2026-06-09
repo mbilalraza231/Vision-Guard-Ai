@@ -83,6 +83,7 @@ def _load_default_settings() -> Dict[str, Any]:
                 ),
             },
             "imageSaveThreshold": _env_float("IMAGE_SAVE_THRESHOLD", 0.30),
+            "maxSnapshotBuffer": _env_int("WORKER_MAX_SNAPSHOT_BUFFER", 100),
             "fireModel": {
                 "iouThreshold": _env_float("WORKER_IOU_THRESHOLD", 0.45),
                 "agnosticNms": _env_bool("WORKER_AGNOSTIC_NMS", True),

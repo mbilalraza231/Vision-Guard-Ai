@@ -97,6 +97,7 @@ const defaultSettings: SystemSettings = {
       fall: 0.80,
     },
     imageSaveThreshold: 0.30,
+    maxSnapshotBuffer: 100,
     fireModel: {
       iouThreshold: 0.45,
       agnosticNms: true,
@@ -1169,15 +1170,27 @@ export default function Settings() {
                       <p className="text-xs text-muted-foreground mb-3">
                         Minimum confidence to write a JPEG to disk (for clips/UI). Often lower than the worker publish gate so evidence exists for ECS incidents.
                       </p>
-                      <div className="space-y-2 max-w-md">
-                        <Label>Image save threshold ({Math.round((settings.workers?.imageSaveThreshold ?? 0.30) * 100)}%)</Label>
-                        <Slider
-                          value={[(settings.workers?.imageSaveThreshold ?? 0.30) * 100]}
-                          min={5}
-                          max={99}
-                          step={1}
-                          onValueChange={(value) => updateWorkers({ imageSaveThreshold: value[0] / 100 })}
-                        />
+                      <div className="space-y-4 max-w-md">
+                        <div className="space-y-2">
+                          <Label>Image save threshold ({Math.round((settings.workers?.imageSaveThreshold ?? 0.30) * 100)}%)</Label>
+                          <Slider
+                            value={[(settings.workers?.imageSaveThreshold ?? 0.30) * 100]}
+                            min={5}
+                            max={99}
+                            step={1}
+                            onValueChange={(value) => updateWorkers({ imageSaveThreshold: value[0] / 100 })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Max Snapshot Buffer ({settings.workers?.maxSnapshotBuffer ?? 100} images)</Label>
+                          <Slider
+                            value={[settings.workers?.maxSnapshotBuffer ?? 100]}
+                            min={10}
+                            max={500}
+                            step={5}
+                            onValueChange={(value) => updateWorkers({ maxSnapshotBuffer: value[0] })}
+                          />
+                        </div>
                       </div>
                     </div>
 

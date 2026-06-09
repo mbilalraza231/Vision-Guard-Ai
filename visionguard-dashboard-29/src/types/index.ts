@@ -189,6 +189,7 @@ export interface WorkerSettings {
     fall: number;
   };
   imageSaveThreshold: number;
+  maxSnapshotBuffer?: number;
   fireModel: FireModelSettings;
 }
 

@@ -62,6 +62,18 @@ def load_worker_runtime_settings(model_type: str) -> Dict[str, Any]:
     else:
         image_save = float(image_save)
 
+    max_snapshot_buffer = workers.get("maxSnapshotBuffer")
+    if max_snapshot_buffer is None:
+        try:
+            max_snapshot_buffer = int(os.getenv("WORKER_MAX_SNAPSHOT_BUFFER", "100"))
+        except Exception:
+            max_snapshot_buffer = 100
+    else:
+        try:
+            max_snapshot_buffer = int(max_snapshot_buffer)
+        except Exception:
+            max_snapshot_buffer = 100
+
     fire_model = workers.get("fireModel", {})
     if not isinstance(fire_model, dict):
         fire_model = {}
@@ -102,5 +114,6 @@ def load_worker_runtime_settings(model_type: str) -> Dict[str, Any]:
     return {
         "confidence_threshold": confidence,
         "image_save_threshold": image_save,
+        "max_snapshot_buffer": max_snapshot_buffer,
         "fire_model": fire_runtime,
     }

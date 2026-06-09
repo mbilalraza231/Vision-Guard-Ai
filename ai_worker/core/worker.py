@@ -239,6 +239,13 @@ class AIWorker:
                 self._image_save_threshold = new_img_thr
                 changed = True
 
+            new_max_buf = runtime["max_snapshot_buffer"]
+            if not hasattr(self, "_max_snapshot_buffer"):
+                self._max_snapshot_buffer = new_max_buf
+            elif new_max_buf != self._max_snapshot_buffer:
+                self._max_snapshot_buffer = new_max_buf
+                changed = True
+
             if self.config.model_type == "fire" and self.postprocessor is not None:
                 fm = runtime["fire_model"]
                 if abs(fm["iouThreshold"] - self.postprocessor.iou_threshold) >= 1e-6:
@@ -554,8 +561,9 @@ class AIWorker:
                     f for f in os.listdir(DETECTION_DIR)
                     if f.startswith(prefix) and f.endswith('.jpg')
                 ])
-                if len(all_images) > 100:
-                    for old in all_images[:-100]:
+                max_buf = getattr(self, "_max_snapshot_buffer", 100)
+                if len(all_images) > max_buf:
+                    for old in all_images[:-max_buf]:
                         os.remove(os.path.join(DETECTION_DIR, old))
             except Exception:
                 pass
