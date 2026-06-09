@@ -193,16 +193,28 @@ async def list_alerts(
     offset: int = Query(default=0, ge=0, description="Offset for pagination"),
     status: Optional[str] = Query(default=None, description="Filter by status"),
     severity: Optional[str] = Query(default=None, description="Filter by severity"),
-    camera_id: Optional[str] = Query(default=None, description="Filter by camera")
+    camera_id: Optional[str] = Query(default=None, description="Filter by camera"),
+    time_period: Optional[str] = Query(default=None, description="Time period: 24h, 7days, 30days")
 ) -> DBAlertListResponse:
     repo = get_alert_repo()
+    
+    start_ts_gte = None
+    if time_period:
+        now = time.time()
+        if time_period == "24h":
+            start_ts_gte = now - (24 * 3600)
+        elif time_period == "7days":
+            start_ts_gte = now - (7 * 24 * 3600)
+        elif time_period == "30days":
+            start_ts_gte = now - (30 * 24 * 3600)
     
     result = await repo.list_alerts(
         limit=limit,
         offset=offset,
         status=status,
         severity=severity,
-        camera_id=camera_id
+        camera_id=camera_id,
+        start_ts_gte=start_ts_gte
     )
     
     alerts = [DBAlert(**a) for a in result["alerts"]]

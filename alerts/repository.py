@@ -145,7 +145,8 @@ class AlertRepository:
         offset: int = 0,
         status: str = None,
         severity: str = None,
-        camera_id: str = None
+        camera_id: str = None,
+        start_ts_gte: float = None
     ) -> Dict[str, Any]:
         try:
             where_clauses = []
@@ -163,6 +164,10 @@ class AlertRepository:
             if camera_id:
                 where_clauses.append(f"e.camera_id = ${param_idx}")
                 params.append(camera_id)
+                param_idx += 1
+            if start_ts_gte is not None:
+                where_clauses.append(f"a.created_at >= ${param_idx}")
+                params.append(start_ts_gte)
                 param_idx += 1
             
             where_sql = ""
