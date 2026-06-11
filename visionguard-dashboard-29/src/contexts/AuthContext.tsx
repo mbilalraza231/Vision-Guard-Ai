@@ -4,7 +4,7 @@ import type { AuthState, LoginCredentials, UserRole } from '@/types';
 
 interface AuthContextType extends AuthState {
   login: (credentials: LoginCredentials) => Promise<{ success: boolean; error?: string }>;
-  register: (credentials: LoginCredentials & { name: string; role: UserRole }) => Promise<{ success: boolean; error?: string }>;
+  register: (credentials: LoginCredentials & { name: string; role: UserRole; status?: 'active' | 'inactive' }) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
   updatePassword: (password: string) => Promise<{ success: boolean; error?: string }>;
@@ -56,13 +56,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const register = async (credentials: LoginCredentials & { name: string; role: UserRole }) => {
+  const register = async (credentials: LoginCredentials & { name: string; role: UserRole; status?: 'active' | 'inactive' }) => {
     try {
       const { error } = await supabase.auth.signUp({
         email: credentials.email,
         password: credentials.password,
-        // Still passing metadata initially so trigger can use it for first insert in profiles table
-        options: { data: { name: credentials.name, role: credentials.role } },
+        // Passing metadata so trigger can use it for first insert in profiles table
+        options: { data: { name: credentials.name, role: credentials.role, status: credentials.status || 'inactive' } },
       });
       if (error) return { success: false, error: error.message };
       return { success: true };

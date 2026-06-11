@@ -29,6 +29,10 @@ export function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps)
     return <Navigate to="/auth/login" state={{ from: location }} replace />;
   }
 
+  if (user && user.status === 'inactive') {
+    return <Navigate to="/auth/pending-approval" replace />;
+  }
+
   if (requiredRoles && user && !requiredRoles.includes(user.role)) {
     return <Navigate to="/dashboard" replace />;
   }

@@ -13,6 +13,7 @@ import Login from "@/pages/auth/Login";
 import Register from "@/pages/auth/Register";
 import ForgotPassword from "@/pages/auth/ForgotPassword";
 import UpdatePassword from "@/pages/auth/UpdatePassword";
+import PendingApproval from "@/pages/auth/PendingApproval";
 
 // Dashboard Pages
 import Dashboard from "@/pages/Dashboard";
@@ -47,6 +48,7 @@ const App = () => (
               <Route path="register" element={<Register />} />
               <Route path="forgot-password" element={<ForgotPassword />} />
               <Route path="update-password" element={<UpdatePassword />} />
+              <Route path="pending-approval" element={<PendingApproval />} />
             </Route>
 
             {/* Dashboard routes */}

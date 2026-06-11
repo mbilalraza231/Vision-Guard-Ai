@@ -53,6 +53,7 @@ function AddUserModal({ onClose, onSuccess }: AddUserModalProps) {
           data: {
             name: form.name,
             role: form.role,
+            status: 'active', // Admin-created users are automatically approved
           },
         },
       });
