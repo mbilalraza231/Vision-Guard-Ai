@@ -521,28 +521,24 @@ function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdi
             >
               Disabled
             </Badge>
+          ) : (camera.status === 'online') ? (
+            <Badge
+              variant="outline"
+              className="border-status-online/50 text-status-online bg-status-online/5 text-[10px] font-semibold"
+            >
+              <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-status-online pulse-live" />
+              {t('cameras.online')}
+            </Badge>
           ) : (
             <Badge
               variant="outline"
-              className={cn(
-                'text-[10px] font-semibold',
-                (camera.status === 'online' && !imageError)
-                  ? 'border-status-online/50 text-status-online bg-status-online/5'
-                  : 'border-status-offline/50 text-status-offline bg-status-offline/5'
-              )}
+              className="border-amber-500/50 text-amber-500 bg-amber-500/5 text-[10px] font-semibold"
             >
-              <span
-                className={cn(
-                  'mr-1.5 h-1.5 w-1.5 rounded-full',
-                  (camera.status === 'online' && !imageError)
-                    ? 'bg-status-online pulse-live'
-                    : 'bg-status-offline'
-                )}
-              />
-              {(camera.status === 'online' && !imageError) ? t('cameras.online') : t('cameras.offline')}
+              <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+              Connecting...
             </Badge>
           )}
-          {(camera.aiActive && !imageError) && (
+          {camera.aiActive && (
             <Badge variant="outline" className="border-primary/50 text-primary bg-primary/5 text-[10px] font-semibold">
               {t('monitoring.aiActive')}
             </Badge>
@@ -553,7 +549,7 @@ function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdi
       {/* Bottom Row Actions - Separated cleanly to prevent overlap */}
       <div className="flex items-center justify-between border-t border-border pt-4 mt-auto">
         <div className="flex items-center gap-2">
-          {camera.enabled && camera.status === 'online' && !imageError ? (
+          {camera.enabled ? (
             <Button
               variant="outline"
               size="sm"

@@ -300,6 +300,7 @@ services:
       - vg-frames:/shared-frames
       - ./test-video.mp4:/app/test-video.mp4:ro
       - ./cameras.json:/app/cameras.json:rw
+      - ./camera_capture:/app/camera_capture:rw
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -318,7 +319,7 @@ services:
       init-perms:
         condition: service_completed_successfully
     healthcheck:
-      test: [ "CMD", "python", "-c", "import os, sys, redis; r=redis.Redis(host=os.getenv('REDIS_HOST','redis'), port=int(os.getenv('REDIS_PORT','6379'))); r.ping(); ok=False; for pid in [p for p in os.listdir('/proc') if p.isdigit()]:     try:         cmd=open(f'/proc/{pid}/cmdline','rb').read().decode('utf-8','ignore')         if 'camera_capture.main' in cmd:             ok=True             break     except Exception:         pass sys.exit(0 if ok else 1)" ]
+      test: [ "CMD", "python", "-c", "import os, sys, redis; r=redis.Redis(host=os.getenv('REDIS_HOST','redis'), port=int(os.getenv('REDIS_PORT','6379'))); r.ping(); ok=any('camera_capture.main' in open(f'/proc/{p}/cmdline','rb').read().decode('utf-8','ignore') for p in os.listdir('/proc') if p.isdigit() and os.path.exists(f'/proc/{p}/cmdline')); sys.exit(0 if ok else 1)" ]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -134,15 +134,11 @@ function CameraFeed({
   const imgRef = useRef<HTMLImageElement>(null);
   const queryClient = useQueryClient();
 
-  // Helper to auto-stop dead cameras so they instantly vanish from the grid
+  // Helper to handle offline/dead streams locally in the UI without stopping the backend capture
   const handleDeadStream = () => {
     if (hasError) return;
     setHasError(true);
     onLoadStateChange(false);
-    apiService.postData(API_ENDPOINTS.cameras.stop(camera.id)).finally(() => {
-      queryClient.invalidateQueries({ queryKey: ['cameras-list'] });
-      queryClient.invalidateQueries({ queryKey: ['cameras'] });
-    });
   };
 
   // Combo Approach: Active Health Polling
@@ -297,7 +293,7 @@ export default function LiveMonitoring() {
   });
 
   const enabledCameras = useMemo(() => cameras?.filter(c => c.enabled) ?? [], [cameras]);
-  const liveCameras = enabledCameras.filter((camera) => liveFeedState[camera.id]);
+  const liveCameras = enabledCameras.filter((camera) => camera.status === 'online');
 
   useEffect(() => {
     setLiveFeedState((current) => {

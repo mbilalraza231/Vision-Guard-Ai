@@ -287,26 +287,7 @@ class CameraProcess:
                 # Mark frame as captured
                 self.frame_grabber.mark_captured()
                 
-                # Run motion detection (only if enabled)
-                if hasattr(self.camera_config, 'motion_enabled') and self.camera_config.motion_enabled:
-                    has_motion = self.motion_detector.detect(frame)
-                    
-                    if not has_motion:
-                        # No motion, skip frame
-                        continue
-                
-                # Motion detected (or motion detection disabled) - process frame
-                self._process_frame(frame)
-                frames_processed += 1
-                
-                # Log progress every 10 frames at INFO level
-                if frames_processed % 10 == 0:
-                    self.logger.info(
-                        f"Capture loop progress: {frames_processed} frames processed",
-                        extra={"frames_processed": frames_processed}
-                    )
-
-                # Report real FPS to Redis every 5 seconds
+                # Report real FPS to Redis every 5 seconds (must be before motion detection continue)
                 now = time.time()
                 if now - last_heartbeat >= 5.0:
                     stats = self.frame_grabber.get_stats()
@@ -330,6 +311,25 @@ class CameraProcess:
                         }
                     )
                     last_heartbeat = now
+                
+                # Run motion detection (only if enabled)
+                if hasattr(self.camera_config, 'motion_enabled') and self.camera_config.motion_enabled:
+                    has_motion = self.motion_detector.detect(frame)
+                    
+                    if not has_motion:
+                        # No motion, skip frame
+                        continue
+                
+                # Motion detected (or motion detection disabled) - process frame
+                self._process_frame(frame)
+                frames_processed += 1
+                
+                # Log progress every 10 frames at INFO level
+                if frames_processed % 10 == 0:
+                    self.logger.info(
+                        f"Capture loop progress: {frames_processed} frames processed",
+                        extra={"frames_processed": frames_processed}
+                    )
                 
             except KeyboardInterrupt:
                 self.logger.info("Received keyboard interrupt")
