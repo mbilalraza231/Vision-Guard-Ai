@@ -24,7 +24,6 @@ export default function Login() {
     const result = await login(formData);
     
     if (result.success) {
-      toast.success('Logged in successfully');
       navigate('/dashboard');
     } else {
       toast.error(result.error || 'Failed to login');
