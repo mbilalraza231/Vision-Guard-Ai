@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Loader2, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import type { UserRole } from '@/types';
 
@@ -20,6 +20,7 @@ export default function Register() {
   const { register } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [alreadyExists, setAlreadyExists] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -30,6 +31,7 @@ export default function Register() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAlreadyExists(false);
     
     if (formData.password !== formData.confirmPassword) {
       toast.error('Passwords do not match');
@@ -46,10 +48,20 @@ export default function Register() {
     });
 
     if (result.success) {
-      toast.success('Account created! Please check your email for verification.');
+      toast.success('Account created! An admin will review and activate your account.');
       navigate('/auth/login');
     } else {
-      toast.error(result.error || 'Failed to create account');
+      // Detect "already registered" error and show a friendly inline message
+      const errorMsg = result.error || '';
+      if (
+        errorMsg.toLowerCase().includes('already registered') ||
+        errorMsg.toLowerCase().includes('already exists') ||
+        errorMsg.toLowerCase().includes('user already')
+      ) {
+        setAlreadyExists(true);
+      } else {
+        toast.error(errorMsg || 'Failed to create account');
+      }
       setIsLoading(false);
     }
   };
@@ -62,6 +74,18 @@ export default function Register() {
           Register to access VisionGuard AI
         </p>
       </div>
+
+      {alreadyExists && (
+        <div className="mb-6 flex items-start gap-3 rounded-lg border border-amber-500/50 bg-amber-500/10 p-4 text-sm text-amber-700 dark:text-amber-400">
+          <Info className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <p>An account with this email address already exists.</p>
+            <Link to="/auth/login" className="font-semibold underline hover:text-amber-600">
+              Go to login
+            </Link>
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">
