@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next';
 
 export default function Profile() {
   const { t } = useTranslation();
+  const { resetPassword } = useAuth();
   const { data: user, isLoading: isProfileLoading } = useProfile();
   const updateProfile = useUpdateProfile();
   
@@ -137,7 +138,20 @@ export default function Profile() {
                 <p className="text-sm text-muted-foreground">
                   {t('profile.passwordReset')}
                 </p>
-                <Button variant="outline" className="gap-2">
+                <Button 
+                  variant="outline" 
+                  className="gap-2"
+                  onClick={async () => {
+                    toast.promise(resetPassword(user.email), {
+                      loading: 'Sending password reset email...',
+                      success: (result) => {
+                        if (!result.success) throw new Error(result.error);
+                        return 'Password reset email sent! Please check your inbox.';
+                      },
+                      error: (err) => err.message || 'Failed to send reset email'
+                    });
+                  }}
+                >
                   {t('profile.sendReset')}
                 </Button>
               </div>
