@@ -499,7 +499,6 @@ function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdi
               size="sm"
               className="gap-1.5 text-xs h-8 text-status-online border-status-online/30 hover:bg-status-online/10"
               onClick={() => {
-                setImageError(false);
                 startMutation.mutate(camera.id);
               }}
               disabled={startMutation.isPending}
