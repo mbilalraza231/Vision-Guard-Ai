@@ -419,19 +419,25 @@ function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdi
           {camera.location}
         </p>
 
-        {/* Camera Config Info Panel (no live stream preview here) */}
-        <div className="mb-4 border border-border rounded-lg bg-muted/20 p-3 space-y-2">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground w-16 shrink-0">Source</span>
-            <span className="text-xs font-mono text-foreground/80 truncate" title={camera.source}>{camera.source}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground w-16 shrink-0">FPS</span>
-            <span className="text-xs font-mono text-foreground/80">{camera.fps}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground w-16 shrink-0">Motion</span>
-            <span className="text-xs font-mono text-foreground/80">{camera.motionThreshold}</span>
+        {/* Camera Preview Placeholder - Flex Centered (No actual stream rendered here) */}
+        <div className="mb-4 h-40 border border-border bg-black/20 rounded-lg overflow-hidden relative flex items-center justify-center bg-black/40">
+          <div className="text-center z-10 flex flex-col items-center justify-center">
+            <div className="h-10 w-10 rounded-full bg-secondary/80 flex items-center justify-center mx-auto mb-2 border border-border">
+              <svg
+                className="h-5 w-5 text-muted-foreground"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+                />
+              </svg>
+            </div>
+            <p className="text-xs text-muted-foreground font-medium">Live Feed</p>
           </div>
         </div>
 
