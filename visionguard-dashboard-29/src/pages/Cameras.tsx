@@ -70,7 +70,7 @@ export default function Cameras() {
   const [enabled, setEnabled] = useState(false); // Default to false (stopped on add)
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['cameras'],
+    queryKey: ['cameras-list'],
     queryFn: () => apiService.getData<BackendCamera[]>(API_ENDPOINTS.cameras.list),
   });
 
@@ -85,7 +85,7 @@ export default function Cameras() {
       enabled?: boolean;
     }) => apiService.postData(API_ENDPOINTS.cameras.register, newCam),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['cameras'] });
+      queryClient.invalidateQueries({ queryKey: ['cameras-list'] });
       setIsOpen(false);
       const isEditing = editingId !== null;
       toast.success(isEditing ? 'Camera settings updated' : 'Camera registered successfully');
@@ -112,7 +112,7 @@ export default function Cameras() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiService.deleteData(API_ENDPOINTS.cameras.delete(id)),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['cameras'] });
+      queryClient.invalidateQueries({ queryKey: ['cameras-list'] });
       toast.success('Camera deleted successfully');
     },
     onError: (err: any) => {
@@ -123,7 +123,7 @@ export default function Cameras() {
   const startMutation = useMutation({
     mutationFn: (id: string) => apiService.postData(API_ENDPOINTS.cameras.start(id)),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['cameras'] });
+      queryClient.invalidateQueries({ queryKey: ['cameras-list'] });
       toast.success('Camera stream started');
     },
     onError: (err: any) => {
@@ -140,7 +140,7 @@ export default function Cameras() {
       window.stop();
 
       // Re-fetch camera list (the window.stop() killed the previous in-flight fetch too)
-      queryClient.invalidateQueries({ queryKey: ['cameras'] });
+      queryClient.invalidateQueries({ queryKey: ['cameras-list'] });
       toast.success('Camera stream stopped');
     },
     onError: (err: any) => {
