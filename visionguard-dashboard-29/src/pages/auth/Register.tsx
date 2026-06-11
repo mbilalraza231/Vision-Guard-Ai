@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -32,13 +33,28 @@ export default function Register() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAlreadyExists(false);
-    
+
     if (formData.password !== formData.confirmPassword) {
       toast.error('Passwords do not match');
       return;
     }
 
     setIsLoading(true);
+
+    // ── Pre-check: look up email in profiles table BEFORE calling Supabase signup ──
+    // This bypasses the fake-success that Supabase returns when email enumeration
+    // protection is ON and the email is already registered.
+    const { data: existingProfile } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('email', formData.email)
+      .maybeSingle();
+
+    if (existingProfile) {
+      setAlreadyExists(true);
+      setIsLoading(false);
+      return;
+    }
 
     const result = await register({
       email: formData.email,
@@ -51,7 +67,7 @@ export default function Register() {
       toast.success('Account created! An admin will review and activate your account.');
       navigate('/auth/login');
     } else {
-      // Detect "already registered" error and show a friendly inline message
+      // Fallback: detect "already registered" errors from Supabase response too
       const errorMsg = result.error || '';
       if (
         errorMsg.toLowerCase().includes('already registered') ||
