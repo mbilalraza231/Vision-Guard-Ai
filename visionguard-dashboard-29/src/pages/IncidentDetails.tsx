@@ -1,5 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -110,6 +111,64 @@ export default function IncidentDetails() {
     return buildApiUrl(url);
   };
 
+  const handleDownloadEvidence = async () => {
+    try {
+      const mediaUrl = evidence?.clip_url ? getMediaUrl(evidence.clip_url) : getMediaUrl(evidence?.snapshot_url || null);
+      if (!mediaUrl) {
+        toast.error('No evidence available to download');
+        return;
+      }
+      
+      // Try to fetch and trigger a direct file download
+      toast.info('Starting download...');
+      const response = await fetch(mediaUrl);
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `incident-${id}-evidence.${evidence?.clip_url ? 'mp4' : 'jpg'}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+      toast.success('Evidence downloaded successfully');
+    } catch (err) {
+      console.error('Download failed', err);
+      // Fallback: Open in new tab if direct download fails (e.g. CORS)
+      const fallbackUrl = evidence?.clip_url ? getMediaUrl(evidence.clip_url) : getMediaUrl(evidence?.snapshot_url || null);
+      if (fallbackUrl) {
+        window.open(fallbackUrl, '_blank');
+      } else {
+        toast.error('Failed to download evidence');
+      }
+    }
+  };
+
+  const handleShare = async () => {
+    try {
+      const shareData = {
+        title: `VisionGuard Incident: ${incident?.type}`,
+        text: `Review this security incident on VisionGuard AI.`,
+        url: window.location.href,
+      };
+      
+      if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(window.location.href);
+        toast.success('Link copied to clipboard');
+      }
+    } catch (err) {
+      console.error('Error sharing:', err);
+      try {
+        await navigator.clipboard.writeText(window.location.href);
+        toast.success('Link copied to clipboard');
+      } catch {
+        toast.error('Failed to copy link');
+      }
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Header title="Incident Details" showDateNav={false} />
@@ -127,11 +186,11 @@ export default function IncidentDetails() {
           </Button>
 
           <div className="flex items-center gap-2">
-            <Button variant="outline" className="gap-2">
+            <Button variant="outline" className="gap-2" onClick={handleDownloadEvidence}>
               <Download className="h-4 w-4" />
               Download Evidence
             </Button>
-            <Button variant="outline" className="gap-2">
+            <Button variant="outline" className="gap-2" onClick={handleShare}>
               <Share2 className="h-4 w-4" />
               Share
             </Button>
