@@ -10,7 +10,13 @@ export function AuthLayout() {
   const location = useLocation();
 
   useEffect(() => {
-    if (!isLoading && isAuthenticated && location.pathname !== '/auth/pending-approval') {
+    // Do not redirect authenticated users if they are on the pending-approval
+    // or update-password pages (recovery links auto-authenticate the user!)
+    const isExcludedPage = 
+      location.pathname === '/auth/pending-approval' || 
+      location.pathname === '/auth/update-password';
+
+    if (!isLoading && isAuthenticated && !isExcludedPage) {
       navigate('/dashboard');
     }
   }, [isAuthenticated, isLoading, navigate, location.pathname]);
