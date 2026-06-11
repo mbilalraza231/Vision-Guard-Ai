@@ -5,6 +5,7 @@ import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { SeverityBadge, StatusBadge } from '@/components/common/StatusBadge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useSettings } from '@/hooks/useSettings';
 import { formatDateTime, formatTimeString } from '@/lib/utils';
 import { API_ENDPOINTS, buildApiUrl } from '@/config/api';
@@ -48,6 +49,10 @@ export default function IncidentDetails() {
   const navigate = useNavigate();
   const { data: settings } = useSettings();
   const timezone = settings?.general?.timezone || 'UTC';
+  
+  const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
+  const [newNote, setNewNote] = useState('');
+  const [notes, setNotes] = useState<{text: string, time: string}[]>([]);
 
   const { data: incident, isLoading: incidentLoading, error: incidentError } = useQuery({
     queryKey: ['incident', id],
@@ -169,6 +174,14 @@ export default function IncidentDetails() {
     }
   };
 
+  const handleAddNote = () => {
+    if (!newNote.trim()) return;
+    setNotes(prev => [...prev, { text: newNote.trim(), time: new Date().toLocaleString() }]);
+    setNewNote('');
+    setIsNoteModalOpen(false);
+    toast.success('Note added successfully');
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Header title="Incident Details" showDateNav={false} />
@@ -194,7 +207,7 @@ export default function IncidentDetails() {
               <Share2 className="h-4 w-4" />
               Share
             </Button>
-            <Button className="gap-2">
+            <Button className="gap-2" onClick={() => setIsNoteModalOpen(true)}>
               <MessageSquare className="h-4 w-4" />
               Add Note
             </Button>
@@ -315,22 +328,44 @@ export default function IncidentDetails() {
               </div>
             </div>
 
-            <div className="dashboard-card p-6">
-              <h3 className="text-lg font-bold mb-4">Investigation Notes</h3>
-              <div className="space-y-4 mb-4 max-h-[300px] overflow-y-auto">
-                <p className="text-sm text-muted-foreground italic">No notes added yet for this incident.</p>
-              </div>
-              <div className="flex gap-2">
-                <input
-                  className="flex-1 bg-secondary/50 border border-white/10 rounded-lg px-3 py-2 text-sm"
-                  placeholder="Type a note..."
-                />
-                <Button size="sm">Post</Button>
+            <div className="dashboard-card p-6 flex flex-col h-full max-h-[400px]">
+              <h3 className="text-lg font-bold mb-4 shrink-0">Investigation Notes</h3>
+              <div className="space-y-4 overflow-y-auto flex-1 pr-2">
+                {notes.length === 0 ? (
+                  <p className="text-sm text-muted-foreground italic">No notes added yet for this incident.</p>
+                ) : (
+                  notes.map((note, index) => (
+                    <div key={index} className="bg-secondary/30 p-3 rounded-lg border border-white/5">
+                      <p className="text-sm">{note.text}</p>
+                      <p className="text-xs text-muted-foreground mt-2">{note.time}</p>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      <Dialog open={isNoteModalOpen} onOpenChange={setIsNoteModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Investigation Note</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <textarea
+              className="w-full h-32 bg-secondary/50 border border-white/10 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/50"
+              placeholder="Enter details about your investigation..."
+              value={newNote}
+              onChange={(e) => setNewNote(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsNoteModalOpen(false)}>Cancel</Button>
+            <Button onClick={handleAddNote}>Post Note</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
