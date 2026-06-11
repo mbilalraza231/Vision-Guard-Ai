@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import type { AuthState, LoginCredentials, UserRole } from '@/types';
 
@@ -13,6 +14,7 @@ interface AuthContextType extends AuthState {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [state, setState] = useState<AuthState>({
     session: null,
     isAuthenticated: false,
@@ -102,6 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     setState({ session: null, isAuthenticated: false, isLoading: false });
+    queryClient.clear(); // Flush the TanStack query cache so the next login starts totally fresh
     await supabase.auth.signOut();
   };
 
