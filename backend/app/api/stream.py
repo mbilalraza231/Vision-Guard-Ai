@@ -40,8 +40,8 @@ async def global_event_generator(
             metrics_data = await system_metrics(ecs_manager, camera_manager, settings)
             
             # 2. Camera List
-            camera_list = camera_manager.get_all_cameras()
-            cameras_data = [c.dict() for c in camera_list]
+            from .cameras import list_cameras
+            cameras_data = await list_cameras(camera_manager)
             
             # 3. Events Stats
             stats_data = await db_reader.get_stats()
