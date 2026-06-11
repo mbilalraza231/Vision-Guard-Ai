@@ -329,9 +329,9 @@ export default function IncidentDetails() {
               </div>
             </div>
 
-            <div className="dashboard-card p-6 flex flex-col h-full max-h-[400px]">
+            <div className="dashboard-card p-6 max-h-[400px] overflow-hidden flex flex-col">
               <h3 className="text-lg font-bold mb-4 shrink-0">Investigation Notes</h3>
-              <div className="space-y-4 overflow-y-auto flex-1 pr-2">
+              <div className="space-y-4 overflow-y-auto pr-2">
                 {notes.length === 0 ? (
                   <p className="text-sm text-muted-foreground italic">No notes added yet for this incident.</p>
                 ) : (
