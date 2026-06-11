@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Target, ShieldCheck, Zap, BarChart3 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -7,11 +7,13 @@ export function AuthLayout() {
   const { isAuthenticated, isLoading } = useAuth();
   const navigate = useNavigate();
 
+  const location = useLocation();
+
   useEffect(() => {
-    if (!isLoading && isAuthenticated) {
+    if (!isLoading && isAuthenticated && location.pathname !== '/auth/pending-approval') {
       navigate('/dashboard');
     }
-  }, [isAuthenticated, isLoading, navigate]);
+  }, [isAuthenticated, isLoading, navigate, location.pathname]);
 
   if (isLoading) return null;
 
