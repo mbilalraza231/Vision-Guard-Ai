@@ -58,13 +58,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = async (credentials: LoginCredentials & { name: string; role: UserRole; status?: 'active' | 'inactive' }) => {
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email: credentials.email,
         password: credentials.password,
         // Passing metadata so trigger can use it for first insert in profiles table
         options: { data: { name: credentials.name, role: credentials.role, status: credentials.status || 'inactive' } },
       });
       if (error) return { success: false, error: error.message };
+
+      // Supabase returns a fake-success when email enumeration protection is ON
+      // and the email already exists. The tell-tale sign is an empty `identities` array.
+      if (data.user && data.user.identities && data.user.identities.length === 0) {
+        return { success: false, error: 'user already registered' };
+      }
+
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message };
