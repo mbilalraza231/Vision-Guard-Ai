@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { SeverityBadge, StatusBadge } from '@/components/common/StatusBadge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useSettings } from '@/hooks/useSettings';
+import { useProfile } from '@/hooks/useProfile';
 import { formatDateTime, formatTimeString } from '@/lib/utils';
 import { API_ENDPOINTS, buildApiUrl } from '@/config/api';
 import { apiService } from '@/services/api.service';
@@ -55,6 +56,8 @@ export default function IncidentDetails() {
   const [newNote, setNewNote] = useState('');
   const queryClient = useQueryClient();
 
+  const { data: profile } = useProfile();
+
   const { data: notes = [] } = useQuery<any[]>({
     queryKey: ['incident-notes', id],
     queryFn: () => apiService.getData<any[]>(API_ENDPOINTS.incidents.notes(id!)),
@@ -62,8 +65,15 @@ export default function IncidentDetails() {
   });
 
   const addNoteMutation = useMutation({
-    mutationFn: (noteContent: string) =>
-      apiService.postData(API_ENDPOINTS.incidents.notes(id!), { content: noteContent }),
+    mutationFn: (noteContent: string) => {
+      const userStr = profile 
+        ? `${profile.name} (${profile.role.toUpperCase()})` 
+        : 'Security Operator';
+      return apiService.postData(API_ENDPOINTS.incidents.notes(id!), { 
+        content: noteContent,
+        user_name: userStr
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['incident-notes', id] });
       setNewNote('');
