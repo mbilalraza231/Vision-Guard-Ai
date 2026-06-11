@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/button';
@@ -53,7 +53,23 @@ export default function IncidentDetails() {
   
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
   const [newNote, setNewNote] = useState('');
-  const [notes, setNotes] = useState<{text: string, time: string}[]>([]);
+  const queryClient = useQueryClient();
+
+  const { data: notes = [] } = useQuery<any[]>({
+    queryKey: ['incident-notes', id],
+    queryFn: () => apiService.getData<any[]>(API_ENDPOINTS.incidents.notes(id!)),
+    enabled: !!id,
+  });
+
+  const addNoteMutation = useMutation({
+    mutationFn: (noteContent: string) =>
+      apiService.postData(API_ENDPOINTS.incidents.notes(id!), { content: noteContent }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['incident-notes', id] });
+      setNewNote('');
+      setIsNoteModalOpen(false);
+    },
+  });
 
   const { data: incident, isLoading: incidentLoading, error: incidentError } = useQuery({
     queryKey: ['incident', id],
@@ -177,10 +193,14 @@ export default function IncidentDetails() {
 
   const handleAddNote = () => {
     if (!newNote.trim()) return;
-    setNotes(prev => [...prev, { text: newNote.trim(), time: new Date().toLocaleString() }]);
-    setNewNote('');
-    setIsNoteModalOpen(false);
-    toast.success('Note added successfully');
+    toast.promise(
+      addNoteMutation.mutateAsync(newNote.trim()),
+      {
+        loading: 'Adding note...',
+        success: 'Note added successfully',
+        error: 'Failed to add note',
+      }
+    );
   };
 
   return (
@@ -335,10 +355,13 @@ export default function IncidentDetails() {
                 {notes.length === 0 ? (
                   <p className="text-sm text-muted-foreground italic">No notes added yet for this incident.</p>
                 ) : (
-                  notes.map((note, index) => (
-                    <div key={index} className="bg-secondary/30 p-3 rounded-lg border border-white/5">
-                      <p className="text-sm">{note.text}</p>
-                      <p className="text-xs text-muted-foreground mt-2">{note.time}</p>
+                  notes.map((note: any) => (
+                    <div key={note.id} className="bg-secondary/30 p-3 rounded-lg border border-white/5">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-semibold text-primary">{note.user_name}</span>
+                        <span className="text-[10px] text-muted-foreground">{formatDateTime(note.created_at * 1000, timezone)}</span>
+                      </div>
+                      <p className="text-sm text-foreground/90 whitespace-pre-wrap">{note.content}</p>
                     </div>
                   ))
                 )}

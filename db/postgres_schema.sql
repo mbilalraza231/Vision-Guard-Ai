@@ -80,3 +80,18 @@ CREATE TABLE IF NOT EXISTS cameras (
     created_at DOUBLE PRECISION NOT NULL
 );
 
+-- Incident Notes Table
+CREATE TABLE IF NOT EXISTS incident_notes (
+    id TEXT PRIMARY KEY,
+    event_id TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at DOUBLE PRECISION NOT NULL,
+    user_name TEXT DEFAULT 'Security Operator',
+    CONSTRAINT fk_incident_event
+        FOREIGN KEY(event_id) 
+        REFERENCES events(id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_incident_notes_event_id ON incident_notes(event_id);
+

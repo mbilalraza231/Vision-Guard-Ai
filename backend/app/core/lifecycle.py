@@ -79,6 +79,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             await db.execute("INSERT INTO system_settings (data) VALUES ('{}'::jsonb)")
         logger.info("system_settings table ready")
 
+        # Create incident notes table if it doesn't exist
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS incident_notes (
+                id          TEXT PRIMARY KEY,
+                event_id    TEXT NOT NULL,
+                content     TEXT NOT NULL,
+                created_at  DOUBLE PRECISION NOT NULL,
+                user_name   TEXT DEFAULT 'Security Operator',
+                CONSTRAINT fk_incident_event
+                    FOREIGN KEY(event_id) 
+                    REFERENCES events(id)
+                    ON DELETE CASCADE
+            )
+        """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_incident_notes_event_id ON incident_notes(event_id)
+        """)
+        logger.info("incident_notes table ready")
+
         # Sync system settings to Redis on boot
         try:
             from ..api.settings import sync_settings_to_redis

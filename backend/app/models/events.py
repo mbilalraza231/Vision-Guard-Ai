@@ -174,3 +174,19 @@ class DBAlertListResponse(BaseModel):
     limit: int
     offset: int
     alerts: List[DBAlert]
+
+
+class DBIncidentNote(BaseModel):
+    """Database record for incident notes."""
+    id: str
+    event_id: str
+    content: str
+    created_at: float
+    user_name: str
+
+
+class IncidentNoteCreate(BaseModel):
+    """Payload to create a new incident note."""
+    content: str
+    user_name: Optional[str] = "Security Operator"
+

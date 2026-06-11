@@ -11,7 +11,8 @@ GET /alerts/{id} - Get single alert with event metadata
 import os
 import sys
 import time
-from typing import Optional
+import uuid
+from typing import Optional, List
 
 from fastapi import APIRouter, HTTPException, Query, Path
 
@@ -19,8 +20,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirna
 
 from ..models.events import (
     DBEvent, DBEventListResponse,
-    DBAlert, DBAlertListResponse
+    DBAlert, DBAlertListResponse,
+    DBIncidentNote, IncidentNoteCreate
 )
+from ..core.database import db
 from ..services.db_reader import get_db_reader
 from ..utils.logging import get_logger
 from alerts.repository import AlertRepository
@@ -242,3 +245,69 @@ async def get_alert(
         )
     
     return DBAlert(**alert)
+
+
+@router.get("/events/{event_id}/notes", response_model=List[DBIncidentNote])
+async def list_incident_notes(
+    event_id: str = Path(..., description="Event UUID")
+) -> List[DBIncidentNote]:
+    """Get all investigation notes for a specific incident."""
+    # Verify event exists first
+    reader = get_db_reader()
+    event = await reader.get_event(event_id)
+    if event is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Incident {event_id} not found"
+        )
+
+    rows = await db.fetch_all(
+        """
+        SELECT id, event_id, content, created_at, user_name
+        FROM incident_notes
+        WHERE event_id = $1
+        ORDER BY created_at ASC
+        """,
+        event_id,
+    )
+    return [DBIncidentNote(**r) for r in rows]
+
+
+@router.post("/events/{event_id}/notes", response_model=DBIncidentNote)
+async def create_incident_note(
+    payload: IncidentNoteCreate,
+    event_id: str = Path(..., description="Event UUID")
+) -> DBIncidentNote:
+    """Add a new note to an incident."""
+    # Verify event exists first
+    reader = get_db_reader()
+    event = await reader.get_event(event_id)
+    if event is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Incident {event_id} not found"
+        )
+
+    note_id = str(uuid.uuid4())
+    created_at = time.time()
+    
+    await db.execute(
+        """
+        INSERT INTO incident_notes (id, event_id, content, created_at, user_name)
+        VALUES ($1, $2, $3, $4, $5)
+        """,
+        note_id,
+        event_id,
+        payload.content,
+        created_at,
+        payload.user_name,
+    )
+    
+    return DBIncidentNote(
+        id=note_id,
+        event_id=event_id,
+        content=payload.content,
+        created_at=created_at,
+        user_name=payload.user_name or "Security Operator"
+    )
+

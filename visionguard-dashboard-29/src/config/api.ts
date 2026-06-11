@@ -36,6 +36,7 @@ export const API_ENDPOINTS = {
     byId: (id: string) => `/events/${id}`,
     stats: '/events/stats',
     evidence: (id: string) => `/events/${id}/evidence`,
+    notes: (id: string) => `/events/${id}/notes`,
   },
 
   // Cameras endpoints
