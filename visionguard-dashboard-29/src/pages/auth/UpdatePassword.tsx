@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,8 +11,30 @@ import { toast } from 'sonner';
 export default function UpdatePassword() {
   const navigate = useNavigate();
   const { updatePassword } = useAuth();
+  const [searchParams] = useSearchParams();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(true);
+
+  // If Supabase uses PKCE flow, the email link contains a ?code= parameter.
+  // We must exchange this code for an auth session before we can update the password.
+  useEffect(() => {
+    const code = searchParams.get('code');
+    if (code) {
+      supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
+        if (error) {
+          toast.error('Invalid or expired password reset link.');
+          navigate('/auth/login');
+        } else {
+          setIsVerifying(false);
+        }
+      });
+    } else {
+      // If there's no code, it might be the older implicit flow (hash fragment), 
+      // which Supabase handles automatically, so just stop verifying.
+      setIsVerifying(false);
+    }
+  }, [searchParams, navigate]);
   const [formData, setFormData] = useState({
     password: '',
     confirmPassword: '',
@@ -37,6 +60,16 @@ export default function UpdatePassword() {
       setIsLoading(false);
     }
   };
+
+  if (isVerifying) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh] animate-fade-in">
+        <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+        <h2 className="text-xl font-semibold">Verifying secure link...</h2>
+        <p className="text-muted-foreground mt-2">Please wait while we authenticate your request.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in">
