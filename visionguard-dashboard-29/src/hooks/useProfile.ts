@@ -29,7 +29,7 @@ export function useProfile() {
             email: session.user.email || '',
             name: session.user.user_metadata?.name || 'Unknown User',
             role: (session.user.user_metadata?.role as UserRole) || 'viewer',
-            status: 'active',
+            status: 'inactive',
             createdAt: session.user.created_at,
           };
         }
@@ -43,7 +43,7 @@ export function useProfile() {
         email: data?.email || session.user.email || '',
         name: data?.name || 'User',
         role: (data?.role as UserRole) || 'viewer',
-        status: data?.status || 'active',
+        status: data?.status || 'inactive',
         avatar: data?.avatar || undefined,
         createdAt: data?.createdAt || session.user.created_at,
       };
