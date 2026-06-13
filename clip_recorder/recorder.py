@@ -695,7 +695,11 @@ class ClipRecorder:
 
             height, width = first_frame.shape[:2]
             fps = self.config.camera_fps
-            total_frames = max(1, int(post_seconds * fps))
+            # If buffer is off, we can't go back in time, but we should still record the requested total duration
+            total_duration = pre_seconds + post_seconds
+            if total_duration <= 0:
+                total_duration = 4  # Fallback to 4 seconds if both are 0
+            total_frames = max(1, int(total_duration * fps))
 
             ts_str = int(detection_ts)
             filename = f"{event_type}_{event_id}_{ts_str}.mp4"
@@ -709,7 +713,14 @@ class ClipRecorder:
             writer.write(first_frame)
             frames_written = 1
 
+            start_time = time.time()
+            max_wait_time = total_duration * 1.5 + 10  # Generous timeout for laggy IP cameras
+
             while frames_written < total_frames:
+                if time.time() - start_time > max_wait_time:
+                    logger.warning(f"Direct recording timed out after {max_wait_time}s. Captured {frames_written}/{total_frames} frames.")
+                    break
+                    
                 ok, frame = cap.read()
                 if not ok or frame is None:
                     break
