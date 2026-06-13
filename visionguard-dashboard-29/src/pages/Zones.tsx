@@ -368,7 +368,7 @@ export default function Zones() {
                             <Users className="h-3 w-3" /> Alert Recipients:
                           </span>
                           <span className="font-medium">
-                            {recipientCount} users {zone.max_alert_recipients > 0 ? `/ ${zone.max_alert_recipients}` : '(No Limit)'}
+                            {recipientCount} {zone.max_alert_recipients > 0 ? `/ ${zone.max_alert_recipients}` : '(No Limit)'}
                           </span>
                         </div>
                       </div>
