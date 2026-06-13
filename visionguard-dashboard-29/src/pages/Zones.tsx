@@ -26,6 +26,15 @@ interface AlertContactApiItem {
   zone_ids?: string;
 }
 
+interface BackendEvent {
+  id: string;
+  camera_id: string;
+  event_type: string;
+  severity: string;
+  start_ts: number;
+  created_at: number;
+}
+
 // Detection priority is global (based on system model config)
 const GLOBAL_DETECTION_PRIORITY: Record<string, Severity> = {
   fire: 'critical',
@@ -129,6 +138,12 @@ export default function Zones() {
     queryFn: () => apiService.getData<{ contacts: AlertContactApiItem[] }>(API_ENDPOINTS.alerts.contacts.list),
   });
 
+  // Fetch all events from last 7 days (for chart + recent activity count)
+  const { data: eventsData } = useQuery({
+    queryKey: ['events-7d-zones'],
+    queryFn: () => apiService.getData<{ events: BackendEvent[] }>(API_ENDPOINTS.incidents.list, { limit: '500', time_period: '7days' }),
+  });
+
   // Create zone
   const createMutation = useMutation({
     mutationFn: (data: { name: string; active_hours: string }) =>
@@ -158,6 +173,11 @@ export default function Zones() {
   const zones = zonesData?.zones ?? [];
   const cameras = camerasData ?? [];
   const contacts = contactsData?.contacts ?? [];
+  const allEvents = eventsData?.events ?? [];
+
+  // Build a map: camera_id -> zone_id for quick lookup
+  const cameraZoneMap = new Map<string, string>();
+  cameras.forEach((c) => { if (c.zone_id) cameraZoneMap.set(c.id, c.zone_id); });
 
   const getCameraCountForZone = (zoneId: string) =>
     cameras.filter((c) => c.zone_id === zoneId).length;
@@ -172,11 +192,23 @@ export default function Zones() {
       }
     }).length;
 
-  const getChartData = () => [
-    { type: 'Fire', count: 0 },
-    { type: 'Weapon', count: 0 },
-    { type: 'Fall', count: 0 },
-  ];
+  // Filter events belonging to a zone (via camera mapping)
+  const getEventsForZone = (zoneId: string) =>
+    allEvents.filter((e) => cameraZoneMap.get(e.camera_id) === zoneId);
+
+  const getChartData = (zoneId: string) => {
+    const events = getEventsForZone(zoneId);
+    const counts: Record<string, number> = { fire: 0, weapon: 0, fall: 0 };
+    events.forEach((e) => {
+      const type = e.event_type.replace('_detected', '').toLowerCase();
+      if (type in counts) counts[type]++;
+    });
+    return [
+      { type: 'Fire', count: counts.fire },
+      { type: 'Weapon', count: counts.weapon },
+      { type: 'Fall', count: counts.fall },
+    ];
+  };
 
   const handleSave = (data: { name: string; active_hours: string }) => {
     if (editingZone) {
@@ -226,6 +258,8 @@ export default function Zones() {
             {zones.map((zone) => {
               const cameraCount = getCameraCountForZone(zone.id);
               const recipientCount = getRecipientCountForZone(zone.id);
+              const chartData = getChartData(zone.id);
+              const recentActivity = getEventsForZone(zone.id).length;
               return (
                 <div key={zone.id} className="dashboard-card p-6">
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -233,7 +267,7 @@ export default function Zones() {
                     <div className="h-48">
                       <p className="text-xs text-muted-foreground mb-2">Detection Activity (7d)</p>
                       <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={getChartData()} layout="vertical">
+                        <BarChart data={chartData} layout="vertical">
                           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                           <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={12} />
                           <YAxis
@@ -314,6 +348,12 @@ export default function Zones() {
                           ))}
                         </div>
                       </div>
+
+                      {/* Recent Activity */}
+                      <p className="text-sm text-muted-foreground mt-3">
+                        <span className="font-medium text-foreground">Recent Activity:</span>{' '}
+                        {recentActivity} incident{recentActivity !== 1 ? 's' : ''} (7d)
+                      </p>
                     </div>
                   </div>
                 </div>
