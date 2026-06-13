@@ -37,6 +37,8 @@ export const API_ENDPOINTS = {
     stats: '/events/stats',
     evidence: (id: string) => `/events/${id}/evidence`,
     notes: (id: string) => `/events/${id}/notes`,
+    acknowledge: (id: string) => `/events/${id}/acknowledge`,
+    resolve: (id: string) => `/events/${id}/resolve`,
   },
 
   // Cameras endpoints

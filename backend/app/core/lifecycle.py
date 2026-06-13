@@ -98,6 +98,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         """)
         logger.info("incident_notes table ready")
 
+        # Migrate events table to add status columns if they do not exist
+        await db.execute("""
+            ALTER TABLE events ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
+            ALTER TABLE events ADD COLUMN IF NOT EXISTS acknowledged_by TEXT;
+            ALTER TABLE events ADD COLUMN IF NOT EXISTS acknowledged_at DOUBLE PRECISION;
+            ALTER TABLE events ADD COLUMN IF NOT EXISTS resolved_by TEXT;
+            ALTER TABLE events ADD COLUMN IF NOT EXISTS resolved_at DOUBLE PRECISION;
+            ALTER TABLE events ADD COLUMN IF NOT EXISTS resolution TEXT;
+        """)
+        logger.info("events table status columns verified")
+
         # Sync system settings to Redis on boot
         try:
             from ..api.settings import sync_settings_to_redis

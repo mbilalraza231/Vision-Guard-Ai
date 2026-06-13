@@ -13,7 +13,13 @@ CREATE TABLE IF NOT EXISTS events (
     created_at DOUBLE PRECISION NOT NULL,
     clip_status TEXT NOT NULL DEFAULT 'pending',   -- pending | ready | failed
     clip_error TEXT,
-    clip_updated_at DOUBLE PRECISION
+    clip_updated_at DOUBLE PRECISION,
+    status TEXT NOT NULL DEFAULT 'active',         -- active | acknowledged | resolved
+    acknowledged_by TEXT,
+    acknowledged_at DOUBLE PRECISION,
+    resolved_by TEXT,
+    resolved_at DOUBLE PRECISION,
+    resolution TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_camera_created 

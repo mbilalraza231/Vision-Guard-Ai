@@ -113,6 +113,12 @@ class DBEvent(BaseModel):
     created_at: float
     snapshot_url: Optional[str] = None
     clip_url: Optional[str] = None
+    status: str = "active"
+    acknowledged_by: Optional[str] = None
+    acknowledged_at: Optional[float] = None
+    resolved_by: Optional[str] = None
+    resolved_at: Optional[float] = None
+    resolution: Optional[str] = None
     
     class Config:
         json_schema_extra = {
@@ -189,4 +195,17 @@ class IncidentNoteCreate(BaseModel):
     """Payload to create a new incident note."""
     content: str
     user_name: Optional[str] = "Security Operator"
+
+
+class IncidentAcknowledgeRequest(BaseModel):
+    """Payload to acknowledge an incident."""
+    user_name: str
+
+
+class IncidentResolveRequest(BaseModel):
+    """Payload to resolve an incident."""
+    user_name: str
+    resolution: str
+    content: Optional[str] = None
+
 

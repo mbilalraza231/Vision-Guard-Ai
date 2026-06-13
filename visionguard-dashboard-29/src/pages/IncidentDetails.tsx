@@ -54,6 +54,9 @@ export default function IncidentDetails() {
   
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
   const [newNote, setNewNote] = useState('');
+  const [isResolveModalOpen, setIsResolveModalOpen] = useState(false);
+  const [resolutionType, setResolutionType] = useState('False Alarm');
+  const [resolveNote, setResolveNote] = useState('');
   const queryClient = useQueryClient();
 
   const { data: profile } = useProfile();
@@ -81,6 +84,36 @@ export default function IncidentDetails() {
     },
   });
 
+  const acknowledgeMutation = useMutation({
+    mutationFn: () => {
+      const userStr = profile 
+        ? `${profile.name} (${profile.role.toUpperCase()})` 
+        : 'Security Operator';
+      return apiService.putData(API_ENDPOINTS.incidents.acknowledge(id!), { user_name: userStr });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['incident', id] });
+      queryClient.invalidateQueries({ queryKey: ['incident-notes', id] });
+    },
+  });
+
+  const resolveMutation = useMutation({
+    mutationFn: (data: { resolution: string; content?: string }) => {
+      const userStr = profile 
+        ? `${profile.name} (${profile.role.toUpperCase()})` 
+        : 'Security Operator';
+      return apiService.putData(API_ENDPOINTS.incidents.resolve(id!), { 
+        user_name: userStr,
+        resolution: data.resolution,
+        content: data.content 
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['incident', id] });
+      queryClient.invalidateQueries({ queryKey: ['incident-notes', id] });
+    },
+  });
+
   const { data: incident, isLoading: incidentLoading, error: incidentError } = useQuery({
     queryKey: ['incident', id],
     queryFn: async () => {
@@ -102,7 +135,12 @@ export default function IncidentDetails() {
         },
         type: event.event_type as Incident['type'],
         severity: event.severity as Incident['severity'],
-        status: 'active' as Incident['status'],
+        status: (event.status || 'active') as Incident['status'],
+        acknowledgedBy: event.acknowledged_by,
+        acknowledgedAt: event.acknowledged_at,
+        resolvedBy: event.resolved_by,
+        resolvedAt: event.resolved_at,
+        resolution: event.resolution,
         incidentTime: formatDateTime(event.start_ts * 1000, timezone),
         reportingTime: formatDateTime(event.created_at * 1000, timezone),
         processingDelay: event.created_at - event.start_ts,
@@ -209,6 +247,32 @@ export default function IncidentDetails() {
         loading: 'Adding note...',
         success: 'Note added successfully',
         error: 'Failed to add note',
+      }
+    );
+  };
+
+  const handleAcknowledge = () => {
+    toast.promise(
+      acknowledgeMutation.mutateAsync(),
+      {
+        loading: 'Acknowledging alert...',
+        success: 'Alert acknowledged successfully',
+        error: (err: any) => err?.message || 'Failed to acknowledge alert',
+      }
+    );
+  };
+
+  const handleResolve = () => {
+    toast.promise(
+      resolveMutation.mutateAsync({ resolution: resolutionType, content: resolveNote }),
+      {
+        loading: 'Resolving incident...',
+        success: () => {
+          setIsResolveModalOpen(false);
+          setResolveNote('');
+          return 'Incident resolved successfully';
+        },
+        error: (err: any) => err?.message || 'Failed to resolve incident',
       }
     );
   };
@@ -341,6 +405,24 @@ export default function IncidentDetails() {
                   <span className="text-muted-foreground">Status</span>
                   <StatusBadge status={incident.status} />
                 </div>
+                {incident.status === 'acknowledged' && (incident as any).acknowledgedBy && (
+                  <div className="flex justify-between items-center py-2 border-t border-white/5">
+                    <span className="text-muted-foreground text-xs">Acknowledged By</span>
+                    <span className="text-xs font-semibold">{(incident as any).acknowledgedBy}</span>
+                  </div>
+                )}
+                {incident.status === 'resolved' && (incident as any).resolvedBy && (
+                  <div className="flex flex-col gap-1 py-2 border-t border-white/5">
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground text-xs">Resolved By</span>
+                      <span className="text-xs font-semibold">{(incident as any).resolvedBy}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-[11px]">
+                      <span className="text-muted-foreground">Reason</span>
+                      <span className="text-primary font-medium">{(incident as any).resolution}</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="mt-6 pt-6 border-t border-white/10">
@@ -357,6 +439,40 @@ export default function IncidentDetails() {
                   </span>
                 </div>
               </div>
+
+              <div className="mt-6 pt-6 border-t border-white/10 space-y-3">
+                {incident.status === 'active' && (
+                  <Button 
+                    className="w-full gap-2"
+                    onClick={() => handleAcknowledge()}
+                    disabled={profile?.role === 'viewer' || acknowledgeMutation.isPending}
+                  >
+                    {acknowledgeMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Zap className="h-4 w-4" />
+                    )}
+                    Acknowledge Alert
+                  </Button>
+                )}
+                {incident.status === 'acknowledged' && (
+                  <Button 
+                    className="w-full gap-2"
+                    variant="outline"
+                    onClick={() => setIsResolveModalOpen(true)}
+                    disabled={profile?.role === 'viewer'}
+                  >
+                    <Shield className="h-4 w-4" />
+                    Mark as Resolved
+                  </Button>
+                )}
+                {incident.status === 'resolved' && (
+                  <div className="bg-status-online/10 text-status-online border border-status-online/20 text-center py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2">
+                    <Shield className="h-4 w-4" />
+                    Incident Resolved
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="dashboard-card p-6 max-h-[400px] overflow-hidden flex flex-col">
@@ -365,15 +481,17 @@ export default function IncidentDetails() {
                 {notes.length === 0 ? (
                   <p className="text-sm text-muted-foreground italic">No notes added yet for this incident.</p>
                 ) : (
-                  notes.map((note: any) => (
-                    <div key={note.id} className="bg-secondary/30 p-3 rounded-lg border border-white/5">
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-xs font-semibold text-primary">{note.user_name}</span>
-                        <span className="text-[10px] text-muted-foreground">{formatDateTime(note.created_at * 1000, timezone)}</span>
+                  [...notes]
+                    .sort((a, b) => b.created_at - a.created_at)
+                    .map((note: any) => (
+                      <div key={note.id} className="bg-secondary/30 p-3 rounded-lg border border-white/5">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-xs font-semibold text-primary">{note.user_name}</span>
+                          <span className="text-[10px] text-muted-foreground">{formatDateTime(note.created_at * 1000, timezone)}</span>
+                        </div>
+                        <p className="text-sm text-foreground/90 whitespace-pre-wrap">{note.content}</p>
                       </div>
-                      <p className="text-sm text-foreground/90 whitespace-pre-wrap">{note.content}</p>
-                    </div>
-                  ))
+                    ))
                 )}
               </div>
             </div>
@@ -397,6 +515,45 @@ export default function IncidentDetails() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsNoteModalOpen(false)}>Cancel</Button>
             <Button onClick={handleAddNote}>Post Note</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isResolveModalOpen} onOpenChange={setIsResolveModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Resolve Incident</DialogTitle>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">Resolution Reason</label>
+              <select 
+                className="w-full bg-secondary/50 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 text-foreground"
+                value={resolutionType}
+                onChange={(e) => setResolutionType(e.target.value)}
+              >
+                <option value="False Alarm">False Alarm</option>
+                <option value="Resolved by Guard">Resolved by Guard</option>
+                <option value="System Test">System Test</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">Resolution Notes (Optional)</label>
+              <textarea
+                className="w-full h-24 bg-secondary/50 border border-white/10 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/50"
+                placeholder="Enter details on how the alert was resolved..."
+                value={resolveNote}
+                onChange={(e) => setResolveNote(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsResolveModalOpen(false)}>Cancel</Button>
+            <Button onClick={handleResolve} disabled={resolveMutation.isPending}>
+              {resolveMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Resolve Incident
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

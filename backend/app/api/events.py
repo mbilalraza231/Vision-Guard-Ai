@@ -21,7 +21,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirna
 from ..models.events import (
     DBEvent, DBEventListResponse,
     DBAlert, DBAlertListResponse,
-    DBIncidentNote, IncidentNoteCreate
+    DBIncidentNote, IncidentNoteCreate,
+    IncidentAcknowledgeRequest, IncidentResolveRequest
 )
 from ..core.database import db
 from ..services.db_reader import get_db_reader
@@ -310,4 +311,116 @@ async def create_incident_note(
         created_at=created_at,
         user_name=payload.user_name or "Security Operator"
     )
+
+
+@router.put("/events/{event_id}/acknowledge", response_model=DBEvent)
+async def acknowledge_incident(
+    payload: IncidentAcknowledgeRequest,
+    event_id: str = Path(..., description="Event UUID")
+) -> DBEvent:
+    """Acknowledge an active event."""
+    reader = get_db_reader()
+    event = await reader.get_event(event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail=f"Incident {event_id} not found")
+
+    # Race condition check
+    if event.get("status") == "acknowledged":
+        raise HTTPException(
+            status_code=400,
+            detail=f"This incident was already acknowledged by {event.get('acknowledged_by')}"
+        )
+    elif event.get("status") == "resolved":
+        raise HTTPException(
+            status_code=400,
+            detail=f"This incident was already resolved by {event.get('resolved_by')}"
+        )
+
+    now_ts = time.time()
+    await db.execute(
+        """
+        UPDATE events
+        SET status = 'acknowledged',
+            acknowledged_by = $1,
+            acknowledged_at = $2
+        WHERE id = $3
+        """,
+        payload.user_name,
+        now_ts,
+        event_id,
+    )
+
+    # Automatically post a system note
+    note_id = str(uuid.uuid4())
+    system_content = f"Acknowledged the incident."
+    await db.execute(
+        """
+        INSERT INTO incident_notes (id, event_id, content, created_at, user_name)
+        VALUES ($1, $2, $3, $4, $5)
+        """,
+        note_id,
+        event_id,
+        system_content,
+        now_ts,
+        f"[System] {payload.user_name}",
+    )
+
+    updated_event = await reader.get_event(event_id)
+    return DBEvent(**updated_event)
+
+
+@router.put("/events/{event_id}/resolve", response_model=DBEvent)
+async def resolve_incident(
+    payload: IncidentResolveRequest,
+    event_id: str = Path(..., description="Event UUID")
+) -> DBEvent:
+    """Resolve an event."""
+    reader = get_db_reader()
+    event = await reader.get_event(event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail=f"Incident {event_id} not found")
+
+    if event.get("status") == "resolved":
+        raise HTTPException(
+            status_code=400,
+            detail=f"This incident was already resolved by {event.get('resolved_by')}"
+        )
+
+    now_ts = time.time()
+    await db.execute(
+        """
+        UPDATE events
+        SET status = 'resolved',
+            resolved_by = $1,
+            resolved_at = $2,
+            resolution = $3
+        WHERE id = $4
+        """,
+        payload.user_name,
+        now_ts,
+        payload.resolution,
+        event_id,
+    )
+
+    # Automatically post a system note
+    note_id = str(uuid.uuid4())
+    system_content = f"Resolved the incident ({payload.resolution})."
+    if payload.content and payload.content.strip():
+        system_content += f"\n\"{payload.content.strip()}\""
+
+    await db.execute(
+        """
+        INSERT INTO incident_notes (id, event_id, content, created_at, user_name)
+        VALUES ($1, $2, $3, $4, $5)
+        """,
+        note_id,
+        event_id,
+        system_content,
+        now_ts,
+        f"[System] {payload.user_name}",
+    )
+
+    updated_event = await reader.get_event(event_id)
+    return DBEvent(**updated_event)
+
 
