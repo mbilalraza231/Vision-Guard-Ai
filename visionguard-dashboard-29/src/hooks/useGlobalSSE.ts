@@ -99,6 +99,11 @@ export function useGlobalSSE() {
           lastEventTotal.current = newTotal;
         }
 
+        // Active Events (For Header Bell icon)
+        if (payload.activeEvents) {
+          queryClient.setQueryData(['active-alerts'], payload.activeEvents);
+        }
+
         // 5. Live Bounding Boxes (Used by LiveMonitoring)
         if (payload.boxes) {
           queryClient.setQueryData(['live-boxes'], payload.boxes);

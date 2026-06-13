@@ -41,7 +41,7 @@ export function Header({ title, showDateNav = true }: HeaderProps) {
   // Passively read from the SSE cache populated by useGlobalSSE (DashboardLayout).
   // Zero HTTP requests — the global SSE stream already pushes recentEvents every 1.5s.
   const { data: sseRecentEvents } = useQuery<{ total: number; events: any[] }>(
-    { queryKey: ['dashboard-recent-events'], enabled: false }
+    { queryKey: ['active-alerts'], enabled: false }
   );
   const notificationData = sseRecentEvents;
 

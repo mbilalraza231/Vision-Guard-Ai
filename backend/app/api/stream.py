@@ -49,6 +49,9 @@ async def global_event_generator(
             # 4. Recent Events
             recent_events_data = await db_reader.list_events(limit=5)
             
+            # Active Events (For Notifications)
+            active_events_data = await db_reader.list_events(limit=5, status="active")
+            
             # 5. Live Bounding Boxes
             boxes_data = await get_live_boxes(limit=50)
 
@@ -65,6 +68,7 @@ async def global_event_generator(
                 "cameras": cameras_data,
                 "stats": stats_data,
                 "recentEvents": recent_events_data,
+                "activeEvents": active_events_data,
                 "boxes": boxes_data,
                 "alerts": alerts_data
             }
