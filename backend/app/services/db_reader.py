@@ -54,12 +54,13 @@ class DatabaseReader:
         self.logger = logging.getLogger(__name__)
     
     async def list_events(
-        self,
-        limit: int = 50,
+        self, 
+        limit: int = 50, 
         offset: int = 0,
         camera_id: str = None,
         event_type: str = None,
         severity: str = None,
+        status: str = None,
         start_ts_gte: float = None
     ) -> Dict[str, Any]:
         """
@@ -84,6 +85,11 @@ class DatabaseReader:
             if severity:
                 where_clauses.append(f"severity = ${param_idx}")
                 params.append(severity.lower())
+                param_idx += 1
+                
+            if status:
+                where_clauses.append(f"status = ${param_idx}")
+                params.append(status.lower())
                 param_idx += 1
                 
             if start_ts_gte is not None:
