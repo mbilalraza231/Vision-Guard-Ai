@@ -141,7 +141,7 @@ export default function Zones() {
   // Fetch all events from last 7 days (for chart + recent activity count)
   const { data: eventsData } = useQuery({
     queryKey: ['events-7d-zones'],
-    queryFn: () => apiService.getData<{ events: BackendEvent[] }>(API_ENDPOINTS.incidents.list, { limit: '500', time_period: '7days' }),
+    queryFn: () => apiService.getData<{ events: BackendEvent[] }>(API_ENDPOINTS.incidents.list, { limit: '100', time_period: '7days' }),
   });
 
   // Create zone
