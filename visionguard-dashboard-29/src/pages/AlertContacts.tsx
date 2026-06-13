@@ -590,9 +590,9 @@ export default function AlertContacts() {
       {/* Add Modal */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="relative w-full max-w-md bg-card border border-border rounded-2xl flex flex-col max-h-[90vh]">
+          <div className="relative w-full max-w-[480px] bg-card border border-border rounded-2xl flex flex-col max-h-[88vh] overflow-hidden">
             {/* Fixed Header */}
-            <div className="flex items-center justify-between p-6 pb-4 border-b border-border shrink-0">
+            <div className="flex items-center justify-between p-6 pb-3 border-b border-border shrink-0">
               <h2 className="text-lg font-bold">
                 {selectedRecipientId ? 'Edit Alert Recipient' : 'Add New Alert Recipient'}
               </h2>
@@ -601,7 +601,7 @@ export default function AlertContacts() {
               </button>
             </div>
             {/* Scrollable Body */}
-            <div className="overflow-y-auto flex-1 p-6 space-y-4">
+            <div className="overflow-y-auto flex-1 p-6 space-y-4 min-h-0">
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Full Name *</label>
                 <input
