@@ -102,7 +102,7 @@ async def main() -> None:
     log.info(f"  Redis:         {config.redis_host}:{config.redis_port}")
     log.info(f"  Stream:        {CLIP_REQUEST_STREAM}")
     log.info(f"  Camera source: {config.camera_source or '(per-event)'}")
-    log.info(f"  Background buf:{config.enable_background_buffer}")
+    log.info(f"  Background buf:.env default={config.enable_background_buffer} (Redis may override)")
     log.info(f"  Post seconds:  {config.clip_post_seconds}")
     log.info(f"  Clip dir:      {config.clip_dir}")
     log.info(f"  Snapshot dir:  {config.snapshot_dir}")

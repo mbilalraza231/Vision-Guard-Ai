@@ -14,6 +14,7 @@ import logging
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from event_classification import start_ecs, stop_ecs, ECSConfig
+from event_classification.settings_runtime import apply_runtime_settings
 
 logging.basicConfig(
     level=os.getenv("ECS_LOG_LEVEL", "INFO"),
@@ -92,6 +93,17 @@ def main():
         config_kwargs["resume_from_latest"] = resume_from_latest.lower() in ("1", "true", "yes", "on")
 
     config = ECSConfig(**config_kwargs)
+
+    # Apply live settings from Redis/frontend BEFORE starting the service.
+    # This ensures user settings survive container restarts, not just .env defaults.
+    try:
+        changed, snapshot = apply_runtime_settings(config)
+        if changed:
+            logger.info(f"Startup: Applied Redis settings overrides: {snapshot}")
+        else:
+            logger.info(f"Startup: Redis settings match env defaults: {snapshot}")
+    except Exception as e:
+        logger.warning(f"Startup: Could not apply Redis settings (will use .env defaults): {e}")
 
     ecs_service = None
     
