@@ -12,7 +12,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useProfile } from '@/hooks/useProfile';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '@/hooks/useSettings';
-import { formatDateTime, formatTimeString } from '@/lib/utils';
+import { formatDateTime, formatTimeString, cn } from '@/lib/utils';
 import type { SystemMetrics, Incident } from '@/types';
 
 // Backend response types

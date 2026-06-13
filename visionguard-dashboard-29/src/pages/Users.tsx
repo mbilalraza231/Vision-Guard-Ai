@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
+import { cn } from '@/lib/utils';
 
 const roleDescriptions: Record<UserRole, string> = {
   admin: 'Full system access, user management, settings configuration',

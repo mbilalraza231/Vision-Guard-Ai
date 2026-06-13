@@ -33,7 +33,7 @@ import { apiService } from '@/services/api.service';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProfile } from '@/hooks/useProfile';
 import { useSettings } from '@/hooks/useSettings';
-import { formatDateTime, formatTimeString } from '@/lib/utils';
+import { formatDateTime, formatTimeString, cn } from '@/lib/utils';
 import type { Incident, IncidentFilters, Severity, IncidentStatus } from '@/types';
 import { useTranslation } from 'react-i18next';
 
