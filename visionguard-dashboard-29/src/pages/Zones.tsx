@@ -194,6 +194,7 @@ export default function Zones() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['zones'] });
       setEditingZone(null);
+      setModalOpen(false);
     },
   });
 
