@@ -698,7 +698,9 @@ class ClipRecorder:
             # If buffer is off, we can't go back in time, but we should still record the requested total duration
             total_duration = pre_seconds + post_seconds
             if total_duration <= 0:
-                total_duration = 4  # Fallback to 4 seconds if both are 0
+                total_duration = self.config.clip_pre_seconds + self.config.clip_post_seconds
+                if total_duration <= 0:
+                    total_duration = 10  # Ultimate safety fallback
             total_frames = max(1, int(total_duration * fps))
 
             ts_str = int(detection_ts)
