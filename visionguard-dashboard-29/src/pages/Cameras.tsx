@@ -215,7 +215,7 @@ export default function Cameras() {
               <Plus className="h-4 w-4" />
               {t('cameras.add')}
             </Button>
-            <DialogContent className="sm:max-w-[425px] max-h-[85vh] p-0 flex flex-col overflow-hidden">
+            <DialogContent className="sm:max-w-[480px] max-h-[88vh] p-0 flex flex-col overflow-hidden top-[50%] translate-y-[-50%]">
               <DialogHeader className="p-6 pb-3 border-b">
                 <DialogTitle>{editingId ? t('cameras.editCamera') : t('cameras.add')}</DialogTitle>
                 <DialogDescription>

@@ -589,9 +589,10 @@ export default function AlertContacts() {
 
       {/* Add Modal */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="relative w-full max-w-md bg-card border border-border rounded-2xl p-6">
-            <div className="flex items-center justify-between mb-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="relative w-full max-w-md bg-card border border-border rounded-2xl flex flex-col max-h-[90vh]">
+            {/* Fixed Header */}
+            <div className="flex items-center justify-between p-6 pb-4 border-b border-border shrink-0">
               <h2 className="text-lg font-bold">
                 {selectedRecipientId ? 'Edit Alert Recipient' : 'Add New Alert Recipient'}
               </h2>
@@ -599,8 +600,8 @@ export default function AlertContacts() {
                 <XCircle className="h-4 w-4" />
               </button>
             </div>
-            
-            <div className="space-y-4">
+            {/* Scrollable Body */}
+            <div className="overflow-y-auto flex-1 p-6 space-y-4">
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Full Name *</label>
                 <input
@@ -692,8 +693,8 @@ export default function AlertContacts() {
                 </div>
               </div>
             </div>
-
-            <div className="flex gap-3 pt-5">
+            {/* Fixed Footer */}
+            <div className="flex gap-3 p-6 pt-4 border-t border-border shrink-0">
               <Button type="button" variant="outline" className="flex-1" onClick={() => setIsAddModalOpen(false)}>Cancel</Button>
               <Button onClick={addRecipient} className="flex-1 gap-2">
                 <Plus className="h-4 w-4" /> Save Contact
