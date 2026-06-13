@@ -701,12 +701,12 @@ class ClipRecorder:
                 total_duration = self.config.clip_pre_seconds + self.config.clip_post_seconds
                 if total_duration <= 0:
                     total_duration = 10  # Ultimate safety fallback
-            total_frames = max(1, int(total_duration * fps))
 
             ts_str = int(detection_ts)
             filename = f"{event_type}_{event_id}_{ts_str}.mp4"
             out_path = os.path.join(self.config.clip_dir, filename)
 
+            # We use fps purely for the metadata of the MP4 file
             fourcc = cv2.VideoWriter_fourcc(*"mp4v")
             writer = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
 
@@ -716,13 +716,9 @@ class ClipRecorder:
             frames_written = 1
 
             start_time = time.time()
-            max_wait_time = total_duration * 1.5 + 10  # Generous timeout for laggy IP cameras
 
-            while frames_written < total_frames:
-                if time.time() - start_time > max_wait_time:
-                    logger.warning(f"Direct recording timed out after {max_wait_time}s. Captured {frames_written}/{total_frames} frames.")
-                    break
-                    
+            # Strictly Time-Based Loop
+            while (time.time() - start_time) < total_duration:
                 ok, frame = cap.read()
                 if not ok or frame is None:
                     break
@@ -731,12 +727,14 @@ class ClipRecorder:
                 writer.write(frame)
                 frames_written += 1
 
+            actual_duration = time.time() - start_time
             logger.info(
-                "Direct clip recording completed",
+                f"Direct time-based recording completed ({actual_duration:.1f}s)",
                 extra={
                     "event_id": event_id,
                     "frames_written": frames_written,
-                    "target_frames": total_frames,
+                    "target_sec": total_duration,
+                    "actual_sec": actual_duration,
                     "output": out_path,
                 },
             )
