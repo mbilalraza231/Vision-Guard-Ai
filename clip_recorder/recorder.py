@@ -178,8 +178,7 @@ class ClipRecorder:
         Proactively start ring buffers for all known cameras.
         This ensures history is available BEFORE the first incident happens.
         """
-        if not self.config.enable_background_buffer:
-            return
+        # Caller (main.py) already checks if buffer is enabled via Redis or .env
             
         logger.info(f"Initializing dashcam buffers for {len(camera_sources)} cameras")
         for source in camera_sources:
