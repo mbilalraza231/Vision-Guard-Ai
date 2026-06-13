@@ -352,6 +352,8 @@ class ClipRecorder:
         target_fps = sys_settings.get("clips", {}).get("fps", self.config.camera_fps)
         use_buffer = sys_settings.get("clips", {}).get("enableBackgroundBuffer", self.config.enable_background_buffer)
 
+        logger.info(f"Clip Settings Read: pre={pre_seconds}, post={post_seconds}, fps={target_fps}, buffer={use_buffer}")
+
         # Step 2 — Record latency-aware post-event clip (This takes 10-15 seconds)
         # Recording uses OpenCV/FFMPEG, must be in a thread
         clip_path, error_msg = await asyncio.to_thread(
@@ -596,9 +598,20 @@ class ClipRecorder:
                 buffer_snapshot = list(self.frame_buffers[camera_source])
                 
             if not buffer_snapshot:
-                logger.warning(f"Ring buffer is empty for {camera_source} — falling back to direct recording")
-                # We try direct recording, but if it's because the camera is offline, _record_clip_direct will tell us
-                return self._record_clip_direct(event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds, target_fps)
+                # Buffer was just started — give it a few seconds to warm up before giving up
+                logger.info(f"Ring buffer is empty for {camera_source} — waiting up to 3s for warm-up...")
+                warm_deadline = time.time() + 3.0
+                while time.time() < warm_deadline:
+                    time.sleep(0.5)
+                    with lock:
+                        buffer_snapshot = list(self.frame_buffers.get(camera_source, []))
+                    if buffer_snapshot:
+                        logger.info(f"Buffer warmed up with {len(buffer_snapshot)} frames for {camera_source}")
+                        break
+                
+                if not buffer_snapshot:
+                    logger.warning(f"Ring buffer still empty after warm-up for {camera_source} — falling back to direct recording")
+                    return self._record_clip_direct(event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds, target_fps)
                 
             # Define exact temporal window
             start_ts = detection_ts - pre_seconds
