@@ -706,15 +706,10 @@ class ClipRecorder:
             filename = f"{event_type}_{event_id}_{ts_str}.mp4"
             out_path = os.path.join(self.config.clip_dir, filename)
 
-            # We use fps purely for the metadata of the MP4 file
-            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-            writer = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
-
             if mask_faces:
                 first_frame = self._mask_faces(first_frame)
-            writer.write(first_frame)
-            frames_written = 1
-
+            
+            captured_frames = [first_frame]
             start_time = time.time()
 
             # Strictly Time-Based Loop
@@ -724,8 +719,21 @@ class ClipRecorder:
                     break
                 if mask_faces:
                     frame = self._mask_faces(frame)
+                captured_frames.append(frame)
+
+            actual_duration = time.time() - start_time
+            frames_written = len(captured_frames)
+
+            # Compute effective framerate so the output video duration exactly matches real-world time
+            effective_fps = max(1.0, frames_written / max(0.1, actual_duration))
+
+            # Initialize VideoWriter with the effective FPS
+            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+            writer = cv2.VideoWriter(out_path, fourcc, effective_fps, (width, height))
+
+            for frame in captured_frames:
                 writer.write(frame)
-                frames_written += 1
+            writer.release()
 
             actual_duration = time.time() - start_time
             logger.info(
