@@ -234,6 +234,22 @@ def main():
                     try:
                         # Load new camera list from cameras.json
                         new_cameras, new_global_config = load_cameras_from_json(config_path)
+
+                        # Apply live Redis settings again (so dashboard changes take effect on reload)
+                        try:
+                            cam_runtime = load_camera_runtime_settings()
+                            new_default_fps = cam_runtime["default_fps"]
+                            new_motion_thresh = cam_runtime["motion_threshold"]
+                            new_json_default = new_global_config.get("default_fps", 5)
+                            for cam in new_cameras:
+                                if cam.fps == new_json_default:
+                                    cam.fps = new_default_fps
+                                if cam.motion_threshold == 0.02:
+                                    cam.motion_threshold = new_motion_thresh
+                            logger.info(f"Applied live Redis settings during hot-reload: fps={new_default_fps}, motion={new_motion_thresh}")
+                        except Exception as e:
+                            logger.warning(f"Could not apply Redis settings during hot-reload: {e}")
+
                         should_run_ids = {cam.camera_id for cam in new_cameras}
                         
                         # 1. Stop any running cameras that are no longer enabled or removed
