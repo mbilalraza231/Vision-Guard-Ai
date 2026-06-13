@@ -526,6 +526,14 @@ class ClipRecorder:
 
             if best_path:
                 logger.info(f"Found best snapshot match for {event_id}: {os.path.basename(best_path)} (diff: {best_diff/1000:.2f}s)")
+                # Secure the snapshot from being deleted by the AI Worker's rolling buffer
+                try:
+                    import shutil
+                    safe_path = os.path.join(str(snapshot_dir), f"snapshot_secured_{event_id}.jpg")
+                    shutil.copy2(best_path, safe_path)
+                    best_path = safe_path
+                except Exception as e:
+                    logger.error(f"Could not secure snapshot copy: {e}")
             else:
                 logger.warning(f"No snapshot found within {tolerance_ms/1000}s for {event_id}")
 
