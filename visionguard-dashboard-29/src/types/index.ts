@@ -225,6 +225,7 @@ export interface CameraCaptureSettings {
 export interface ClipSettings {
   preSeconds: number;
   postSeconds: number;
+  fps: number;
   enableBackgroundBuffer: boolean;
 }
 

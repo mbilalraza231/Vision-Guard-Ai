@@ -1058,6 +1058,23 @@ export default function Settings() {
                             className="bg-background/50 font-mono text-sm w-40"
                           />
                         </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="clipFps">Target FPS</Label>
+                          <Input
+                            id="clipFps"
+                            type="number"
+                            min={1}
+                            max={60}
+                            value={settings.clips?.fps ?? 15}
+                            onChange={(e) =>
+                              updateClips({ fps: Math.max(1, Math.min(60, Number(e.target.value) || 15)) })
+                            }
+                            className="bg-background/50 font-mono text-sm w-40"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Frames per second for generated clips.
+                          </p>
+                        </div>
                         <div className="md:col-span-2 flex items-center justify-between rounded-lg bg-secondary/30 px-4 py-3">
                           <div className="space-y-0.5">
                             <Label htmlFor="clipBackgroundBuffer">Background Buffer</Label>

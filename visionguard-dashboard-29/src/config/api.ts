@@ -57,7 +57,7 @@ export const API_ENDPOINTS = {
     status: '/ecs/status',
   },
 
-  // Alerts endpoints
+
   alerts: {
     list: '/alerts',
     contacts: {

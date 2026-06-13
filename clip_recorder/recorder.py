@@ -349,12 +349,13 @@ class ClipRecorder:
         sys_settings = await self.get_system_settings()
         pre_seconds = sys_settings.get("clips", {}).get("preSeconds", self.config.clip_pre_seconds)
         post_seconds = sys_settings.get("clips", {}).get("postSeconds", self.config.clip_post_seconds)
+        target_fps = sys_settings.get("clips", {}).get("fps", self.config.camera_fps)
         use_buffer = sys_settings.get("clips", {}).get("enableBackgroundBuffer", self.config.enable_background_buffer)
 
         # Step 2 — Record latency-aware post-event clip (This takes 10-15 seconds)
         # Recording uses OpenCV/FFMPEG, must be in a thread
         clip_path, error_msg = await asyncio.to_thread(
-            self._record_clip, event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds, use_buffer
+            self._record_clip, event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds, use_buffer, target_fps
         )
         result["clip_local"] = clip_path
         
@@ -553,6 +554,7 @@ class ClipRecorder:
         pre_seconds: int = None,
         post_seconds: int = None,
         use_buffer: bool = None,
+        target_fps: int = None,
     ) -> Tuple[Optional[str], Optional[str]]:
         """
         Record a post-event video clip using the Latency-Aware Ring Buffer.
@@ -576,7 +578,7 @@ class ClipRecorder:
             if use_buffer is None: use_buffer = self.config.enable_background_buffer
 
             if not use_buffer:
-                return self._record_clip_direct(event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds)
+                return self._record_clip_direct(event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds, target_fps)
 
             # Ensure the background buffer is running for this camera
             self._start_camera_buffer(camera_source)
@@ -585,18 +587,18 @@ class ClipRecorder:
             lock = self.buffer_locks.get(camera_source)
             if lock is None:
                 logger.warning(f"No buffer lock found for {camera_source} — falling back to direct recording")
-                return self._record_clip_direct(event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds)
+                return self._record_clip_direct(event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds, target_fps)
 
             with lock:
                 if camera_source not in self.frame_buffers:
                     logger.warning(f"No frame buffer found for {camera_source} — falling back to direct recording")
-                    return self._record_clip_direct(event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds)
+                    return self._record_clip_direct(event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds, target_fps)
                 buffer_snapshot = list(self.frame_buffers[camera_source])
                 
             if not buffer_snapshot:
                 logger.warning(f"Ring buffer is empty for {camera_source} — falling back to direct recording")
                 # We try direct recording, but if it's because the camera is offline, _record_clip_direct will tell us
-                return self._record_clip_direct(event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds)
+                return self._record_clip_direct(event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds, target_fps)
                 
             # Define exact temporal window
             start_ts = detection_ts - pre_seconds
@@ -617,7 +619,7 @@ class ClipRecorder:
                 if len(buffer_snapshot) > 0:
                     return None, ClipError.TOO_OLD
                 
-                return self._record_clip_direct(event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds)
+                return self._record_clip_direct(event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds, target_fps)
 
             # Fetch settings to check if face masking is enabled
             mask_faces = False
@@ -656,7 +658,7 @@ class ClipRecorder:
         except Exception as e:
             logger.error(f"Error recording latency-aware clip: {e}", exc_info=True)
             logger.warning(f"Falling back to direct recording after exception for event {event_id}")
-            return self._record_clip_direct(event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds)
+            return self._record_clip_direct(event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds, target_fps)
 
     def _record_clip_direct(
         self,
@@ -666,6 +668,7 @@ class ClipRecorder:
         detection_ts: float,
         pre_seconds: int = None,
         post_seconds: int = None,
+        target_fps: int = None,
     ) -> Tuple[Optional[str], Optional[str]]:
         """Record a clip directly from source without persistent background buffer."""
         cap = None
@@ -692,15 +695,19 @@ class ClipRecorder:
 
             if pre_seconds is None: pre_seconds = self.config.clip_pre_seconds
             if post_seconds is None: post_seconds = self.config.clip_post_seconds
+            if target_fps is None: target_fps = self.config.camera_fps
 
             height, width = first_frame.shape[:2]
-            fps = self.config.camera_fps
+            
             # If buffer is off, we can't go back in time, but we should still record the requested total duration
             total_duration = pre_seconds + post_seconds
             if total_duration <= 0:
                 total_duration = self.config.clip_pre_seconds + self.config.clip_post_seconds
                 if total_duration <= 0:
                     total_duration = 10  # Ultimate safety fallback
+                    
+            # Frame-based recording target
+            total_frames = max(1, int(total_duration * target_fps))
 
             ts_str = int(detection_ts)
             filename = f"{event_type}_{event_id}_{ts_str}.mp4"
@@ -711,20 +718,27 @@ class ClipRecorder:
             
             captured_frames = [first_frame]
             start_time = time.time()
+            frames_written = 1
+            max_wait_time = total_duration * 1.5 + 15  # Generous safety timeout for laggy IP cameras
 
-            # Strictly Time-Based Loop
-            while (time.time() - start_time) < total_duration:
+            # Frame-Based Loop (with safety timeout)
+            while frames_written < total_frames:
+                if time.time() - start_time > max_wait_time:
+                    logger.warning(f"Direct recording timed out after {max_wait_time}s. Captured {frames_written}/{total_frames} frames.")
+                    break
+                    
                 ok, frame = cap.read()
                 if not ok or frame is None:
                     break
                 if mask_faces:
                     frame = self._mask_faces(frame)
                 captured_frames.append(frame)
+                frames_written += 1
 
             actual_duration = time.time() - start_time
-            frames_written = len(captured_frames)
 
-            # Compute effective framerate so the output video duration exactly matches real-world time
+            # Compute effective framerate so the output video duration still matches real-world time as best as possible
+            # But the primary driver for loop exit was reaching total_frames
             effective_fps = max(1.0, frames_written / max(0.1, actual_duration))
 
             # Initialize VideoWriter with the effective FPS
@@ -735,14 +749,14 @@ class ClipRecorder:
                 writer.write(frame)
             writer.release()
 
-            actual_duration = time.time() - start_time
             logger.info(
-                f"Direct time-based recording completed ({actual_duration:.1f}s)",
+                f"Direct frame-based recording completed (Target: {total_frames} frames, Captured: {frames_written} frames)",
                 extra={
                     "event_id": event_id,
                     "frames_written": frames_written,
+                    "target_frames": total_frames,
                     "target_sec": total_duration,
-                    "actual_sec": actual_duration,
+                    "actual_sec": round(actual_duration, 1),
                     "output": out_path,
                 },
             )
