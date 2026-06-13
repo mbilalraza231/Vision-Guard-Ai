@@ -590,6 +590,16 @@ class ClipRecorder:
                 logger.warning(f"No buffer lock found for {camera_source} — falling back to direct recording")
                 return self._record_clip_direct(event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds, target_fps)
 
+            # IMPORTANT: Wait for post_seconds to actually pass!
+            # The event happened at `detection_ts`. The background buffer needs time 
+            # to actually record the future frames into the buffer.
+            target_time = detection_ts + post_seconds
+            now = time.time()
+            if now < target_time:
+                wait_time = target_time - now
+                logger.info(f"Waiting {wait_time:.1f}s for post-event frames to enter the background buffer...")
+                time.sleep(wait_time)
+
             with lock:
                 if camera_source not in self.frame_buffers:
                     logger.warning(f"No frame buffer found for {camera_source} — falling back to direct recording")
