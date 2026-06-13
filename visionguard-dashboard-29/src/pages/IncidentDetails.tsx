@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Header } from '@/components/layout/Header';
@@ -49,6 +49,7 @@ interface EvidenceResponse {
 export default function IncidentDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { data: settings } = useSettings();
   const timezone = settings?.general?.timezone || 'UTC';
   
@@ -156,6 +157,14 @@ export default function IncidentDetails() {
     queryFn: () => apiService.getData<EvidenceResponse>(API_ENDPOINTS.incidents.evidence(id!)),
     enabled: !!id && !!incident,
   });
+
+  useEffect(() => {
+    if (searchParams.get('action') === 'acknowledge' && incident && incident.status === 'active' && !incident.acknowledgedBy) {
+      acknowledgeMutation.mutate();
+      searchParams.delete('action');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, incident, acknowledgeMutation, setSearchParams]);
 
   if (incidentLoading) {
     return (

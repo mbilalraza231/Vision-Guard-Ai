@@ -76,6 +76,7 @@ class AlertWorker:
         """Format the alert message for SMS/WhatsApp."""
         severity = event.get('severity', 'UNKNOWN').upper()
         etype = event.get('event_type', 'Detection').replace('_', ' ').title()
+        event_id = event.get('event_id', '')
         
         ts_val = event.get('timestamp')
         try:
@@ -90,13 +91,19 @@ class AlertWorker:
             else:
                 cam_id = "****"
         
+        dashboard_url = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
+        
         return (
             f"🚨 {severity} ALERT: {etype} 🚨\n"
             f"Camera: {cam_id}\n"
             f"Time: {ts_str}\n"
             f"Confidence: {float(event.get('confidence', 0))*100:.1f}%\n"
             f"📸 Snapshot: {snap_url}\n"
-            f"🎬 Clip: {video_url}"
+            f"🎬 Clip: {video_url}\n\n"
+            f"✅ [ Acknowledge ]:\n"
+            f"👉 {dashboard_url}/incidents/{event_id}?action=acknowledge\n\n"
+            f"🔍 [ View Details ]:\n"
+            f"👉 {dashboard_url}/incidents/{event_id}"
         )
 
     def get_predictable_video_url(self, event_id: str, event_type: str) -> str:
@@ -165,6 +172,7 @@ class AlertWorker:
             if email_enabled and contact.get('email') and contact.get('email_alert'):
                 color = "#ff4b2b" if severity == "critical" else "#ffa502" if severity == "high" else "#2ed573"
                 subject = f"⚠️ VisionGuard: {severity.upper()} {event_type.replace('_', ' ').title()}"
+                dashboard_url = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
                 body = f"""
                 <div style="background-color: #0f172a; color: #f8fafc; font-family: sans-serif; padding: 40px 20px; max-width: 600px; margin: auto; border-radius: 16px;">
                     <div style="text-align: center; margin-bottom: 30px;">
@@ -180,14 +188,15 @@ class AlertWorker:
                     </div>
 
                     <div style="margin-bottom: 25px;">
-                        <a href="{snap_url}">
+                        <a href="{dashboard_url}/incidents/{event_id}">
                             <img src="{snap_url}" width="100%" style="border-radius: 12px; border: 1px solid #334155; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);" />
                         </a>
                     </div>
 
-                    <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
-                        <a href="{video_url}" style="background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">▶ Watch Video Clip</a>
-                        <a href="{snap_url}" style="background-color: transparent; color: #94a3b8; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; border: 1px solid #334155; display: inline-block; margin-left: 10px;">Full Snapshot</a>
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 20px;">
+                        <a href="{dashboard_url}/incidents/{event_id}?action=acknowledge" style="background-color: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">✅ Acknowledge</a>
+                        <a href="{dashboard_url}/incidents/{event_id}" style="background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">🔍 View Details</a>
+                        <a href="{video_url}" style="background-color: transparent; color: #94a3b8; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; border: 1px solid #334155; display: inline-block;">▶ Watch Clip</a>
                     </div>
 
                     <div style="margin-top: 40px; text-align: center; border-top: 1px solid #334155; padding-top: 20px;">
