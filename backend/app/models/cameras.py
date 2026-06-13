@@ -41,6 +41,10 @@ class CameraRegisterRequest(BaseModel):
         ge=0.0, le=1.0,
         description="Motion detection threshold"
     )
+    zone_id: Optional[str] = Field(
+        default=None,
+        description="Zone this camera belongs to"
+    )
 
     @field_validator("rtsp_url")
     @classmethod

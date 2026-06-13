@@ -68,6 +68,14 @@ export const API_ENDPOINTS = {
     },
   },
 
+  // Zones endpoints
+  zones: {
+    list: '/api/v1/zones',
+    create: '/api/v1/zones',
+    update: (id: string) => `/api/v1/zones/${id}`,
+    delete: (id: string) => `/api/v1/zones/${id}`,
+  },
+
   // Detection images endpoints
   detections: {
     latest: '/detections/latest',

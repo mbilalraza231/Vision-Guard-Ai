@@ -80,11 +80,32 @@ export interface Zone {
   recentActivity: number;
 }
 
+// Zone from the backend API
+export interface ZoneApiResponse {
+  id: string;
+  name: string;
+  active_hours: string;
+  created_at: number;
+}
+
 export interface DetectionPriority {
   fire: Severity;
   weapon: Severity;
   fall: Severity;
-  intrusion: Severity;
+}
+
+// Alert Contact Types
+export interface AlertContact {
+  id: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  whatsapp: boolean;
+  email_alert: boolean;
+  min_severity: string;
+  is_active: boolean;
+  zone_ids: string; // JSON array string e.g. '["zone-id-1"]'
+  created_at: number;
 }
 
 // Analytics Types

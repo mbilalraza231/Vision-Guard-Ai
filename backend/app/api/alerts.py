@@ -31,12 +31,12 @@ async def create_contact(contact: AlertContactCreate):
     try:
         await db.execute(
             """
-            INSERT INTO alert_contacts (id, name, phone, email, whatsapp, email_alert, min_severity, is_active, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            INSERT INTO alert_contacts (id, name, phone, email, whatsapp, email_alert, min_severity, is_active, zone_ids, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             """,
             contact_id, contact.name, contact.phone, contact.email, 
             contact.whatsapp, contact.email_alert, contact.min_severity, 
-            contact.is_active, now
+            contact.is_active, contact.zone_ids, now
         )
         return AlertContact(id=contact_id, created_at=now, **contact.model_dump())
     except Exception as e:

@@ -69,10 +69,19 @@ CREATE TABLE IF NOT EXISTS alert_contacts (
     email_alert BOOLEAN DEFAULT TRUE,
     min_severity TEXT DEFAULT 'medium',
     is_active BOOLEAN DEFAULT TRUE,
+    zone_ids TEXT DEFAULT '[]',          -- JSON array of zone IDs
     created_at DOUBLE PRECISION NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_contacts_active ON alert_contacts(is_active);
+
+-- Zones Table
+CREATE TABLE IF NOT EXISTS zones (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    active_hours TEXT DEFAULT '24/7',
+    created_at DOUBLE PRECISION NOT NULL
+);
 
 -- Cameras Table
 CREATE TABLE IF NOT EXISTS cameras (
@@ -83,6 +92,7 @@ CREATE TABLE IF NOT EXISTS cameras (
     motion_threshold DOUBLE PRECISION NOT NULL DEFAULT 0.02,
     priority TEXT NOT NULL DEFAULT 'medium',
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    zone_id TEXT,                        -- FK to zones
     created_at DOUBLE PRECISION NOT NULL
 );
 

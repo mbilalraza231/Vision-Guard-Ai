@@ -49,7 +49,7 @@ async def list_cameras(
     cameras_config = []
     try:
         from ..core.database import db
-        cameras_config = await db.fetch_all("SELECT id, name, source, fps, priority, enabled FROM cameras ORDER BY id ASC")
+        cameras_config = await db.fetch_all("SELECT id, name, source, fps, priority, enabled, zone_id FROM cameras ORDER BY id ASC")
     except Exception as e:
         logger.error(f"Failed to fetch cameras from database: {e}")
         # Fallback to loading from cameras.json
@@ -141,12 +141,12 @@ async def register_camera(
         import time
         await db.execute(
             """
-            INSERT INTO cameras (id, name, source, fps, motion_threshold, priority, enabled, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            INSERT INTO cameras (id, name, source, fps, motion_threshold, priority, enabled, zone_id, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             ON CONFLICT (id) DO UPDATE 
             SET name = EXCLUDED.name, source = EXCLUDED.source, fps = EXCLUDED.fps, 
                 motion_threshold = EXCLUDED.motion_threshold, priority = EXCLUDED.priority, 
-                enabled = EXCLUDED.enabled
+                enabled = EXCLUDED.enabled, zone_id = EXCLUDED.zone_id
             """,
             request.camera_id,
             request.name or request.camera_id,
@@ -155,6 +155,7 @@ async def register_camera(
             request.motion_threshold or 0.02,
             request.priority or "medium",
             request.enabled if request.enabled is not None else True,
+            request.zone_id,
             time.time()
         )
         

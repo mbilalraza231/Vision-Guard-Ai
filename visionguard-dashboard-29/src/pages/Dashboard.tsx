@@ -64,6 +64,7 @@ interface BackendEvent {
   processing_delay?: number;
   snapshot_url?: string | null;
   clip_url?: string | null;
+  status?: string;
 }
 
 interface EventsListResponse {
@@ -86,7 +87,7 @@ function adaptEventToIncident(event: BackendEvent, timezone: string): Incident {
     },
     type: event.event_type as Incident['type'],
     severity: event.severity as Incident['severity'],
-    status: 'active',
+    status: (event.status as Incident['status']) || 'active',
     time: formatTimeString(event.start_ts * 1000, timezone),
     incidentTime: formatDateTime(event.start_ts * 1000, timezone),
     reportingTime: formatDateTime(event.created_at * 1000, timezone),
