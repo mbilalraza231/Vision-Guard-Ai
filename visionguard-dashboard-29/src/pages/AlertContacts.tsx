@@ -20,13 +20,14 @@ import {
 } from '@/components/ui/select';
 import {
   Bell, Mail, Phone, Plus, Trash2, Search, UserCheck, Shield, History,
-  ExternalLink, CheckCircle2, Clock, XCircle, AlertCircle, Filter, Edit2, Download
+  ExternalLink, CheckCircle2, Clock, XCircle, AlertCircle, Filter, Edit2, Download, MapPin
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { apiService } from '@/services/api.service';
 import { API_ENDPOINTS } from '@/config/api';
 import { useSettings } from '@/hooks/useSettings';
 import { cn, formatDateTime } from '@/lib/utils';
+import type { ZoneApiResponse } from '@/types';
 
 const STORAGE_KEY = 'vg:dashboard:settings';
 
@@ -48,7 +49,8 @@ export default function AlertContacts() {
     email: '',
     whatsapp: true,
     emailAlert: true,
-    minSeverity: 'medium' as 'critical' | 'high' | 'medium' | 'low'
+    minSeverity: 'medium' as 'critical' | 'high' | 'medium' | 'low',
+    zoneIds: [] as string[],
   });
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -57,6 +59,13 @@ export default function AlertContacts() {
     queryKey: ['alert-contacts'],
     queryFn: () => apiService.getData<any>(API_ENDPOINTS.alerts.contacts.list),
   });
+
+  // Fetch zones for multi-select
+  const { data: zonesData } = useQuery({
+    queryKey: ['zones'],
+    queryFn: () => apiService.getData<{ zones: ZoneApiResponse[] }>(API_ENDPOINTS.zones.list),
+  });
+  const zones = zonesData?.zones ?? [];
 
   const recipients = contactsResponse?.contacts ?? [];
 
@@ -78,7 +87,8 @@ export default function AlertContacts() {
           email: newRecipient.email,
           whatsapp: newRecipient.whatsapp,
           emailAlert: newRecipient.emailAlert,
-          minSeverity: newRecipient.minSeverity
+          minSeverity: newRecipient.minSeverity,
+          zone_ids: JSON.stringify(newRecipient.zoneIds),
         });
       } else {
         await apiService.postData(API_ENDPOINTS.alerts.contacts.create, {
@@ -88,11 +98,12 @@ export default function AlertContacts() {
           whatsapp: newRecipient.whatsapp,
           email_alert: newRecipient.emailAlert,
           min_severity: newRecipient.minSeverity,
+          zone_ids: JSON.stringify(newRecipient.zoneIds),
           is_active: true
         });
       }
       refetchContacts();
-      setNewRecipient({ name: '', phone: '', email: '', whatsapp: true, emailAlert: true, minSeverity: 'medium' });
+      setNewRecipient({ name: '', phone: '', email: '', whatsapp: true, emailAlert: true, minSeverity: 'medium', zoneIds: [] });
       setSelectedRecipientId(null);
       setIsAddModalOpen(false);
     } catch (e: any) {
@@ -271,7 +282,8 @@ export default function AlertContacts() {
                             email: r.email || '',
                             whatsapp: r.whatsapp,
                             emailAlert: r.email_alert,
-                            minSeverity: r.min_severity as any
+                            minSeverity: r.min_severity as any,
+                            zoneIds: (() => { try { return JSON.parse(r.zone_ids || '[]'); } catch { return []; } })(),
                           });
                           setSelectedRecipientId(r.id);
                           setIsAddModalOpen(true);
@@ -634,6 +646,34 @@ export default function AlertContacts() {
                   <option value="critical">Critical Only</option>
                 </select>
               </div>
+
+              {zones.length > 0 && (
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1 block">
+                    <MapPin className="h-3 w-3" /> Alert Zones (select all that apply)
+                  </label>
+                  <div className="grid grid-cols-1 gap-1 max-h-32 overflow-y-auto rounded-lg border border-border bg-secondary/30 p-2">
+                    {zones.map((zone) => (
+                      <label key={zone.id} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-secondary cursor-pointer text-sm">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-border text-primary"
+                          checked={newRecipient.zoneIds.includes(zone.id)}
+                          onChange={(e) => {
+                            setNewRecipient(f => ({
+                              ...f,
+                              zoneIds: e.target.checked
+                                ? [...f.zoneIds, zone.id]
+                                : f.zoneIds.filter(id => id !== zone.id)
+                            }));
+                          }}
+                        />
+                        {zone.name}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="flex items-center justify-around rounded-lg bg-secondary/50 p-3 border border-border mt-2">
                 <div className="flex flex-col items-center gap-1">

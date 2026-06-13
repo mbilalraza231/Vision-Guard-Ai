@@ -1,13 +1,13 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Play, Square, Loader2, RefreshCw, Trash2, Pencil } from 'lucide-react';
+import { Plus, Play, Square, Loader2, RefreshCw, Trash2, Pencil, MapPin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { API_ENDPOINTS } from '@/config/api';
 import { apiService } from '@/services/api.service';
-import type { Camera } from '@/types';
+import type { Camera, ZoneApiResponse } from '@/types';
 import {
   Dialog,
   DialogContent,
@@ -68,11 +68,19 @@ export default function Cameras() {
   const [priority, setPriority] = useState('medium');
   const [motionThreshold, setMotionThreshold] = useState(0.02);
   const [enabled, setEnabled] = useState(false); // Default to false (stopped on add)
+  const [zoneId, setZoneId] = useState<string>('');
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['cameras-list'],
     queryFn: () => apiService.getData<BackendCamera[]>(API_ENDPOINTS.cameras.list),
   });
+
+  // Fetch zones for zone selection dropdown
+  const { data: zonesData } = useQuery({
+    queryKey: ['zones'],
+    queryFn: () => apiService.getData<{ zones: ZoneApiResponse[] }>(API_ENDPOINTS.zones.list),
+  });
+  const zones = zonesData?.zones ?? [];
 
   const registerMutation = useMutation({
     mutationFn: (newCam: {
@@ -83,6 +91,7 @@ export default function Cameras() {
       motion_threshold?: number;
       priority?: string;
       enabled?: boolean;
+      zone_id?: string | null;
     }) => apiService.postData(API_ENDPOINTS.cameras.register, newCam),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cameras-list'] });
@@ -103,6 +112,7 @@ export default function Cameras() {
       setPriority('medium');
       setMotionThreshold(0.02);
       setEnabled(false);
+      setZoneId('');
     },
     onError: (err: any) => {
       toast.error(err.message || 'Failed to register camera');
@@ -198,6 +208,7 @@ export default function Cameras() {
                 setPriority('medium');
                 setMotionThreshold(0.02);
                 setEnabled(false); // Default false for new camera
+                setZoneId('');
                 setIsOpen(true);
               }}
             >
@@ -222,6 +233,7 @@ export default function Cameras() {
                     motion_threshold: motionThreshold,
                     priority,
                     enabled,
+                    zone_id: zoneId || null,
                   });
                 }}
                 className="flex-1 flex flex-col min-h-0 overflow-hidden"
@@ -310,6 +322,24 @@ export default function Cameras() {
                     />
                     <Label htmlFor="enabled">Enable camera stream</Label>
                   </div>
+
+                  {/* Zone Selection */}
+                  <div className="space-y-2">
+                    <Label htmlFor="zone" className="flex items-center gap-1">
+                      <MapPin className="h-3 w-3" /> Zone
+                    </Label>
+                    <select
+                      id="zone"
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      value={zoneId}
+                      onChange={(e) => setZoneId(e.target.value)}
+                    >
+                      <option value="">— No Zone —</option>
+                      {zones.map((z) => (
+                        <option key={z.id} value={z.id}>{z.name}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
                 
                 {/* Fixed Footer */}
@@ -362,6 +392,7 @@ export default function Cameras() {
                   setPriority(cam.priority);
                   setMotionThreshold(cam.motionThreshold);
                   setEnabled(cam.enabled);
+                  setZoneId((cam as any).zone_id || '');
                   setIsOpen(true);
                 }}
               />
