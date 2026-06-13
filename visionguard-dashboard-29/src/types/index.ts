@@ -49,6 +49,11 @@ export interface Incident {
   processingDelay?: number;
   createdAt: string;
   updatedAt: string;
+  acknowledgedBy?: string | null;
+  acknowledgedAt?: string | null;
+  resolvedBy?: string | null;
+  resolvedAt?: string | null;
+  resolution?: string | null;
 }
 
 export type IncidentType = 'fire' | 'weapon' | 'fall' | 'intrusion' | 'vandalism' | 'loitering';
