@@ -18,6 +18,7 @@ import redis
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from camera_capture import start_cameras, stop_cameras, CaptureConfig, CameraConfig
+from camera_capture.settings_runtime import load_camera_runtime_settings
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -121,7 +122,30 @@ def main():
     
     logger.info(f"Loading camera config from: {config_path}")
     cameras, global_config = load_cameras_from_json(config_path)
-    
+
+    # Load live settings from Redis (Dashboard > Camera Rules) and apply them.
+    # This ensures the user's settings survive container restarts.
+    try:
+        cam_runtime = load_camera_runtime_settings()
+        default_fps = cam_runtime["default_fps"]
+        motion_threshold = cam_runtime["motion_threshold"]
+        global_fps_target = cam_runtime["global_fps_target"]
+        logger.info(
+            f"Camera runtime settings (from Redis): "
+            f"default_fps={default_fps}, motion_threshold={motion_threshold}, "
+            f"global_fps_target={global_fps_target}"
+        )
+        # Apply to any camera that is using the generic cameras.json default (fps=5)
+        # Per-camera overrides in cameras.json are respected and NOT changed.
+        json_default_fps = global_config.get("default_fps", 5)
+        for cam in cameras:
+            if cam.fps == json_default_fps:
+                cam.fps = default_fps
+            if cam.motion_threshold == 0.02:  # Only override if still at factory default
+                cam.motion_threshold = motion_threshold
+    except Exception as e:
+        logger.warning(f"Could not apply Redis camera settings, using cameras.json values: {e}")
+
     if not cameras:
         logger.warning("No enabled cameras configured initially.")
     
