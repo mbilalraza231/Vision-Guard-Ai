@@ -53,6 +53,12 @@ interface BackendEvent {
   created_at: number;
   snapshot_url?: string | null;
   clip_url?: string | null;
+  status?: string;
+  acknowledged_by?: string | null;
+  acknowledged_at?: number | null;
+  resolved_by?: string | null;
+  resolved_at?: number | null;
+  resolution?: string | null;
 }
 
 interface EventsListResponse {
@@ -98,7 +104,12 @@ function adaptEventToIncident(event: BackendEvent, timezone: string): Incident &
     },
     type: event.event_type as Incident['type'],
     severity: event.severity as Incident['severity'],
-    status: 'active',
+    status: (event.status || 'active') as Incident['status'],
+    acknowledgedBy: event.acknowledged_by,
+    acknowledgedAt: event.acknowledged_at,
+    resolvedBy: event.resolved_by,
+    resolvedAt: event.resolved_at,
+    resolution: event.resolution,
     incidentTime: formatDateTime(event.start_ts * 1000, timezone),
     reportingTime: formatDateTime(event.created_at * 1000, timezone),
     createdAt: new Date(event.start_ts * 1000).toISOString(),

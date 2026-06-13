@@ -95,6 +95,7 @@ export default function IncidentDetails() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['incident', id] });
       queryClient.invalidateQueries({ queryKey: ['incident-notes', id] });
+      queryClient.invalidateQueries({ queryKey: ['incidents'] });
     },
   });
 
@@ -112,6 +113,7 @@ export default function IncidentDetails() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['incident', id] });
       queryClient.invalidateQueries({ queryKey: ['incident-notes', id] });
+      queryClient.invalidateQueries({ queryKey: ['incidents'] });
     },
   });
 
