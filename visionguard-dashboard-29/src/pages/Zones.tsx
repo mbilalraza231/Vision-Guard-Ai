@@ -51,16 +51,18 @@ function ZoneModal({
 }: {
   zone?: ZoneApiResponse | null;
   onClose: () => void;
-  onSave: (data: { name: string; active_hours: string }) => void;
+  onSave: (data: { name: string; active_hours: string; max_cameras: number; max_alert_recipients: number }) => void;
   isSaving: boolean;
 }) {
   const [name, setName] = useState(zone?.name ?? '');
   const [activeHours, setActiveHours] = useState(zone?.active_hours ?? '24/7');
+  const [maxCameras, setMaxCameras] = useState(zone?.max_cameras ?? 0);
+  const [maxAlertRecipients, setMaxAlertRecipients] = useState(zone?.max_alert_recipients ?? 0);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    onSave({ name: name.trim(), active_hours: activeHours.trim() || '24/7' });
+    onSave({ name: name.trim(), active_hours: activeHours.trim() || '24/7', max_cameras: maxCameras, max_alert_recipients: maxAlertRecipients });
   };
 
   return (
@@ -98,14 +100,45 @@ function ZoneModal({
               <option value="8AM - 8PM">8AM - 8PM</option>
               <option value="10PM - 6AM">10PM - 6AM (Night Only)</option>
               <option value="Weekdays Only">Weekdays Only</option>
+              <option value="Weekends Only">Weekends Only</option>
             </select>
           </div>
-          <div className="flex gap-3 pt-2">
-            <Button type="button" variant="outline" className="flex-1" onClick={onClose} disabled={isSaving}>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1" htmlFor="max-cameras">
+                Max Cameras
+              </label>
+              <input
+                id="max-cameras"
+                type="number"
+                min="0"
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder="0 for unlimited"
+                value={maxCameras}
+                onChange={(e) => setMaxCameras(parseInt(e.target.value) || 0)}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1" htmlFor="max-recipients">
+                Max Recipients
+              </label>
+              <input
+                id="max-recipients"
+                type="number"
+                min="0"
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                placeholder="0 for unlimited"
+                value={maxAlertRecipients}
+                onChange={(e) => setMaxAlertRecipients(parseInt(e.target.value) || 0)}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 pt-4 border-t border-border/50">
+            <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" className="flex-1" disabled={isSaving || !name.trim()}>
-              {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+            <Button type="submit" disabled={isSaving} className="gap-2">
+              {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
               {zone ? 'Save Changes' : 'Create Zone'}
             </Button>
           </div>
@@ -146,7 +179,7 @@ export default function Zones() {
 
   // Create zone
   const createMutation = useMutation({
-    mutationFn: (data: { name: string; active_hours: string }) =>
+    mutationFn: (data: { name: string; active_hours: string; max_cameras: number; max_alert_recipients: number }) =>
       apiService.postData(API_ENDPOINTS.zones.create, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['zones'] });
@@ -156,7 +189,7 @@ export default function Zones() {
 
   // Update zone
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { name: string; active_hours: string } }) =>
+    mutationFn: ({ id, data }: { id: string; data: { name: string; active_hours: string; max_cameras: number; max_alert_recipients: number } }) =>
       apiService.putData(API_ENDPOINTS.zones.update(id), data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['zones'] });
@@ -210,7 +243,7 @@ export default function Zones() {
     ];
   };
 
-  const handleSave = (data: { name: string; active_hours: string }) => {
+  const handleSave = (data: { name: string; active_hours: string; max_cameras: number; max_alert_recipients: number }) => {
     if (editingZone) {
       updateMutation.mutate({ id: editingZone.id, data });
     } else {
@@ -326,13 +359,17 @@ export default function Zones() {
                           <span className="text-muted-foreground flex items-center gap-1">
                             <Camera className="h-3 w-3" /> Cameras:
                           </span>
-                          <span className="font-medium">{cameraCount}</span>
+                          <span className="font-medium">
+                            {cameraCount} {zone.max_cameras > 0 ? `/ ${zone.max_cameras}` : '(No Limit)'}
+                          </span>
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-muted-foreground flex items-center gap-1">
                             <Users className="h-3 w-3" /> Alert Recipients:
                           </span>
-                          <span className="font-medium">{recipientCount} users</span>
+                          <span className="font-medium">
+                            {recipientCount} users {zone.max_alert_recipients > 0 ? `/ ${zone.max_alert_recipients}` : '(No Limit)'}
+                          </span>
                         </div>
                       </div>
 

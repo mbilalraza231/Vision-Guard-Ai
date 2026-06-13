@@ -85,6 +85,8 @@ export interface ZoneApiResponse {
   id: string;
   name: string;
   active_hours: string;
+  max_cameras: number;
+  max_alert_recipients: number;
   created_at: number;
 }
 

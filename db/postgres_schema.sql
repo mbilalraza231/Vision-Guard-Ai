@@ -77,10 +77,12 @@ CREATE INDEX IF NOT EXISTS idx_contacts_active ON alert_contacts(is_active);
 
 -- Zones Table
 CREATE TABLE IF NOT EXISTS zones (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    active_hours TEXT DEFAULT '24/7',
-    created_at DOUBLE PRECISION NOT NULL
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL UNIQUE,
+    active_hours VARCHAR(100) DEFAULT '24/7',
+    max_cameras INTEGER DEFAULT 0,
+    max_alert_recipients INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Cameras Table

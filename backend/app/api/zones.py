@@ -27,10 +27,10 @@ async def create_zone(zone: ZoneCreate):
     try:
         await db.execute(
             """
-            INSERT INTO zones (id, name, active_hours, created_at)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO zones (id, name, active_hours, max_cameras, max_alert_recipients, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6)
             """,
-            zone_id, zone.name, zone.active_hours, now
+            zone_id, zone.name, zone.active_hours, zone.max_cameras, zone.max_alert_recipients, now
         )
         return ZoneResponse(id=zone_id, created_at=now, **zone.model_dump())
     except Exception as e:
