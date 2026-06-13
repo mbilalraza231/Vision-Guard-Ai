@@ -121,6 +121,7 @@ async def list_cameras(
             "motion_threshold": cam.get("motion_threshold", 0.02),
             "status": status,
             "pid": pid,
+            "zone_id": cam.get("zone_id"),
         })
 
     return result

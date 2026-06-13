@@ -33,10 +33,11 @@ interface BackendCamera {
   motion_threshold: number;
   status: 'running' | 'stopped' | 'unknown' | 'online' | 'offline';
   pid: number | null;
+  zone_id?: string | null;
 }
 
 // Map backend camera to frontend Camera type
-function adaptCamera(cam: BackendCamera): Camera & { enabled: boolean; source: string; priority: string; motionThreshold: number; fps: number } {
+function adaptCamera(cam: BackendCamera): Camera & { enabled: boolean; source: string; priority: string; motionThreshold: number; fps: number; zone_id?: string | null } {
   const isOnline = cam.enabled && (cam.status === 'running' || cam.status === 'online');
   return {
     id: cam.id,
@@ -51,6 +52,7 @@ function adaptCamera(cam: BackendCamera): Camera & { enabled: boolean; source: s
     priority: cam.priority,
     motionThreshold: cam.motion_threshold,
     fps: cam.fps,
+    zone_id: cam.zone_id,
   };
 }
 
@@ -392,7 +394,7 @@ export default function Cameras() {
                   setPriority(cam.priority);
                   setMotionThreshold(cam.motionThreshold);
                   setEnabled(cam.enabled);
-                  setZoneId((cam as any).zone_id || '');
+                  setZoneId(cam.zone_id || '');
                   setIsOpen(true);
                 }}
               />
