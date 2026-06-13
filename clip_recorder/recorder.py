@@ -339,6 +339,10 @@ class ClipRecorder:
                 await self._write_evidence(event_id, result)
             except Exception as e:
                 logger.warning(f"Could not write snapshot evidence yet for {event_id}: {e} — will retry with clip")
+                
+            # Start Cloudinary upload of snapshot immediately, don't wait for clip!
+            if self.config.cloudinary_configured:
+                asyncio.create_task(self._upload_single_snapshot_task(event_id, event_type, snapshot_path, result))
         else:
             logger.warning(f"No matching snapshot found for event {event_id}")
 
@@ -385,34 +389,31 @@ class ClipRecorder:
 
         return result
 
+    async def _upload_single_snapshot_task(self, event_id: str, event_type: str, snapshot_path: str, result: Dict[str, Any]) -> None:
+        """Background task to upload the snapshot to Cloudinary immediately."""
+        try:
+            if os.path.exists(snapshot_path):
+                logger.info(f"Uploading snapshot to Cloudinary IMMEDIATELY: {snapshot_path}")
+                snapshot_url = await asyncio.to_thread(self.uploader.upload_snapshot, snapshot_path, event_id, event_type)
+                if snapshot_url:
+                    result["snapshot_url"] = snapshot_url
+                    await self._write_evidence(event_id, result)  # Update DB with cloud URL
+                else:
+                    logger.warning(f"Cloudinary snapshot upload failed for {event_id}")
+            else:
+                logger.warning(f"Snapshot file MISSING before immediate upload: {snapshot_path}")
+        except Exception as e:
+            logger.error(f"Error in immediate snapshot upload task for {event_id}: {e}")
+
     async def _upload_and_update_task(
         self,
         event_id: str,
         event_type: str,
         result: Dict[str, Any],
     ) -> None:
-        """Background task to upload to Cloudinary and update database records."""
+        """Background task to upload the clip to Cloudinary and update database records."""
         try:
-            snapshot_path = result.get("snapshot_local")
             clip_path = result.get("clip_local")
-            
-            # 1. Upload Snapshot
-            if snapshot_path:
-                if os.path.exists(snapshot_path):
-                    logger.info(f"Uploading snapshot to Cloudinary: {snapshot_path}")
-                    # Cloudinary upload is blocking I/O
-                    snapshot_url = await asyncio.to_thread(self.uploader.upload_snapshot, snapshot_path, event_id, event_type)
-                    if snapshot_url:
-                        result["snapshot_url"] = snapshot_url
-                        await self._write_evidence(event_id, result)  # Update DB with cloud URL
-                    else:
-                        logger.warning(f"Cloudinary snapshot upload failed for {event_id}")
-                else:
-                    logger.warning(f"Snapshot file MISSING before upload: {snapshot_path}")
-            else:
-                logger.info(f"No local snapshot path provided for event {event_id}")
-
-            # 2. Upload Clip
             if clip_path and os.path.exists(clip_path):
                 # Cloudinary upload is blocking I/O
                 clip_url = await asyncio.to_thread(self.uploader.upload_clip, clip_path, event_id, event_type)
