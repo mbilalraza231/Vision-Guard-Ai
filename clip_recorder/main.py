@@ -159,6 +159,36 @@ async def main() -> None:
         except Exception as e:
             log.warning(f"Failed to auto-start dashcam buffers: {e}")
 
+    # Track current buffer state to detect toggles
+    current_buffer_state = enable_buffer
+    
+    # --- Pub/Sub Settings Listener ---
+    async def listen_for_settings_updates():
+        nonlocal current_buffer_state
+        pubsub = redis_client.pubsub()
+        await pubsub.subscribe("vg:settings:updates")
+        try:
+            async for message in pubsub.listen():
+                if message["type"] == "message":
+                    try:
+                        import json
+                        data = json.loads(message["data"])
+                        new_state = data.get("clips", {}).get("enableBackgroundBuffer", current_buffer_state)
+                        if new_state != current_buffer_state:
+                            log.info(f"Background Buffer toggled in Dashboard: {current_buffer_state} -> {new_state}")
+                            current_buffer_state = new_state
+                            if new_state:
+                                sources = await redis_client.hvals("vg:camera:sources")
+                                recorder.start_dashcam_buffers(sources)
+                            else:
+                                recorder.stop_dashcam_buffers()
+                    except Exception as e:
+                        log.warning(f"Error parsing pub/sub settings: {e}")
+        except Exception as e:
+            log.warning(f"Settings Pub/Sub loop died: {e}")
+
+    asyncio.create_task(listen_for_settings_updates())
+
     # --- Graceful shutdown ---
     stop_event = asyncio.Event()
 

@@ -185,6 +185,24 @@ class ClipRecorder:
             if source:
                 self._start_camera_buffer(source)
 
+    def stop_dashcam_buffers(self):
+        """
+        Dynamically stop all ring buffers without shutting down the container.
+        Used when the frontend toggles off Background Buffer.
+        """
+        logger.info("Stopping all background dashcam buffers dynamically...")
+        self._shutdown_event.set()
+        for t in list(self._capture_threads.values()):
+            t.join(timeout=2.0)
+            
+        self._capture_threads.clear()
+        self.frame_buffers.clear()
+        self.buffer_locks.clear()
+        
+        # Reset the event so they can be restarted later if toggled back on
+        self._shutdown_event.clear()
+        logger.info("All background dashcam buffers stopped.")
+
     def _get_mask_faces_setting(self) -> bool:
         """Synchronously check face masking (Redis -> Postgres -> env defaults)."""
         try:

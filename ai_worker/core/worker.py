@@ -289,16 +289,27 @@ class AIWorker:
         base_logger = self.logger
 
         last_heartbeat = time.time()
-        last_settings_refresh = 0.0
         heartbeat_interval_sec = 30.0
-        settings_refresh_interval_sec = 10.0
+
+        # Start Pub/Sub Listener thread
+        if self.task_consumer and self.task_consumer.client:
+            def _settings_listener():
+                pubsub = self.task_consumer.client.pubsub()
+                try:
+                    pubsub.subscribe("vg:settings:updates")
+                    for message in pubsub.listen():
+                        if message["type"] == "message":
+                            self._apply_runtime_settings()
+                except Exception as e:
+                    if self.logger:
+                        self.logger.warning(f"Settings Pub/Sub thread died: {e}")
+            
+            t = threading.Thread(target=_settings_listener, daemon=True)
+            t.start()
         
         while not self.stop_event.is_set():
             try:
                 now = time.time()
-                if now - last_settings_refresh >= settings_refresh_interval_sec:
-                    self._apply_runtime_settings()
-                    last_settings_refresh = now
 
                 # 1. Consume task from Redis queue
                 task = self.task_consumer.consume()

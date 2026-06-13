@@ -339,18 +339,29 @@ class ECSService:
         last_heartbeat = time.time()
         heartbeat_interval_sec = 30.0
         last_classification_scan = time.time()
-        last_settings_refresh = 0.0
-        settings_refresh_interval_sec = 10.0
 
         # Apply dashboard settings once at loop start (may override container env).
         self._apply_runtime_settings()
         
+        # Start Pub/Sub Listener thread
+        if self._clip_redis:
+            def _settings_listener():
+                pubsub = self._clip_redis.pubsub()
+                try:
+                    pubsub.subscribe("vg:settings:updates")
+                    for message in pubsub.listen():
+                        if message["type"] == "message":
+                            self._apply_runtime_settings()
+                except Exception as e:
+                    if self.logger:
+                        self.logger.warning(f"Settings Pub/Sub thread died: {e}")
+            
+            t = threading.Thread(target=_settings_listener, daemon=True)
+            t.start()
+        
         while not self.stop_event.is_set():
             try:
                 now = time.time()
-                if now - last_settings_refresh >= settings_refresh_interval_sec:
-                    self._apply_runtime_settings()
-                    last_settings_refresh = now
 
                 # 1. Consume messages from Redis stream
                 messages = self.stream_consumer.consume()

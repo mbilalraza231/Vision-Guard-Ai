@@ -71,8 +71,10 @@ async def sync_settings_to_redis() -> Dict[str, Any]:
         current = await _read_settings()
         r_config = get_redis_config()
         r_client = redis.Redis(**r_config)
-        r_client.set("vg:system_settings", json.dumps(current))
-        logger.info("Successfully synchronized system settings to Redis cache")
+        payload = json.dumps(current)
+        r_client.set("vg:system_settings", payload)
+        r_client.publish("vg:settings:updates", payload)
+        logger.info("Successfully synchronized system settings to Redis cache and published updates")
         return current
     except Exception as e:
         logger.warning(f"Failed to sync settings to Redis: {e}")

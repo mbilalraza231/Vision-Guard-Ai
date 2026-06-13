@@ -199,6 +199,27 @@ def main():
         logger.info("Metrics heartbeat started for camera service")
     except Exception as e:
         logger.warning(f"Failed to start metrics reporter: {e}")
+        
+    # Start Pub/Sub Listener thread to instantly apply dashboard settings
+    try:
+        r_client_pubsub = redis.Redis(host=os.getenv("REDIS_HOST", "localhost"), port=int(os.getenv("REDIS_PORT", "6379")))
+        def _settings_listener():
+            pubsub = r_client_pubsub.pubsub()
+            try:
+                pubsub.subscribe("vg:settings:updates")
+                for message in pubsub.listen():
+                    if message["type"] == "message":
+                        # Simply touch the cameras.json file to trigger the hot-reload loop
+                        if os.path.exists(config_path):
+                            os.utime(config_path, None)
+            except Exception as e:
+                logger.warning(f"Settings Pub/Sub thread died: {e}")
+        
+        t = threading.Thread(target=_settings_listener, daemon=True)
+        t.start()
+        logger.info("Settings Pub/Sub listener started")
+    except Exception as e:
+        logger.warning(f"Failed to start Pub/Sub listener: {e}")
     
     def shutdown(signum, frame):
         logger.info("Received shutdown signal, stopping cameras...")
