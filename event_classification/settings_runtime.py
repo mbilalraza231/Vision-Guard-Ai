@@ -152,6 +152,18 @@ def apply_runtime_settings(config: ECSConfig) -> Tuple[bool, Dict[str, Any]]:
     else:
         resume_latest = bool(resume_latest)
 
+    enable_db = ecs.get("enableDatabase")
+    if enable_db is None:
+        enable_db = _env_bool("ECS_ENABLE_DATABASE", config.enable_database)
+    else:
+        enable_db = bool(enable_db)
+
+    enable_fe = ecs.get("enableFrontend")
+    if enable_fe is None:
+        enable_fe = _env_bool("ECS_ENABLE_FRONTEND", config.enable_frontend)
+    else:
+        enable_fe = bool(enable_fe)
+
     updates = {
         "weapon_confidence_threshold": weapon_thr,
         "fire_confidence_threshold": fire_thr,
@@ -169,6 +181,8 @@ def apply_runtime_settings(config: ECSConfig) -> Tuple[bool, Dict[str, Any]]:
         "hard_ttl_seconds": hard_ttl,
         "max_source_lag_for_persistence_sec": max_lag,
         "resume_from_latest": resume_latest,
+        "enable_database": enable_db,
+        "enable_frontend": enable_fe,
     }
 
     changed = False

@@ -342,9 +342,16 @@ class ClipRecorder:
         else:
             logger.warning(f"No matching snapshot found for event {event_id}")
 
+        sys_settings = await self.get_system_settings()
+        pre_seconds = sys_settings.get("clips", {}).get("preSeconds", self.config.clip_pre_seconds)
+        post_seconds = sys_settings.get("clips", {}).get("postSeconds", self.config.clip_post_seconds)
+        use_buffer = sys_settings.get("clips", {}).get("enableBackgroundBuffer", self.config.enable_background_buffer)
+
         # Step 2 — Record latency-aware post-event clip (This takes 10-15 seconds)
         # Recording uses OpenCV/FFMPEG, must be in a thread
-        clip_path, error_msg = await asyncio.to_thread(self._record_clip, event_id, event_type, camera_source, detection_ts)
+        clip_path, error_msg = await asyncio.to_thread(
+            self._record_clip, event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds, use_buffer
+        )
         result["clip_local"] = clip_path
         
         if clip_path:
@@ -534,6 +541,9 @@ class ClipRecorder:
         event_type: str,
         camera_source: str,
         detection_ts: float,
+        pre_seconds: int = None,
+        post_seconds: int = None,
+        use_buffer: bool = None,
     ) -> Tuple[Optional[str], Optional[str]]:
         """
         Record a post-event video clip using the Latency-Aware Ring Buffer.
@@ -552,8 +562,12 @@ class ClipRecorder:
             Path to the saved .mp4 file, or None on failure
         """
         try:
-            if not self.config.enable_background_buffer:
-                return self._record_clip_direct(event_id, event_type, camera_source, detection_ts)
+            if pre_seconds is None: pre_seconds = self.config.clip_pre_seconds
+            if post_seconds is None: post_seconds = self.config.clip_post_seconds
+            if use_buffer is None: use_buffer = self.config.enable_background_buffer
+
+            if not use_buffer:
+                return self._record_clip_direct(event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds)
 
             # Ensure the background buffer is running for this camera
             self._start_camera_buffer(camera_source)
@@ -562,22 +576,22 @@ class ClipRecorder:
             lock = self.buffer_locks.get(camera_source)
             if lock is None:
                 logger.warning(f"No buffer lock found for {camera_source} — falling back to direct recording")
-                return self._record_clip_direct(event_id, event_type, camera_source, detection_ts)
+                return self._record_clip_direct(event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds)
 
             with lock:
                 if camera_source not in self.frame_buffers:
                     logger.warning(f"No frame buffer found for {camera_source} — falling back to direct recording")
-                    return self._record_clip_direct(event_id, event_type, camera_source, detection_ts)
+                    return self._record_clip_direct(event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds)
                 buffer_snapshot = list(self.frame_buffers[camera_source])
                 
             if not buffer_snapshot:
                 logger.warning(f"Ring buffer is empty for {camera_source} — falling back to direct recording")
                 # We try direct recording, but if it's because the camera is offline, _record_clip_direct will tell us
-                return self._record_clip_direct(event_id, event_type, camera_source, detection_ts)
+                return self._record_clip_direct(event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds)
                 
             # Define exact temporal window
-            start_ts = detection_ts - self.config.clip_pre_seconds
-            end_ts = detection_ts + self.config.clip_post_seconds
+            start_ts = detection_ts - pre_seconds
+            end_ts = detection_ts + post_seconds
             
             # Extract matching frames
             valid_frames = []
@@ -594,7 +608,7 @@ class ClipRecorder:
                 if len(buffer_snapshot) > 0:
                     return None, ClipError.TOO_OLD
                 
-                return self._record_clip_direct(event_id, event_type, camera_source, detection_ts)
+                return self._record_clip_direct(event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds)
 
             # Fetch settings to check if face masking is enabled
             mask_faces = False
@@ -615,7 +629,7 @@ class ClipRecorder:
 
             logger.info(
                 f"Stitching {len(valid_frames)} buffered frames for clip "
-                f"[window: {self.config.clip_pre_seconds}s pre + {self.config.clip_post_seconds}s post]",
+                f"[window: {pre_seconds}s pre + {post_seconds}s post]",
                 extra={"event_id": event_id, "output": out_path},
             )
 
@@ -633,7 +647,7 @@ class ClipRecorder:
         except Exception as e:
             logger.error(f"Error recording latency-aware clip: {e}", exc_info=True)
             logger.warning(f"Falling back to direct recording after exception for event {event_id}")
-            return self._record_clip_direct(event_id, event_type, camera_source, detection_ts)
+            return self._record_clip_direct(event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds)
 
     def _record_clip_direct(
         self,
@@ -641,6 +655,8 @@ class ClipRecorder:
         event_type: str,
         camera_source: str,
         detection_ts: float,
+        pre_seconds: int = None,
+        post_seconds: int = None,
     ) -> Tuple[Optional[str], Optional[str]]:
         """Record a clip directly from source without persistent background buffer."""
         cap = None
@@ -665,9 +681,12 @@ class ClipRecorder:
             except Exception as se:
                 logger.warning(f"Failed to check privacy settings in direct record: {se}")
 
+            if pre_seconds is None: pre_seconds = self.config.clip_pre_seconds
+            if post_seconds is None: post_seconds = self.config.clip_post_seconds
+
             height, width = first_frame.shape[:2]
             fps = self.config.camera_fps
-            total_frames = max(1, int(self.config.clip_post_seconds * fps))
+            total_frames = max(1, int(post_seconds * fps))
 
             ts_str = int(detection_ts)
             filename = f"{event_type}_{event_id}_{ts_str}.mp4"
