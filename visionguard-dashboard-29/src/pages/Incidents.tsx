@@ -331,7 +331,7 @@ export default function Incidents() {
     queryParams.time_period = filters.timePeriod;
   }
 
-  const { data, isLoading, error, refetch } = useQuery({
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ['incidents', filters, page],
     queryFn: () => apiService.getData<EventsListResponse>(API_ENDPOINTS.incidents.list, queryParams),
   });
@@ -475,8 +475,8 @@ export default function Incidents() {
           <div className="flex flex-col items-center justify-center gap-4 min-h-[40vh]">
             <p className="text-severity-critical text-lg">Failed to load incidents</p>
             <p className="text-muted-foreground text-sm">{(error as Error).message}</p>
-            <Button variant="outline" className="gap-2" onClick={() => refetch()}>
-              <RefreshCw className="h-4 w-4" />
+            <Button variant="outline" className="gap-2" disabled={isLoading || isFetching} onClick={() => refetch()}>
+              <RefreshCw className={cn("h-4 w-4", (isLoading || isFetching) && "animate-spin")} />
               Retry
             </Button>
           </div>

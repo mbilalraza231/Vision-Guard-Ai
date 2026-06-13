@@ -76,7 +76,7 @@ export default function Analytics() {
   const [sseSystemStatus, setSseSystemStatus] = useState<StatusResponse | null>(null);
   const [sseError, setSseError] = useState<Error | null>(null);
   const supportsSse = typeof window !== 'undefined' && 'EventSource' in window;
-  const { data: stats, isLoading: isStatsLoading, error: statsError, refetch: refetchStats } = useQuery({
+  const { data: stats, isLoading: isStatsLoading, isFetching: isStatsFetching, error: statsError, refetch: refetchStats } = useQuery({
     queryKey: ['analytics-stats'],
     queryFn: () => apiService.getData<EventsStatsResponse>(API_ENDPOINTS.incidents.stats),
     refetchInterval: 5000,
@@ -112,7 +112,7 @@ export default function Analytics() {
 
   const usePollingForStatus = !supportsSse || sseError != null;
 
-  const { data: polledSystemStatus, isLoading: isStatusLoading, error: statusError, refetch: refetchStatus } = useQuery({
+  const { data: polledSystemStatus, isLoading: isStatusLoading, isFetching: isStatusFetching, error: statusError, refetch: refetchStatus } = useQuery({
     queryKey: ['analytics-status'],
     queryFn: () => apiService.getData<StatusResponse>(API_ENDPOINTS.dashboard.systemMetrics),
     refetchInterval: 5000,
@@ -121,13 +121,14 @@ export default function Analytics() {
 
   const systemStatus = usePollingForStatus ? polledSystemStatus : sseSystemStatus;
 
-  const { data: cameras, refetch: refetchCameras } = useQuery({
+  const { data: cameras, isFetching: isCamerasFetching, refetch: refetchCameras } = useQuery({
     queryKey: ['analytics-cameras'],
     queryFn: () => apiService.getData<CameraItem[]>(API_ENDPOINTS.cameras.list),
     refetchInterval: 5000,
   });
 
   const isLoading = isStatsLoading || isStatusLoading;
+  const isFetching = isStatsFetching || isStatusFetching || isCamerasFetching;
   const error = statsError || statusError || sseError;
 
   const refetchAll = () => {
@@ -240,8 +241,8 @@ export default function Analytics() {
         <div className="p-6 flex flex-col items-center justify-center gap-4 min-h-[60vh]">
           <p className="text-severity-critical text-lg">{t('common.error')}</p>
           <p className="text-muted-foreground text-sm">{(error as Error).message}</p>
-          <Button variant="outline" className="gap-2" onClick={refetchAll}>
-            <RefreshCw className="h-4 w-4" />
+          <Button variant="outline" className="gap-2" disabled={isLoading || isFetching} onClick={refetchAll}>
+            <RefreshCw className={cn("h-4 w-4", (isLoading || isFetching) && "animate-spin")} />
             {t('common.retry')}
           </Button>
         </div>

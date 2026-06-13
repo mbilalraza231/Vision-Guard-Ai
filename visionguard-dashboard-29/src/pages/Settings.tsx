@@ -299,6 +299,7 @@ export default function Settings() {
   const {
     data: health,
     isLoading: healthLoading,
+    isFetching: healthFetching,
     error: healthError,
     refetch: refetchHealth,
   } = useQuery({
@@ -310,6 +311,7 @@ export default function Settings() {
   const {
     data: status,
     isLoading: statusLoading,
+    isFetching: statusFetching,
     error: statusError,
     refetch: refetchStatus,
   } = useQuery({
@@ -320,6 +322,7 @@ export default function Settings() {
   const {
     data: metrics,
     isLoading: metricsLoading,
+    isFetching: metricsFetching,
     error: metricsError,
     refetch: refetchMetrics,
   } = useQuery({
@@ -672,13 +675,14 @@ export default function Settings() {
                       <Button
                         variant="outline"
                         className="gap-2"
+                        disabled={healthLoading || healthFetching || statusLoading || statusFetching || metricsLoading || metricsFetching}
                         onClick={() => {
                           refetchHealth();
                           refetchStatus();
                           refetchMetrics();
                         }}
                       >
-                        <RefreshCw className="h-4 w-4" /> Retry
+                        <RefreshCw className={cn("h-4 w-4", (healthLoading || healthFetching || statusLoading || statusFetching || metricsLoading || metricsFetching) && "animate-spin")} /> Retry
                       </Button>
                     </div>
                   ) : (

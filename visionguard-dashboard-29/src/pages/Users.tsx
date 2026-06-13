@@ -273,7 +273,7 @@ export default function Users() {
   const [editingUser, setEditingUser] = useState<User | null>(null);
 
   // 1. Caching with TanStack Query
-  const { data: users = [], isLoading, error: queryError, refetch } = useQuery({
+  const { data: users = [], isLoading, isFetching, error: queryError, refetch } = useQuery({
     queryKey: ['users'],
     queryFn: async () => {
       console.log('[Users] Fetching user list via useQuery...');
@@ -321,8 +321,8 @@ export default function Users() {
             </p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading}>
-              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading || isFetching}>
+              <RefreshCw className={cn("h-4 w-4 mr-2", (isLoading || isFetching) && "animate-spin")} />
               {t('common.retry', 'Refresh')}
             </Button>
             <Button className="gap-2" onClick={() => setShowAddModal(true)}>

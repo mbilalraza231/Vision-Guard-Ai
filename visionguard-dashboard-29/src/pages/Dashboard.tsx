@@ -108,7 +108,7 @@ export default function Dashboard() {
   const timezone = settings?.general?.timezone || 'UTC';
 
   // Fetch event stats
-  const { data: stats, isLoading: statsLoading, error: statsError, refetch: refetchStats } =
+  const { data: stats, isLoading: statsLoading, isFetching: statsFetching, error: statsError, refetch: refetchStats } =
     useQuery({
       queryKey: ['dashboard-stats'],
       queryFn: () => apiService.getData<EventsStatsResponse>(API_ENDPOINTS.dashboard.stats),
@@ -167,8 +167,8 @@ export default function Dashboard() {
         <div className="p-6 flex flex-col items-center justify-center gap-4 min-h-[60vh]">
           <p className="text-severity-critical text-lg">{t('dashboard.failedToLoad')}</p>
           <p className="text-muted-foreground text-sm">{(statsError as Error).message}</p>
-          <Button variant="outline" className="gap-2" onClick={() => refetchStats()}>
-            <RefreshCw className="h-4 w-4" />
+          <Button variant="outline" className="gap-2" disabled={statsLoading || statsFetching} onClick={() => refetchStats()}>
+            <RefreshCw className={cn("h-4 w-4", (statsLoading || statsFetching) && "animate-spin")} />
             {t('dashboard.retry')}
           </Button>
         </div>

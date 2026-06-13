@@ -285,7 +285,7 @@ export default function LiveMonitoring() {
   const [refreshKey, setRefreshKey] = useState(0);
 
   // Fetch real camera list from backend
-  const { data: cameras, isLoading, error, refetch } = useQuery({
+  const { data: cameras, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ['cameras-list'],
     queryFn: async () => {
       return apiService.getData<CameraItem[]>(API_ENDPOINTS.cameras.list);
@@ -322,12 +322,13 @@ export default function LiveMonitoring() {
             variant="outline" 
             size="sm" 
             className="gap-1.5" 
+            disabled={isLoading || isFetching}
             onClick={() => {
               refetch();
               setRefreshKey(prev => prev + 1);
             }}
           >
-            <RefreshCw className="h-3.5 w-3.5" />
+            <RefreshCw className={cn("h-3.5 w-3.5", (isLoading || isFetching) && "animate-spin")} />
             {t('monitoring.refresh')}
           </Button>
         </div>
@@ -344,8 +345,8 @@ export default function LiveMonitoring() {
           <div className="rounded-lg bg-destructive/10 border border-destructive/30 p-6 text-center">
             <p className="text-destructive font-medium">{t('monitoring.failedToLoad')}</p>
             <p className="text-sm text-muted-foreground mt-1">{(error as Error).message}</p>
-            <Button variant="outline" size="sm" className="mt-3" onClick={() => refetch()}>
-              <RefreshCw className="h-4 w-4 mr-1.5" /> {t('monitoring.retry')}
+            <Button variant="outline" size="sm" className="mt-3" disabled={isLoading || isFetching} onClick={() => refetch()}>
+              <RefreshCw className={cn("h-4 w-4 mr-1.5", (isLoading || isFetching) && "animate-spin")} /> {t('monitoring.retry')}
             </Button>
           </div>
         )}
