@@ -173,10 +173,11 @@ class AlertWorker:
                 phone = contact['phone']
                 to = f"whatsapp:{phone}" if not phone.startswith('whatsapp:') else phone
                 # Add contact name to WhatsApp URL
+                from urllib.parse import quote
                 contact_name = contact.get('name', 'Alert Contact')
                 whatsapp_msg_with_contact = whatsapp_msg.replace(
                     f"{dashboard_url}/public-incident/{event_id}?token=",
-                    f"{dashboard_url}/public-incident/{event_id}?token={secure_token}&from=whatsapp&contact={contact_name}"
+                    f"{dashboard_url}/public-incident/{event_id}?token={secure_token}&from=whatsapp&contact={quote(contact_name)}"
                 )
                 tasks.append(self.notifier.send_twilio(to, whatsapp_msg_with_contact, anonymize=anonymize_data))
                 
@@ -187,10 +188,11 @@ class AlertWorker:
                 dashboard_url = os.getenv("FRONTEND_URL", "http://localhost:8080").rstrip("/")
                 # Generate simple token for public access (using event ID + timestamp)
                 import hashlib
+                from urllib.parse import quote
                 token_payload = f"{event_id}{int(time.time())}"
                 secure_token = hashlib.sha256(token_payload.encode()).hexdigest()[:32]
                 contact_name = contact.get('name', 'Alert Contact')
-                public_url = f"{dashboard_url}/public-incident/{event_id}?token={secure_token}&from=email&contact={contact_name}"
+                public_url = f"{dashboard_url}/public-incident/{event_id}?token={secure_token}&from=email&contact={quote(contact_name)}"
                 
                 body = f"""
                 <div style="background-color: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 40px 20px; max-width: 600px; margin: auto; border-radius: 16px;">
