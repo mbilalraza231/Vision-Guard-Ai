@@ -116,3 +116,25 @@ CREATE TABLE IF NOT EXISTS incident_notes (
 
 CREATE INDEX IF NOT EXISTS idx_incident_notes_event_id ON incident_notes(event_id);
 
+-- Public Access Tokens Table
+CREATE TABLE IF NOT EXISTS public_access_tokens (
+    token TEXT PRIMARY KEY,
+    contact_id TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    source TEXT NOT NULL,                    -- email | whatsapp
+    created_at DOUBLE PRECISION NOT NULL,
+    expires_at DOUBLE PRECISION NOT NULL,
+    CONSTRAINT fk_contact
+        FOREIGN KEY(contact_id) 
+        REFERENCES alert_contacts(id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_event_token
+        FOREIGN KEY(event_id) 
+        REFERENCES events(id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_tokens_contact_id ON public_access_tokens(contact_id);
+CREATE INDEX IF NOT EXISTS idx_tokens_event_id ON public_access_tokens(event_id);
+CREATE INDEX IF NOT EXISTS idx_tokens_expires_at ON public_access_tokens(expires_at);
+

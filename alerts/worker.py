@@ -93,10 +93,42 @@ class AlertWorker:
                 cam_id = "****"
         
         dashboard_url = os.getenv("FRONTEND_URL", "http://localhost:8080").rstrip("/")
-        # Generate secure token for public access (using event ID + timestamp)
-        token_payload = f"{event_id}{int(time.time())}"
+        # Generate secure token for public access (using contact ID + event ID + timestamp)
+        token_payload = f"{contact.get('id', '')}{event_id}{int(time.time())}"
         secure_token = hashlib.sha256(token_payload.encode()).hexdigest()[:32]
         public_url = f"{dashboard_url}/public-incident/{event_id}?token={secure_token}&from=whatsapp"
+        
+        # Store token in database for validation
+        try:
+            import asyncpg
+            from backend.app.core.database import get_db_connection
+            import asyncio
+            
+            async def store_token():
+                conn = await get_db_connection()
+                try:
+                    now = time.time()
+                    expires_at = now + (7 * 24 * 60 * 60)  # 7 days expiry
+                    await conn.execute(
+                        """
+                        INSERT INTO public_access_tokens (token, contact_id, event_id, source, created_at, expires_at)
+                        VALUES ($1, $2, $3, $4, $5, $6)
+                        ON CONFLICT (token) DO NOTHING
+                        """,
+                        secure_token,
+                        contact.get('id', ''),
+                        event_id,
+                        'whatsapp',
+                        now,
+                        expires_at
+                    )
+                finally:
+                    await conn.close()
+            
+            # Run the async function
+            asyncio.run(store_token())
+        except Exception as e:
+            print(f"Warning: Failed to store token in database: {e}")
         
         return (
             f"🚨 {severity} ALERT: {etype} 🚨\n"
@@ -183,6 +215,38 @@ class AlertWorker:
                 token_payload = f"{contact.get('id', '')}{event_id}{int(time.time())}"
                 secure_token = hashlib.sha256(token_payload.encode()).hexdigest()[:32]
                 public_url = f"{dashboard_url}/public-incident/{event_id}?token={secure_token}&from=email"
+                
+                # Store token in database for validation
+                try:
+                    import asyncpg
+                    from backend.app.core.database import get_db_connection
+                    import asyncio
+                    
+                    async def store_token():
+                        conn = await get_db_connection()
+                        try:
+                            now = time.time()
+                            expires_at = now + (7 * 24 * 60 * 60)  # 7 days expiry
+                            await conn.execute(
+                                """
+                                INSERT INTO public_access_tokens (token, contact_id, event_id, source, created_at, expires_at)
+                                VALUES ($1, $2, $3, $4, $5, $6)
+                                ON CONFLICT (token) DO NOTHING
+                                """,
+                                secure_token,
+                                contact.get('id', ''),
+                                event_id,
+                                'email',
+                                now,
+                                expires_at
+                            )
+                        finally:
+                            await conn.close()
+                    
+                    # Run the async function
+                    asyncio.run(store_token())
+                except Exception as e:
+                    print(f"Warning: Failed to store token in database: {e}")
                 
                 body = f"""
                 <div style="background-color: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 40px 20px; max-width: 600px; margin: auto; border-radius: 16px;">

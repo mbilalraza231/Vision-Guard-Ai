@@ -120,8 +120,9 @@ export default function PublicIncident() {
 
   const acknowledgeMutation = useMutation({
     mutationFn: () => {
+      const contactName = incident?.contact_name || 'Alert Contact';
       return apiService.putData(`${API_ENDPOINTS.incidents.list}/${id}/public/acknowledge?token=${token}`, {
-        user_name: `[System:${source}] Alert Contact (Contacts)`,
+        user_name: `[System:${source}] ${contactName} (Contacts)`,
         source,
       });
     },
@@ -137,8 +138,9 @@ export default function PublicIncident() {
 
   const resolveMutation = useMutation({
     mutationFn: (data: { resolution: string; content?: string }) => {
+      const contactName = incident?.contact_name || 'Alert Contact';
       return apiService.putData(`${API_ENDPOINTS.incidents.list}/${id}/public/resolve?token=${token}`, {
-        user_name: `[System:${source}] Alert Contact (Contacts)`,
+        user_name: `[System:${source}] ${contactName} (Contacts)`,
         resolution: data.resolution,
         content: data.content,
         source,
@@ -158,9 +160,10 @@ export default function PublicIncident() {
 
   const addNoteMutation = useMutation({
     mutationFn: (noteContent: string) => {
+      const contactName = incident?.contact_name || 'Alert Contact';
       return apiService.postData(`${API_ENDPOINTS.incidents.list}/${id}/public/notes?token=${token}`, {
         content: noteContent,
-        user_name: `[System:${source}] Alert Contact (${source === 'email' ? 'Email' : 'WhatsApp'})`,
+        user_name: `[System:${source}] ${contactName} (Contacts)`,
       });
     },
     onSuccess: () => {
