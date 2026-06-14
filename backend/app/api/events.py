@@ -8,6 +8,17 @@ GET /alerts - List alerts from database
 GET /alerts/{id} - Get single alert with event metadata
 """
 
+from alerts.config import AlertConfig
+from alerts.repository import AlertRepository
+from ..utils.logging import get_logger
+from ..services.db_reader import get_db_reader
+from ..core.database import db
+from ..models.events import (
+    DBEvent, DBEventListResponse,
+    DBAlert, DBAlertListResponse,
+    DBIncidentNote, IncidentNoteCreate,
+    IncidentAcknowledgeRequest, IncidentResolveRequest
+)
 import os
 import sys
 import time
@@ -16,24 +27,15 @@ from typing import Optional, List
 
 from fastapi import APIRouter, HTTPException, Query, Path
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
-from ..models.events import (
-    DBEvent, DBEventListResponse,
-    DBAlert, DBAlertListResponse,
-    DBIncidentNote, IncidentNoteCreate,
-    IncidentAcknowledgeRequest, IncidentResolveRequest
-)
-from ..core.database import db
-from ..services.db_reader import get_db_reader
-from ..utils.logging import get_logger
-from alerts.repository import AlertRepository
-from alerts.config import AlertConfig
 
 router = APIRouter(tags=["Events & Alerts"])
 logger = get_logger(__name__)
 
 _alert_repo = None
+
 
 def get_alert_repo() -> AlertRepository:
     global _alert_repo
@@ -44,15 +46,22 @@ def get_alert_repo() -> AlertRepository:
 
 @router.get("/events", response_model=DBEventListResponse)
 async def list_events(
-    limit: int = Query(default=50, ge=1, le=100, description="Max events to return"),
+    limit: int = Query(default=50, ge=1, le=100,
+                       description="Max events to return"),
     offset: int = Query(default=0, ge=0, description="Offset for pagination"),
-    camera_id: Optional[str] = Query(default=None, description="Filter by camera"),
-    event_type: Optional[str] = Query(default=None, description="Filter by event type"),
-    severity: Optional[str] = Query(default=None, description="Filter by severity"),
-    time_period: Optional[str] = Query(default=None, description="Time period: 24h, 7days, 30days")
+    camera_id: Optional[str] = Query(
+        default=None, description="Filter by camera"),
+    event_type: Optional[str] = Query(
+        default=None, description="Filter by event type"),
+    severity: Optional[str] = Query(
+        default=None, description="Filter by severity"),
+    status: Optional[str] = Query(
+        default=None, description="Filter by status: active, acknowledged, resolved"),
+    time_period: Optional[str] = Query(
+        default=None, description="Time period: 24h, 7days, 30days")
 ) -> DBEventListResponse:
     reader = get_db_reader()
-    
+
     start_ts_gte = None
     if time_period:
         now = time.time()
@@ -62,18 +71,19 @@ async def list_events(
             start_ts_gte = now - (7 * 24 * 3600)
         elif time_period == "30days":
             start_ts_gte = now - (30 * 24 * 3600)
-    
+
     result = await reader.list_events(
         limit=limit,
         offset=offset,
         camera_id=camera_id,
         event_type=event_type,
         severity=severity,
+        status=status,
         start_ts_gte=start_ts_gte
     )
-    
+
     events = [DBEvent(**e) for e in result["events"]]
-    
+
     return DBEventListResponse(
         total=result["total"],
         limit=result["limit"],
@@ -133,11 +143,13 @@ async def get_event_evidence(
         evidence = [dict(r) for r in rows]
 
         snapshot_url = next(
-            (r["public_url"] for r in evidence if r["evidence_type"] == "snapshot"),
+            (r["public_url"]
+             for r in evidence if r["evidence_type"] == "snapshot"),
             None,
         )
         clip_url = next(
-            (r["public_url"] for r in evidence if r["evidence_type"] == "clip"),
+            (r["public_url"]
+             for r in evidence if r["evidence_type"] == "clip"),
             None,
         )
 
@@ -147,9 +159,10 @@ async def get_event_evidence(
                 filename = os.path.basename(snapshot_url)
                 snapshot_url = f"/detections/images/{filename}"
             else:
-                logger.warning(f"Local snapshot file missing from disk: {snapshot_url}")
+                logger.warning(
+                    f"Local snapshot file missing from disk: {snapshot_url}")
                 snapshot_url = None
-            
+
         if clip_url and clip_url.startswith("/data/visionguard/clips/"):
             filename = os.path.basename(clip_url)
             clip_url = f"/detections/clips/{filename}"
@@ -179,29 +192,34 @@ async def get_event(
     event_id: str = Path(..., description="Event UUID")
 ) -> DBEvent:
     reader = get_db_reader()
-    
+
     event = await reader.get_event(event_id)
-    
+
     if event is None:
         raise HTTPException(
             status_code=404,
             detail=f"Event {event_id} not found"
         )
-    
+
     return DBEvent(**event)
 
 
 @router.get("/alerts", response_model=DBAlertListResponse)
 async def list_alerts(
-    limit: int = Query(default=50, ge=1, le=100, description="Max alerts to return"),
+    limit: int = Query(default=50, ge=1, le=100,
+                       description="Max alerts to return"),
     offset: int = Query(default=0, ge=0, description="Offset for pagination"),
-    status: Optional[str] = Query(default=None, description="Filter by status"),
-    severity: Optional[str] = Query(default=None, description="Filter by severity"),
-    camera_id: Optional[str] = Query(default=None, description="Filter by camera"),
-    time_period: Optional[str] = Query(default=None, description="Time period: 24h, 7days, 30days")
+    status: Optional[str] = Query(
+        default=None, description="Filter by status"),
+    severity: Optional[str] = Query(
+        default=None, description="Filter by severity"),
+    camera_id: Optional[str] = Query(
+        default=None, description="Filter by camera"),
+    time_period: Optional[str] = Query(
+        default=None, description="Time period: 24h, 7days, 30days")
 ) -> DBAlertListResponse:
     repo = get_alert_repo()
-    
+
     start_ts_gte = None
     if time_period:
         now = time.time()
@@ -211,7 +229,7 @@ async def list_alerts(
             start_ts_gte = now - (7 * 24 * 3600)
         elif time_period == "30days":
             start_ts_gte = now - (30 * 24 * 3600)
-    
+
     result = await repo.list_alerts(
         limit=limit,
         offset=offset,
@@ -220,9 +238,9 @@ async def list_alerts(
         camera_id=camera_id,
         start_ts_gte=start_ts_gte
     )
-    
+
     alerts = [DBAlert(**a) for a in result["alerts"]]
-    
+
     return DBAlertListResponse(
         total=result["total"],
         limit=result["limit"],
@@ -236,15 +254,15 @@ async def get_alert(
     alert_id: str = Path(..., description="Alert UUID")
 ) -> DBAlert:
     repo = get_alert_repo()
-    
+
     alert = await repo.get_alert_with_event(alert_id)
-    
+
     if alert is None:
         raise HTTPException(
             status_code=404,
             detail=f"Alert {alert_id} not found"
         )
-    
+
     return DBAlert(**alert)
 
 
@@ -291,7 +309,7 @@ async def create_incident_note(
 
     note_id = str(uuid.uuid4())
     created_at = time.time()
-    
+
     await db.execute(
         """
         INSERT INTO incident_notes (id, event_id, content, created_at, user_name)
@@ -303,7 +321,7 @@ async def create_incident_note(
         created_at,
         payload.user_name,
     )
-    
+
     return DBIncidentNote(
         id=note_id,
         event_id=event_id,
@@ -322,7 +340,8 @@ async def acknowledge_incident(
     reader = get_db_reader()
     event = await reader.get_event(event_id)
     if event is None:
-        raise HTTPException(status_code=404, detail=f"Incident {event_id} not found")
+        raise HTTPException(
+            status_code=404, detail=f"Incident {event_id} not found")
 
     # Race condition check
     if event.get("status") == "acknowledged":
@@ -378,7 +397,8 @@ async def resolve_incident(
     reader = get_db_reader()
     event = await reader.get_event(event_id)
     if event is None:
-        raise HTTPException(status_code=404, detail=f"Incident {event_id} not found")
+        raise HTTPException(
+            status_code=404, detail=f"Incident {event_id} not found")
 
     if event.get("status") == "resolved":
         raise HTTPException(
@@ -422,5 +442,3 @@ async def resolve_incident(
 
     updated_event = await reader.get_event(event_id)
     return DBEvent(**updated_event)
-
-

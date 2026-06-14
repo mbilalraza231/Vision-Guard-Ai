@@ -45,6 +45,16 @@ export function Header({ title, showDateNav = true }: HeaderProps) {
   );
   const notificationData = sseRecentEvents;
 
+  // Filter to show only truly active events (exclude resolved/acknowledged)
+  const activeOnlyEvents = notificationData?.events?.filter(
+    (e) => !e.status || e.status === 'active'
+  ) ?? [];
+  const activeCount = notificationData?.total 
+    ? (activeOnlyEvents.length === notificationData.events?.length 
+        ? notificationData.total 
+        : activeOnlyEvents.length)
+    : 0;
+
   const handleLogout = async () => {
     await logout();
     navigate('/auth/login');
@@ -87,9 +97,9 @@ export function Header({ title, showDateNav = true }: HeaderProps) {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="relative">
               <Bell className="h-5 w-5" />
-              {notificationData && notificationData.total > 0 && (
+              {activeCount > 0 && (
                 <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-severity-critical text-[10px] font-medium text-white animate-pulse">
-                  {notificationData.total}
+                  {activeCount}
                 </span>
               )}
             </Button>
@@ -98,13 +108,13 @@ export function Header({ title, showDateNav = true }: HeaderProps) {
             <DropdownMenuLabel className="px-3 py-2 flex items-center justify-between">
               <span className="text-xs font-bold tracking-wide">{t('header.recentAlerts', 'Recent Alerts (24h)')}</span>
               <span className="text-[10px] font-bold text-red-400 bg-red-500/10 border border-red-500/20 px-2 py-0.5 rounded-full animate-pulse">
-                {notificationData?.total ?? 0} {t('header.active', 'Active')}
+                {activeCount} {t('header.active', 'Active')}
               </span>
             </DropdownMenuLabel>
             <DropdownMenuSeparator className="bg-border/50" />
-            {notificationData?.events && notificationData.events.length > 0 ? (
+            {activeOnlyEvents.length > 0 ? (
               <div className="max-h-[300px] overflow-y-auto">
-                {notificationData.events.map((event) => {
+                {activeOnlyEvents.map((event) => {
                   const config = eventConfigs[event.event_type.toLowerCase()] || {
                     icon: AlertCircle,
                     color: 'text-yellow-500',
@@ -125,13 +135,18 @@ export function Header({ title, showDateNav = true }: HeaderProps) {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
                           <p className="text-xs font-semibold text-foreground truncate">{config.label}</p>
-                          <span className="text-xs text-muted-foreground whitespace-nowrap">
+                          <span className="text-[9px] font-medium text-status-active bg-status-active/10 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+                            Active
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between mt-0.5">
+                          <p className="text-[10px] text-muted-foreground truncate">
+                            Camera: <span className="font-mono text-foreground/80">{event.camera_id}</span>
+                          </p>
+                          <span className="text-[10px] text-muted-foreground whitespace-nowrap">
                             {formatTimeString(event.start_ts * 1000, timezone)}
                           </span>
                         </div>
-                        <p className="text-[10px] text-muted-foreground truncate mt-0.5">
-                          Camera: <span className="font-mono text-foreground/80">{event.camera_id}</span>
-                        </p>
                       </div>
                     </DropdownMenuItem>
                   );

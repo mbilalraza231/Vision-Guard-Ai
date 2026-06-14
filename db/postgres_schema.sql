@@ -82,6 +82,9 @@ CREATE TABLE IF NOT EXISTS zones (
     active_hours VARCHAR(100) DEFAULT '24/7',
     max_cameras INTEGER DEFAULT 0,
     max_alert_recipients INTEGER DEFAULT 0,
+    priority_weapon VARCHAR(20) DEFAULT 'critical',    -- critical | high | medium | low
+    priority_fire VARCHAR(20) DEFAULT 'high',          -- critical | high | medium | low
+    priority_fall VARCHAR(20) DEFAULT 'medium',        -- critical | high | medium | low
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

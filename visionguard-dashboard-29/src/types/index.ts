@@ -92,6 +92,9 @@ export interface ZoneApiResponse {
   active_hours: string;
   max_cameras: number;
   max_alert_recipients: number;
+  priority_weapon?: string;
+  priority_fire?: string;
+  priority_fall?: string;
   created_at: number;
 }
 

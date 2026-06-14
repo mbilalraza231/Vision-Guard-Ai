@@ -10,6 +10,7 @@ from ..utils.logging import get_logger
 router = APIRouter(prefix="/api/v1/zones", tags=["Zones"])
 logger = get_logger(__name__)
 
+
 @router.get("", response_model=ZoneListResponse)
 async def list_zones():
     try:
@@ -20,6 +21,7 @@ async def list_zones():
         logger.error(f"Failed to list zones: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+
 @router.post("", response_model=ZoneResponse)
 async def create_zone(zone: ZoneCreate):
     zone_id = str(uuid.uuid4())
@@ -27,22 +29,24 @@ async def create_zone(zone: ZoneCreate):
     try:
         await db.execute(
             """
-            INSERT INTO zones (id, name, active_hours, max_cameras, max_alert_recipients, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO zones (id, name, active_hours, max_cameras, max_alert_recipients, priority_weapon, priority_fire, priority_fall, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             """,
-            zone_id, zone.name, zone.active_hours, zone.max_cameras, zone.max_alert_recipients, now
+            zone_id, zone.name, zone.active_hours, zone.max_cameras, zone.max_alert_recipients,
+            zone.priority_weapon, zone.priority_fire, zone.priority_fall, now
         )
         return ZoneResponse(id=zone_id, created_at=now, **zone.model_dump())
     except Exception as e:
         logger.error(f"Failed to create zone: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+
 @router.put("/{zone_id}", response_model=ZoneResponse)
 async def update_zone(zone_id: str, patch: ZoneUpdate):
     existing = await db.fetch_one("SELECT * FROM zones WHERE id = $1", zone_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Zone not found")
-    
+
     updates = []
     params = []
     i = 1
@@ -50,19 +54,20 @@ async def update_zone(zone_id: str, patch: ZoneUpdate):
         updates.append(f"{field} = ${i}")
         params.append(value)
         i += 1
-    
+
     if not updates:
         return ZoneResponse(**existing)
-    
+
     params.append(zone_id)
     query = f"UPDATE zones SET {', '.join(updates)} WHERE id = ${i} RETURNING *"
-    
+
     try:
         row = await db.fetch_one(query, *params)
         return ZoneResponse(**row)
     except Exception as e:
         logger.error(f"Failed to update zone {zone_id}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
 
 @router.delete("/{zone_id}")
 async def delete_zone(zone_id: str):

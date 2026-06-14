@@ -324,6 +324,9 @@ export default function Incidents() {
   if (filters.type && filters.type !== 'all') {
     queryParams.event_type = filters.type;
   }
+  if (filters.status && filters.status !== 'all') {
+    queryParams.status = filters.status;
+  }
   if (filters.camera && filters.camera !== 'all') {
     queryParams.camera_id = filters.camera;
   }

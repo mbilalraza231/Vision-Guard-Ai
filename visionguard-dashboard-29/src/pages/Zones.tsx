@@ -35,12 +35,25 @@ interface BackendEvent {
   created_at: number;
 }
 
-// Detection priority is global (based on system model config)
-const GLOBAL_DETECTION_PRIORITY: Record<string, Severity> = {
-  fire: 'critical',
-  weapon: 'critical',
-  fall: 'high',
-};
+// Default detection priorities (used when zone has no override)
+const DEFAULT_PRIORITIES = { weapon: 'critical', fire: 'high', fall: 'medium' };
+const SEVERITY_OPTIONS: { value: Severity; label: string }[] = [
+  { value: 'critical', label: 'Critical' },
+  { value: 'high', label: 'High' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'low', label: 'Low' },
+];
+
+// Zone save payload type
+interface ZoneSaveData {
+  name: string;
+  active_hours: string;
+  max_cameras: number;
+  max_alert_recipients: number;
+  priority_weapon: string;
+  priority_fire: string;
+  priority_fall: string;
+}
 
 // Modal Component
 function ZoneModal({
@@ -51,18 +64,29 @@ function ZoneModal({
 }: {
   zone?: ZoneApiResponse | null;
   onClose: () => void;
-  onSave: (data: { name: string; active_hours: string; max_cameras: number; max_alert_recipients: number }) => void;
+  onSave: (data: ZoneSaveData) => void;
   isSaving: boolean;
 }) {
   const [name, setName] = useState(zone?.name ?? '');
   const [activeHours, setActiveHours] = useState(zone?.active_hours ?? '24/7');
   const [maxCameras, setMaxCameras] = useState(zone?.max_cameras ?? 0);
   const [maxAlertRecipients, setMaxAlertRecipients] = useState(zone?.max_alert_recipients ?? 0);
+  const [priorityWeapon, setPriorityWeapon] = useState<Severity>((zone?.priority_weapon as Severity) ?? 'critical');
+  const [priorityFire, setPriorityFire] = useState<Severity>((zone?.priority_fire as Severity) ?? 'high');
+  const [priorityFall, setPriorityFall] = useState<Severity>((zone?.priority_fall as Severity) ?? 'medium');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    onSave({ name: name.trim(), active_hours: activeHours.trim() || '24/7', max_cameras: maxCameras, max_alert_recipients: maxAlertRecipients });
+    onSave({
+      name: name.trim(),
+      active_hours: activeHours.trim() || '24/7',
+      max_cameras: maxCameras,
+      max_alert_recipients: maxAlertRecipients,
+      priority_weapon: priorityWeapon,
+      priority_fire: priorityFire,
+      priority_fall: priorityFall,
+    });
   };
 
   return (
@@ -133,6 +157,49 @@ function ZoneModal({
               />
             </div>
           </div>
+
+          {/* Detection Priority Overrides */}
+          <div>
+            <label className="block text-sm font-medium mb-2">Detection Priority</label>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Weapon</label>
+                <select
+                  className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  value={priorityWeapon}
+                  onChange={(e) => setPriorityWeapon(e.target.value as Severity)}
+                >
+                  {SEVERITY_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Fire</label>
+                <select
+                  className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  value={priorityFire}
+                  onChange={(e) => setPriorityFire(e.target.value as Severity)}
+                >
+                  {SEVERITY_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Fall</label>
+                <select
+                  className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  value={priorityFall}
+                  onChange={(e) => setPriorityFall(e.target.value as Severity)}
+                >
+                  {SEVERITY_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
           <div className="flex justify-end gap-3 pt-4 border-t border-border/50">
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
@@ -179,7 +246,7 @@ export default function Zones() {
 
   // Create zone
   const createMutation = useMutation({
-    mutationFn: (data: { name: string; active_hours: string; max_cameras: number; max_alert_recipients: number }) =>
+    mutationFn: (data: ZoneSaveData) =>
       apiService.postData(API_ENDPOINTS.zones.create, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['zones'] });
@@ -189,7 +256,7 @@ export default function Zones() {
 
   // Update zone
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { name: string; active_hours: string; max_cameras: number; max_alert_recipients: number } }) =>
+    mutationFn: ({ id, data }: { id: string; data: ZoneSaveData }) =>
       apiService.putData(API_ENDPOINTS.zones.update(id), data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['zones'] });
@@ -244,7 +311,7 @@ export default function Zones() {
     ];
   };
 
-  const handleSave = (data: { name: string; active_hours: string; max_cameras: number; max_alert_recipients: number }) => {
+  const handleSave = (data: ZoneSaveData) => {
     if (editingZone) {
       updateMutation.mutate({ id: editingZone.id, data });
     } else {
@@ -378,7 +445,11 @@ export default function Zones() {
                       <div className="mb-4">
                         <h4 className="font-medium mb-2 text-sm">Detection Priority</h4>
                         <div className="grid grid-cols-3 gap-3">
-                          {Object.entries(GLOBAL_DETECTION_PRIORITY).map(([type, severity]) => (
+                          {Object.entries({
+                            weapon: (zone.priority_weapon ?? DEFAULT_PRIORITIES.weapon) as Severity,
+                            fire: (zone.priority_fire ?? DEFAULT_PRIORITIES.fire) as Severity,
+                            fall: (zone.priority_fall ?? DEFAULT_PRIORITIES.fall) as Severity,
+                          }).map(([type, severity]) => (
                             <div key={type} className="text-center">
                               <p className="text-sm font-medium capitalize mb-1">{type}</p>
                               <SeverityBadge severity={severity} />
