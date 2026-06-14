@@ -441,7 +441,18 @@ export default function PublicIncident() {
                         <span className="text-xs font-semibold text-primary truncate">{note.user_name}</span>
                         <span className="text-[10px] text-muted-foreground shrink-0">{formatDateTime(note.created_at * 1000, timezone)}</span>
                       </div>
-                      <p className="text-sm text-foreground/90 whitespace-pre-wrap">{note.content}</p>
+                      <p className="text-sm text-foreground/90 whitespace-pre-wrap">
+                        {(() => {
+                          // Shorten system note messages for display
+                          let displayContent = note.content;
+                          if (displayContent.startsWith('Acknowledged the incident')) {
+                            displayContent = 'Acknowledged';
+                          } else if (displayContent.startsWith('Resolved the incident')) {
+                            displayContent = displayContent.replace('Resolved the incident', 'Resolved');
+                          }
+                          return displayContent;
+                        })()}
+                      </p>
                     </div>
                   ))
                 )}

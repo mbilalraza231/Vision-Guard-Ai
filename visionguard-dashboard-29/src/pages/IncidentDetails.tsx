@@ -598,14 +598,24 @@ export default function IncidentDetails() {
                           </div>
                         </div>
                         <div className="space-y-1.5">
-                          {sortedGroupNotes.map((note) => (
-                            <div key={note.id} className="flex gap-2 text-xs">
-                              <span className="text-muted-foreground shrink-0 font-mono">
-                                {formatDateTime(note.created_at * 1000, timezone).split(',')[1]?.trim() || formatDateTime(note.created_at * 1000, timezone)}
-                              </span>
-                              <span className="text-foreground/90 whitespace-pre-wrap flex-1">{note.content}</span>
-                            </div>
-                          ))}
+                          {sortedGroupNotes.map((note) => {
+                            // Shorten system note messages for display
+                            let displayContent = note.content;
+                            if (displayContent.startsWith('Acknowledged the incident')) {
+                              displayContent = 'Acknowledged';
+                            } else if (displayContent.startsWith('Resolved the incident')) {
+                              displayContent = displayContent.replace('Resolved the incident', 'Resolved');
+                            }
+                            
+                            return (
+                              <div key={note.id} className="flex gap-2 text-xs">
+                                <span className="text-muted-foreground shrink-0 font-mono">
+                                  {formatDateTime(note.created_at * 1000, timezone).split(',')[1]?.trim() || formatDateTime(note.created_at * 1000, timezone)}
+                                </span>
+                                <span className="text-foreground/90 whitespace-pre-wrap flex-1">{displayContent}</span>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     );
