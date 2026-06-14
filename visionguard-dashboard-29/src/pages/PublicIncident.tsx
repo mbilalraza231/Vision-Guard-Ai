@@ -121,7 +121,7 @@ export default function PublicIncident() {
   const acknowledgeMutation = useMutation({
     mutationFn: () => {
       return apiService.putData(`${API_ENDPOINTS.incidents.list}/${id}/public/acknowledge?token=${token}`, {
-        user_name: `[System:${source}] Alert Contact`,
+        user_name: `[System:${source}] Alert Contact (Contacts)`,
         source,
       });
     },
@@ -138,7 +138,7 @@ export default function PublicIncident() {
   const resolveMutation = useMutation({
     mutationFn: (data: { resolution: string; content?: string }) => {
       return apiService.putData(`${API_ENDPOINTS.incidents.list}/${id}/public/resolve?token=${token}`, {
-        user_name: `[System:${source}] Alert Contact`,
+        user_name: `[System:${source}] Alert Contact (Contacts)`,
         resolution: data.resolution,
         content: data.content,
         source,
@@ -389,16 +389,6 @@ export default function PublicIncident() {
                   >
                     <Shield className="h-4 w-4" />
                     Mark as Resolved
-                  </Button>
-                )}
-                {incident.status === 'resolved' && (
-                  <Button 
-                    className="w-full gap-2"
-                    variant="outline"
-                    onClick={() => setIsNoteModalOpen(true)}
-                  >
-                    <Shield className="h-4 w-4" />
-                    Add Follow-up Note
                   </Button>
                 )}
                 {incident.status === 'resolved' && (
