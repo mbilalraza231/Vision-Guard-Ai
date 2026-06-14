@@ -101,7 +101,7 @@ class AlertWorker:
             f"📸 Snapshot: {snap_url}\n"
             f"🎬 Clip: {video_url}\n\n"
             f"✅ [ Acknowledge ]:\n"
-            f"👉 {dashboard_url}/incidents/{event_id}?action=acknowledge\n\n"
+            f"👉 {dashboard_url}/incidents/{event_id}?action=acknowledge&from=whatsapp\n\n"
             f"🔍 [ View Details ]:\n"
             f"👉 {dashboard_url}/incidents/{event_id}"
         )
@@ -194,7 +194,7 @@ class AlertWorker:
                     </div>
 
                     <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 20px;">
-                        <a href="{dashboard_url}/incidents/{event_id}?action=acknowledge" style="background-color: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">✅ Acknowledge</a>
+                        <a href="{dashboard_url}/incidents/{event_id}?action=acknowledge&from=email" style="background-color: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">✅ Acknowledge</a>
                         <a href="{dashboard_url}/incidents/{event_id}" style="background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">🔍 View Details</a>
                         <a href="{video_url}" style="background-color: transparent; color: #94a3b8; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; border: 1px solid #334155; display: inline-block;">▶ Watch Clip</a>
                     </div>

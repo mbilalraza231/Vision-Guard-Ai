@@ -34,6 +34,30 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(
 router = APIRouter(tags=["Events & Alerts"])
 logger = get_logger(__name__)
 
+_ACTION_SOURCE_LABELS = {
+    "dashboard": "Dashboard",
+    "email": "Email",
+    "whatsapp": "WhatsApp",
+}
+
+
+def _normalize_action_source(source: Optional[str]) -> str:
+    key = (source or "dashboard").lower().strip()
+    return key if key in _ACTION_SOURCE_LABELS else "dashboard"
+
+
+def _action_channel_label(source: Optional[str]) -> str:
+    return _ACTION_SOURCE_LABELS[_normalize_action_source(source)]
+
+
+def _actor_display_name(user_name: str, source: Optional[str]) -> str:
+    return f"{user_name} via {_action_channel_label(source)}"
+
+
+def _system_note_user_name(user_name: str, source: Optional[str]) -> str:
+    return f"[System:{_normalize_action_source(source)}] {user_name}"
+
+
 _alert_repo = None
 
 
@@ -285,7 +309,7 @@ async def list_incident_notes(
         SELECT id, event_id, content, created_at, user_name
         FROM incident_notes
         WHERE event_id = $1
-        ORDER BY created_at ASC
+        ORDER BY created_at DESC
         """,
         event_id,
     )
@@ -297,7 +321,7 @@ async def create_incident_note(
     payload: IncidentNoteCreate,
     event_id: str = Path(..., description="Event UUID")
 ) -> DBIncidentNote:
-    """Add a new note to an incident."""
+    """Add a post-resolution follow-up note to an incident."""
     # Verify event exists first
     reader = get_db_reader()
     event = await reader.get_event(event_id)
@@ -305,6 +329,12 @@ async def create_incident_note(
         raise HTTPException(
             status_code=404,
             detail=f"Incident {event_id} not found"
+        )
+
+    if event.get("status") != "resolved":
+        raise HTTPException(
+            status_code=400,
+            detail="Post-resolution notes can only be added after the incident is resolved.",
         )
 
     note_id = str(uuid.uuid4())
@@ -356,6 +386,7 @@ async def acknowledge_incident(
         )
 
     now_ts = time.time()
+    actor = _actor_display_name(payload.user_name, payload.source)
     await db.execute(
         """
         UPDATE events
@@ -364,14 +395,15 @@ async def acknowledge_incident(
             acknowledged_at = $2
         WHERE id = $3
         """,
-        payload.user_name,
+        actor,
         now_ts,
         event_id,
     )
 
     # Automatically post a system note
     note_id = str(uuid.uuid4())
-    system_content = f"Acknowledged the incident."
+    channel = _action_channel_label(payload.source)
+    system_content = f"Acknowledged the incident by {payload.user_name} via {channel}."
     await db.execute(
         """
         INSERT INTO incident_notes (id, event_id, content, created_at, user_name)
@@ -381,7 +413,7 @@ async def acknowledge_incident(
         event_id,
         system_content,
         now_ts,
-        f"[System] {payload.user_name}",
+        _system_note_user_name(payload.user_name, payload.source),
     )
 
     updated_event = await reader.get_event(event_id)
@@ -407,6 +439,7 @@ async def resolve_incident(
         )
 
     now_ts = time.time()
+    actor = _actor_display_name(payload.user_name, payload.source)
     await db.execute(
         """
         UPDATE events
@@ -416,7 +449,7 @@ async def resolve_incident(
             resolution = $3
         WHERE id = $4
         """,
-        payload.user_name,
+        actor,
         now_ts,
         payload.resolution,
         event_id,
@@ -424,7 +457,8 @@ async def resolve_incident(
 
     # Automatically post a system note
     note_id = str(uuid.uuid4())
-    system_content = f"Resolved the incident ({payload.resolution})."
+    channel = _action_channel_label(payload.source)
+    system_content = f"Resolved the incident ({payload.resolution}) by {payload.user_name} via {channel}."
     if payload.content and payload.content.strip():
         system_content += f"\n\"{payload.content.strip()}\""
 
@@ -437,7 +471,7 @@ async def resolve_incident(
         event_id,
         system_content,
         now_ts,
-        f"[System] {payload.user_name}",
+        _system_note_user_name(payload.user_name, payload.source),
     )
 
     updated_event = await reader.get_event(event_id)
