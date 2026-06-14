@@ -315,17 +315,13 @@ class ECSService:
                     model_version=self.config.model_version
                 )
 
-            # Initialize zone priority resolver
+            # Initialize zone priority resolver (reads from Redis, same pattern as settings_runtime)
             try:
                 self.zone_priority_resolver = ZonePriorityResolver(
-                    postgres_config={
-                        "user": self.config.postgres_user,
-                        "password": self.config.postgres_password,
-                        "host": self.config.postgres_host,
-                        "port": self.config.postgres_port,
-                        "db": self.config.postgres_db
-                    },
-                    refresh_interval_sec=60.0,
+                    redis_host=self.config.redis_host,
+                    redis_port=self.config.redis_port,
+                    redis_db=self.config.redis_db,
+                    refresh_interval_sec=10.0,
                 )
             except Exception as e:
                 self.logger.warning(

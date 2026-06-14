@@ -39,7 +39,7 @@ async def list_cameras(
 ) -> List[dict]:
     """
     Get all cameras from PostgreSQL merged with runtime status.
-    
+
     If the database is empty, it seeds it from cameras.json first.
     """
     # Seed database if empty
@@ -59,7 +59,8 @@ async def list_cameras(
                     data = json.load(f)
                     cameras_config = data.get("cameras", [])
             else:
-                logger.warning(f"cameras.json not found at {CAMERAS_JSON_PATH}")
+                logger.warning(
+                    f"cameras.json not found at {CAMERAS_JSON_PATH}")
         except (json.JSONDecodeError, OSError) as err:
             logger.error(f"Failed to read cameras.json: {err}")
             return []
@@ -83,7 +84,8 @@ async def list_cameras(
             if camera_service_alive:
                 sources = r_client.hgetall("vg:camera:sources")
                 for key in sources:
-                    cam_id = key.decode("utf-8") if isinstance(key, bytes) else key
+                    cam_id = key.decode(
+                        "utf-8") if isinstance(key, bytes) else key
                     redis_active_cameras.add(cam_id)
             r_client.close()
     except Exception as e:
@@ -136,7 +138,7 @@ async def register_camera(
     Register a new camera in the database.
     """
     logger.info(f"Registering camera in database: {request.camera_id}")
-    
+
     try:
         from ..core.database import db
         import time
@@ -159,10 +161,14 @@ async def register_camera(
             request.zone_id,
             time.time()
         )
-        
+
         # Sync database to cameras.json
         await camera_manager.sync_db_to_json()
-        
+
+        # Rebuild zone priority mapping in Redis (zone_id may have changed)
+        from .zones import _publish_zone_priorities
+        await _publish_zone_priorities()
+
         # Also register in local memory config of camera_manager for runtime
         camera_manager.register(
             camera_id=request.camera_id,
@@ -170,7 +176,7 @@ async def register_camera(
             fps=request.fps,
             motion_threshold=request.motion_threshold
         )
-        
+
         return CameraResponse(
             success=True,
             message=f"Camera {request.camera_id} registered successfully",
@@ -201,17 +207,17 @@ async def unregister_camera(
     Unregister/delete a camera from the database.
     """
     logger.info(f"Unregistering camera from database: {camera_id}")
-    
+
     try:
         from ..core.database import db
         await db.execute("DELETE FROM cameras WHERE id = $1", camera_id)
-        
+
         # Sync database to cameras.json
         await camera_manager.sync_db_to_json()
-        
+
         # Also unregister in-memory
         camera_manager.unregister(camera_id)
-        
+
         return CameraResponse(
             success=True,
             message=f"Camera {camera_id} deleted successfully"
@@ -233,22 +239,22 @@ async def start_camera(
     Start a registered camera (enables it in DB and starts capture process).
     """
     logger.info(f"Starting/Enabling camera: {camera_id}")
-    
+
     # Update enabled status in Postgres
     try:
         from ..core.database import db
         await db.execute("UPDATE cameras SET enabled = TRUE WHERE id = $1", camera_id)
         await camera_manager.sync_db_to_json()
-        
+
         # Also update in-memory state so metrics immediately reflect the change
         if camera_id in camera_manager._cameras:
             camera_manager._cameras[camera_id].enabled = True
-            
+
     except Exception as e:
         logger.error(f"Failed to enable camera in DB: {e}")
-        
+
     result = await camera_manager.start_camera(camera_id)
-    
+
     # If starting via local processes is disabled (Docker mode), we return success anyway
     # because we successfully enabled it in the configuration (cameras.json)
     if not result["success"] and "disabled in docker" in result["message"].lower():
@@ -257,13 +263,13 @@ async def start_camera(
             message=f"Camera {camera_id} enabled for Docker runtime. Restart the camera service to apply.",
             camera={"id": camera_id, "enabled": True}
         )
-    
+
     if not result["success"]:
         raise HTTPException(
             status_code=500,
             detail=result["message"]
         )
-    
+
     return CameraResponse(**result)
 
 
@@ -276,22 +282,22 @@ async def stop_camera(
     Stop a running camera (disables it in DB and stops capture process).
     """
     logger.info(f"Stopping/Disabling camera: {camera_id}")
-    
+
     # Update enabled status in Postgres
     try:
         from ..core.database import db
         await db.execute("UPDATE cameras SET enabled = FALSE WHERE id = $1", camera_id)
         await camera_manager.sync_db_to_json()
-        
+
         # Also update in-memory state so metrics immediately reflect the change
         if camera_id in camera_manager._cameras:
             camera_manager._cameras[camera_id].enabled = False
-            
+
     except Exception as e:
         logger.error(f"Failed to disable camera in DB: {e}")
-        
+
     result = await camera_manager.stop_camera(camera_id)
-    
+
     # If stopping via local processes is disabled (Docker mode), we return success anyway
     # because we successfully disabled it in the configuration (cameras.json)
     if not result["success"] and "disabled in docker" in result["message"].lower():
@@ -300,13 +306,13 @@ async def stop_camera(
             message=f"Camera {camera_id} disabled for Docker runtime. Restart the camera service to apply.",
             camera={"id": camera_id, "enabled": False}
         )
-    
+
     if not result["success"]:
         raise HTTPException(
             status_code=500,
             detail=result["message"]
         )
-    
+
     return CameraResponse(**result)
 
 
@@ -318,9 +324,9 @@ async def start_all_cameras(
     Start all registered cameras.
     """
     logger.info("Starting all cameras")
-    
+
     result = await camera_manager.start_all()
-    
+
     return CameraResponse(
         success=result["success"],
         message=result["message"],
@@ -336,9 +342,9 @@ async def stop_all_cameras(
     Stop all running cameras.
     """
     logger.info("Stopping all cameras")
-    
+
     result = await camera_manager.stop_all()
-    
+
     return CameraResponse(
         success=result["success"],
         message=result["message"],
@@ -365,11 +371,11 @@ async def get_camera_status(
     Get status of a specific camera.
     """
     status = camera_manager.get_camera_status(camera_id)
-    
+
     if status is None:
         raise HTTPException(
             status_code=404,
             detail=f"Camera {camera_id} not found"
         )
-    
+
     return status

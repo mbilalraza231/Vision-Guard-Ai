@@ -1,10 +1,13 @@
+import json
 import uuid
 import time
 from typing import List
 from fastapi import APIRouter, HTTPException
+import redis as redis_lib
 
 from ..models.zones import ZoneCreate, ZoneUpdate, ZoneResponse, ZoneListResponse
 from ..core.database import db
+from ..core.config import get_redis_config
 from ..utils.logging import get_logger
 
 router = APIRouter(prefix="/api/v1/zones", tags=["Zones"])
@@ -35,6 +38,7 @@ async def create_zone(zone: ZoneCreate):
             zone_id, zone.name, zone.active_hours, zone.max_cameras, zone.max_alert_recipients,
             zone.priority_weapon, zone.priority_fire, zone.priority_fall, now
         )
+        await _publish_zone_priorities()
         return ZoneResponse(id=zone_id, created_at=now, **zone.model_dump())
     except Exception as e:
         logger.error(f"Failed to create zone: {e}")
@@ -63,6 +67,7 @@ async def update_zone(zone_id: str, patch: ZoneUpdate):
 
     try:
         row = await db.fetch_one(query, *params)
+        await _publish_zone_priorities()
         return ZoneResponse(**row)
     except Exception as e:
         logger.error(f"Failed to update zone {zone_id}: {e}")
@@ -75,7 +80,47 @@ async def delete_zone(zone_id: str):
         # Also remove zone_id from cameras
         await db.execute("UPDATE cameras SET zone_id = NULL WHERE zone_id = $1", zone_id)
         await db.execute("DELETE FROM zones WHERE id = $1", zone_id)
+        await _publish_zone_priorities()
         return {"status": "success", "message": "Zone deleted"}
     except Exception as e:
         logger.error(f"Failed to delete zone {zone_id}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+async def _publish_zone_priorities():
+    """
+    Rebuild the camera->zone-priority mapping and publish to Redis.
+    ECS reads from 'vg:zone_priorities' key and subscribes to 'vg:zone:updates' channel.
+    """
+    try:
+        rows = await db.fetch_all("""
+            SELECT
+                c.id AS camera_id,
+                z.priority_weapon,
+                z.priority_fire,
+                z.priority_fall
+            FROM cameras c
+            INNER JOIN zones z ON c.zone_id = z.id::text
+            WHERE c.zone_id IS NOT NULL AND c.zone_id != ''
+        """)
+
+        mapping = {}
+        for row in rows:
+            cam_id = row["camera_id"]
+            mapping[cam_id] = {
+                "weapon": (row["priority_weapon"] or "critical").lower(),
+                "fire": (row["priority_fire"] or "high").lower(),
+                "fall": (row["priority_fall"] or "medium").lower(),
+            }
+
+        r_config = get_redis_config()
+        r_client = redis_lib.Redis(**r_config, decode_responses=True)
+        payload = json.dumps(mapping)
+        r_client.set("vg:zone_priorities", payload)
+        r_client.publish("vg:zone:updates", payload)
+        r_client.close()
+
+        logger.info(
+            f"Published zone priorities to Redis: {len(mapping)} camera(s) with zones")
+    except Exception as e:
+        logger.warning(f"Failed to publish zone priorities to Redis: {e}")
