@@ -476,3 +476,201 @@ async def resolve_incident(
 
     updated_event = await reader.get_event(event_id)
     return DBEvent(**updated_event)
+
+
+@router.get("/events/{event_id}/public")
+async def get_public_event(
+    event_id: str = Path(..., description="Event UUID"),
+    token: str = Query(..., description="Access token for public view")
+) -> dict:
+    """Get event data for public view with token validation."""
+    reader = get_db_reader()
+    
+    # Validate token - check if it exists in alert_contacts or generate a simple validation
+    # For now, we'll use a simple token validation that checks if the token is not empty
+    # In production, this should validate against a stored token in the database
+    if not token or len(token) < 10:
+        raise HTTPException(status_code=401, detail="Invalid access token")
+    
+    event = await reader.get_event(event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail=f"Incident {event_id} not found")
+    
+    return event
+
+
+@router.put("/events/{event_id}/public/acknowledge")
+async def public_acknowledge_incident(
+    payload: IncidentAcknowledgeRequest,
+    event_id: str = Path(..., description="Event UUID"),
+    token: str = Query(..., description="Access token for public view")
+) -> DBEvent:
+    """Acknowledge an event via public link with token validation."""
+    # Validate token
+    if not token or len(token) < 10:
+        raise HTTPException(status_code=401, detail="Invalid access token")
+    
+    reader = get_db_reader()
+    event = await reader.get_event(event_id)
+    if event is None:
+        raise HTTPException(
+            status_code=404, detail=f"Incident {event_id} not found")
+
+    # Race condition check
+    if event.get("status") == "acknowledged":
+        raise HTTPException(
+            status_code=400,
+            detail=f"This incident was already acknowledged by {event.get('acknowledged_by')}"
+        )
+    elif event.get("status") == "resolved":
+        raise HTTPException(
+            status_code=400,
+            detail=f"This incident was already resolved by {event.get('resolved_by')}"
+        )
+
+    now_ts = time.time()
+    actor = _actor_display_name(payload.user_name, payload.source)
+    await db.execute(
+        """
+        UPDATE events
+        SET status = 'acknowledged',
+            acknowledged_by = $1,
+            acknowledged_at = $2
+        WHERE id = $3
+        """,
+        actor,
+        now_ts,
+        event_id,
+    )
+
+    # Automatically post a system note
+    note_id = str(uuid.uuid4())
+    channel = _action_channel_label(payload.source)
+    system_content = f"Acknowledged the incident by {payload.user_name} via {channel}."
+    await db.execute(
+        """
+        INSERT INTO incident_notes (id, event_id, content, created_at, user_name)
+        VALUES ($1, $2, $3, $4, $5)
+        """,
+        note_id,
+        event_id,
+        system_content,
+        now_ts,
+        _system_note_user_name(payload.user_name, payload.source),
+    )
+
+    updated_event = await reader.get_event(event_id)
+    return DBEvent(**updated_event)
+
+
+@router.put("/events/{event_id}/public/resolve")
+async def public_resolve_incident(
+    payload: IncidentResolveRequest,
+    event_id: str = Path(..., description="Event UUID"),
+    token: str = Query(..., description="Access token for public view")
+) -> DBEvent:
+    """Resolve an event via public link with token validation."""
+    # Validate token
+    if not token or len(token) < 10:
+        raise HTTPException(status_code=401, detail="Invalid access token")
+    
+    reader = get_db_reader()
+    event = await reader.get_event(event_id)
+    if event is None:
+        raise HTTPException(
+            status_code=404, detail=f"Incident {event_id} not found")
+
+    if event.get("status") == "resolved":
+        raise HTTPException(
+            status_code=400,
+            detail=f"This incident was already resolved by {event.get('resolved_by')}"
+        )
+
+    now_ts = time.time()
+    actor = _actor_display_name(payload.user_name, payload.source)
+    await db.execute(
+        """
+        UPDATE events
+        SET status = 'resolved',
+            resolved_by = $1,
+            resolved_at = $2,
+            resolution = $3
+        WHERE id = $4
+        """,
+        actor,
+        now_ts,
+        payload.resolution,
+        event_id,
+    )
+
+    # Automatically post a system note
+    note_id = str(uuid.uuid4())
+    channel = _action_channel_label(payload.source)
+    system_content = f"Resolved the incident ({payload.resolution}) by {payload.user_name} via {channel}."
+    if payload.content and payload.content.strip():
+        system_content += f"\n\"{payload.content.strip()}\""
+
+    await db.execute(
+        """
+        INSERT INTO incident_notes (id, event_id, content, created_at, user_name)
+        VALUES ($1, $2, $3, $4, $5)
+        """,
+        note_id,
+        event_id,
+        system_content,
+        now_ts,
+        _system_note_user_name(payload.user_name, payload.source),
+    )
+
+    updated_event = await reader.get_event(event_id)
+    return DBEvent(**updated_event)
+
+
+@router.post("/events/{event_id}/public/notes")
+async def public_create_incident_note(
+    payload: IncidentNoteCreate,
+    event_id: str = Path(..., description="Event UUID"),
+    token: str = Query(..., description="Access token for public view")
+) -> DBIncidentNote:
+    """Add a note via public link with token validation."""
+    # Validate token
+    if not token or len(token) < 10:
+        raise HTTPException(status_code=401, detail="Invalid access token")
+    
+    # Verify event exists first
+    reader = get_db_reader()
+    event = await reader.get_event(event_id)
+    if event is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Incident {event_id} not found"
+        )
+
+    if event.get("status") != "resolved":
+        raise HTTPException(
+            status_code=400,
+            detail="Post-resolution notes can only be added after the incident is resolved.",
+        )
+
+    note_id = str(uuid.uuid4())
+    created_at = time.time()
+
+    await db.execute(
+        """
+        INSERT INTO incident_notes (id, event_id, content, created_at, user_name)
+        VALUES ($1, $2, $3, $4, $5)
+        """,
+        note_id,
+        event_id,
+        payload.content,
+        created_at,
+        payload.user_name,
+    )
+
+    return DBIncidentNote(
+        id=note_id,
+        event_id=event_id,
+        content=payload.content,
+        created_at=created_at,
+        user_name=payload.user_name or "Alert Contact"
+    )

@@ -46,6 +46,37 @@ interface EvidenceResponse {
   clip_error?: string | null;
 }
 
+type ActionSource = 'dashboard' | 'email' | 'whatsapp';
+
+const ACTION_CHANNEL_LABELS: Record<ActionSource, string> = {
+  dashboard: 'Dashboard',
+  email: 'Email',
+  whatsapp: 'WhatsApp',
+};
+
+function parseActionSource(value: string | null): ActionSource {
+  const key = (value ?? '').toLowerCase();
+  if (key === 'email' || key === 'whatsapp') return key;
+  return 'dashboard';
+}
+
+function parseNoteAuthor(userName: string | undefined): { name: string; channel?: string } {
+  const raw = String(userName ?? '').trim();
+  const channelMatch = raw.match(/^\[System:(\w+)\] (.+)$/);
+  if (channelMatch) {
+    const source = parseActionSource(channelMatch[1]);
+    return { name: channelMatch[2], channel: ACTION_CHANNEL_LABELS[source] };
+  }
+  if (raw.startsWith('[System] ')) {
+    return { name: raw.slice('[System] '.length), channel: 'Dashboard' };
+  }
+  return { name: raw || 'Unknown' };
+}
+
+function isSystemNote(userName: string | undefined): boolean {
+  return /^\[System(?::\w+)?\]/.test(String(userName ?? ''));
+}
+
 export default function IncidentDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -85,12 +116,15 @@ export default function IncidentDetails() {
     },
   });
 
+  const getActorName = () =>
+    profile ? `${profile.name} (${profile.role.toUpperCase()})` : 'Security Operator';
+
   const acknowledgeMutation = useMutation({
-    mutationFn: () => {
-      const userStr = profile 
-        ? `${profile.name} (${profile.role.toUpperCase()})` 
-        : 'Security Operator';
-      return apiService.putData(API_ENDPOINTS.incidents.acknowledge(id!), { user_name: userStr });
+    mutationFn: (source: ActionSource = 'dashboard') => {
+      return apiService.putData(API_ENDPOINTS.incidents.acknowledge(id!), {
+        user_name: getActorName(),
+        source,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['incident', id] });
@@ -100,14 +134,12 @@ export default function IncidentDetails() {
   });
 
   const resolveMutation = useMutation({
-    mutationFn: (data: { resolution: string; content?: string }) => {
-      const userStr = profile 
-        ? `${profile.name} (${profile.role.toUpperCase()})` 
-        : 'Security Operator';
-      return apiService.putData(API_ENDPOINTS.incidents.resolve(id!), { 
-        user_name: userStr,
+    mutationFn: (data: { resolution: string; content?: string; source?: ActionSource }) => {
+      return apiService.putData(API_ENDPOINTS.incidents.resolve(id!), {
+        user_name: getActorName(),
         resolution: data.resolution,
-        content: data.content 
+        content: data.content,
+        source: data.source ?? 'dashboard',
       });
     },
     onSuccess: () => {
@@ -162,8 +194,10 @@ export default function IncidentDetails() {
 
   useEffect(() => {
     if (searchParams.get('action') === 'acknowledge' && incident && incident.status === 'active' && !incident.acknowledgedBy) {
-      acknowledgeMutation.mutate();
+      const source = parseActionSource(searchParams.get('from'));
+      acknowledgeMutation.mutate(source);
       searchParams.delete('action');
+      searchParams.delete('from');
       setSearchParams(searchParams, { replace: true });
     }
   }, [searchParams, incident, acknowledgeMutation, setSearchParams]);
@@ -250,21 +284,41 @@ export default function IncidentDetails() {
     }
   };
 
-  const handleAddNote = () => {
+  const handleAddPostResolutionNote = () => {
     if (!newNote.trim()) return;
     toast.promise(
       addNoteMutation.mutateAsync(newNote.trim()),
       {
-        loading: 'Adding note...',
-        success: 'Note added successfully',
-        error: 'Failed to add note',
+        loading: 'Saving follow-up note...',
+        success: 'Follow-up note saved',
+        error: (err: any) => err?.message || 'Failed to save follow-up note',
       }
     );
   };
 
+  const sortedNotes = [...notes].sort((a, b) => b.created_at - a.created_at);
+
+  // Group notes by user and channel for compact card display
+  type NoteGroup = { name: string; channel?: string; notes: any[] };
+  const groupedNotes = sortedNotes.reduce((groups, note) => {
+    const systemNote = isSystemNote(note.user_name);
+    const { name, channel } = parseNoteAuthor(note.user_name);
+    const key = `${name}|${channel || ''}`;
+    
+    if (!groups[key]) {
+      groups[key] = {
+        name,
+        channel,
+        notes: []
+      };
+    }
+    groups[key].notes.push(note);
+    return groups;
+  }, {} as Record<string, NoteGroup>);
+
   const handleAcknowledge = () => {
     toast.promise(
-      acknowledgeMutation.mutateAsync(),
+      acknowledgeMutation.mutateAsync('dashboard'),
       {
         loading: 'Acknowledging alert...',
         success: 'Alert acknowledged successfully',
@@ -275,7 +329,7 @@ export default function IncidentDetails() {
 
   const handleResolve = () => {
     toast.promise(
-      resolveMutation.mutateAsync({ resolution: resolutionType, content: resolveNote }),
+      resolveMutation.mutateAsync({ resolution: resolutionType, content: resolveNote, source: 'dashboard' }),
       {
         loading: 'Resolving incident...',
         success: () => {
@@ -313,10 +367,16 @@ export default function IncidentDetails() {
               <Share2 className="h-4 w-4" />
               Share
             </Button>
-            <Button className="gap-2" onClick={() => setIsNoteModalOpen(true)}>
-              <MessageSquare className="h-4 w-4" />
-              Add Note
-            </Button>
+            {incident.status === 'resolved' && (
+              <Button
+                className="gap-2"
+                onClick={() => setIsNoteModalOpen(true)}
+                disabled={profile?.role === 'viewer'}
+              >
+                <MessageSquare className="h-4 w-4" />
+                Add Follow-up Note
+              </Button>
+            )}
           </div>
         </div>
 
@@ -488,21 +548,68 @@ export default function IncidentDetails() {
 
             <div className="dashboard-card p-6 max-h-[400px] overflow-hidden flex flex-col">
               <h3 className="text-lg font-bold mb-4 shrink-0">Investigation Notes</h3>
-              <div className="space-y-4 overflow-y-auto pr-2">
+              <div className="space-y-3 overflow-y-auto pr-2">
                 {notes.length === 0 ? (
-                  <p className="text-sm text-muted-foreground italic">No notes added yet for this incident.</p>
+                  <p className="text-sm text-muted-foreground italic">
+                    {incident.status === 'resolved'
+                      ? 'No notes yet. Use Add Follow-up Note next to Share.'
+                      : 'Notes can be added after this incident is resolved.'}
+                  </p>
                 ) : (
-                  [...notes]
-                    .sort((a, b) => b.created_at - a.created_at)
-                    .map((note: any) => (
-                      <div key={note.id} className="bg-secondary/30 p-3 rounded-lg border border-white/5">
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-xs font-semibold text-primary">{note.user_name}</span>
-                          <span className="text-[10px] text-muted-foreground">{formatDateTime(note.created_at * 1000, timezone)}</span>
+                  (Object.values(groupedNotes) as NoteGroup[]).map((group, groupIndex) => {
+                    const systemNote = isSystemNote(group.notes[0].user_name);
+                    // Sort notes within group: follow-up notes first, then resolves, then acknowledges
+                    const sortedGroupNotes = [...group.notes].sort((a, b) => {
+                      const aContent = a.content.toLowerCase();
+                      const bContent = b.content.toLowerCase();
+                      
+                      const aIsAck = aContent.includes('acknowledged');
+                      const bIsAck = bContent.includes('acknowledged');
+                      const aIsRes = aContent.includes('resolved');
+                      const bIsRes = bContent.includes('resolved');
+                      
+                      // Follow-up notes (not ack/resolve) come first
+                      if (!aIsAck && !aIsRes && (bIsAck || bIsRes)) return -1;
+                      if ((aIsAck || aIsRes) && !bIsAck && !bIsRes) return 1;
+                      
+                      // Resolves come before acknowledges
+                      if (aIsRes && bIsAck) return -1;
+                      if (aIsAck && bIsRes) return 1;
+                      
+                      // Same type: newer first
+                      return b.created_at - a.created_at;
+                    });
+                    
+                    return (
+                      <div
+                        key={groupIndex}
+                        className={`p-3 rounded-lg border ${
+                          systemNote
+                            ? 'bg-secondary/20 border-white/5'
+                            : 'bg-primary/5 border-primary/20'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-2 gap-2">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-xs font-semibold text-primary truncate">{group.name}</span>
+                            {systemNote && group.channel && (
+                              <span className="text-[10px] text-muted-foreground shrink-0">· {group.channel}</span>
+                            )}
+                          </div>
                         </div>
-                        <p className="text-sm text-foreground/90 whitespace-pre-wrap">{note.content}</p>
+                        <div className="space-y-1.5">
+                          {sortedGroupNotes.map((note) => (
+                            <div key={note.id} className="flex gap-2 text-xs">
+                              <span className="text-muted-foreground shrink-0 font-mono">
+                                {formatDateTime(note.created_at * 1000, timezone).split(',')[1]?.trim() || formatDateTime(note.created_at * 1000, timezone)}
+                              </span>
+                              <span className="text-foreground/90 whitespace-pre-wrap flex-1">{note.content}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    ))
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -513,19 +620,19 @@ export default function IncidentDetails() {
       <Dialog open={isNoteModalOpen} onOpenChange={setIsNoteModalOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Add Investigation Note</DialogTitle>
+            <DialogTitle>Add Follow-up Note</DialogTitle>
           </DialogHeader>
           <div className="py-4">
             <textarea
               className="w-full h-32 bg-secondary/50 border border-white/10 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/50"
-              placeholder="Enter details about your investigation..."
+              placeholder="Enter follow-up details..."
               value={newNote}
               onChange={(e) => setNewNote(e.target.value)}
             />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsNoteModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddNote}>Post Note</Button>
+            <Button onClick={handleAddPostResolutionNote}>Save Note</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

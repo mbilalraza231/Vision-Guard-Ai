@@ -200,6 +200,7 @@ class IncidentNoteCreate(BaseModel):
 class IncidentAcknowledgeRequest(BaseModel):
     """Payload to acknowledge an incident."""
     user_name: str
+    source: Optional[str] = "dashboard"
 
 
 class IncidentResolveRequest(BaseModel):
@@ -207,5 +208,6 @@ class IncidentResolveRequest(BaseModel):
     user_name: str
     resolution: str
     content: Optional[str] = None
+    source: Optional[str] = "dashboard"
 
 

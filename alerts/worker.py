@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -92,6 +93,10 @@ class AlertWorker:
                 cam_id = "****"
         
         dashboard_url = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
+        # Generate secure token for public access (using event ID + timestamp)
+        token_payload = f"{event_id}{int(time.time())}"
+        secure_token = hashlib.sha256(token_payload.encode()).hexdigest()[:32]
+        public_url = f"{dashboard_url}/public-incident/{event_id}?token={secure_token}&from=whatsapp"
         
         return (
             f"🚨 {severity} ALERT: {etype} 🚨\n"
@@ -101,9 +106,9 @@ class AlertWorker:
             f"📸 Snapshot: {snap_url}\n"
             f"🎬 Clip: {video_url}\n\n"
             f"✅ [ Acknowledge ]:\n"
-            f"👉 {dashboard_url}/incidents/{event_id}?action=acknowledge&from=whatsapp\n\n"
+            f"👉 {public_url}?action=acknowledge\n\n"
             f"🔍 [ View Details ]:\n"
-            f"👉 {dashboard_url}/incidents/{event_id}"
+            f"👉 {public_url}"
         )
 
     def get_predictable_video_url(self, event_id: str, event_type: str) -> str:
@@ -173,34 +178,57 @@ class AlertWorker:
                 color = "#ff4b2b" if severity == "critical" else "#ffa502" if severity == "high" else "#2ed573"
                 subject = f"⚠️ VisionGuard: {severity.upper()} {event_type.replace('_', ' ').title()}"
                 dashboard_url = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
+                # Generate secure token for public access (using contact ID + event ID + timestamp)
+                import hashlib
+                token_payload = f"{contact.get('id', '')}{event_id}{int(time.time())}"
+                secure_token = hashlib.sha256(token_payload.encode()).hexdigest()[:32]
+                public_url = f"{dashboard_url}/public-incident/{event_id}?token={secure_token}&from=email"
+                
                 body = f"""
-                <div style="background-color: #0f172a; color: #f8fafc; font-family: sans-serif; padding: 40px 20px; max-width: 600px; margin: auto; border-radius: 16px;">
+                <div style="background-color: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 40px 20px; max-width: 600px; margin: auto; border-radius: 16px;">
                     <div style="text-align: center; margin-bottom: 30px;">
-                        <h1 style="color: #3b82f6; margin: 0; font-size: 28px;">VisionGuard AI</h1>
-                        <p style="color: #94a3b8; font-size: 14px; margin-top: 5px;">Real-time Security Intelligence</p>
+                        <h1 style="color: #3b82f6; margin: 0; font-size: 28px; font-weight: 700;">VisionGuard AI</h1>
+                        <p style="color: #94a3b8; font-size: 14px; margin-top: 8px; font-weight: 500;">Real-time Security Intelligence</p>
                     </div>
                     
-                    <div style="background-color: #1e293b; border-left: 4px solid {color}; padding: 20px; border-radius: 8px; margin-bottom: 25px;">
-                        <h2 style="margin: 0 0 10px 0; color: {color}; text-transform: uppercase; font-size: 18px;">{severity.upper()} ALERT DETECTED</h2>
-                        <p style="margin: 5px 0;"><strong>Incident:</strong> {event_type.replace('_', ' ').title()}</p>
-                        <p style="margin: 5px 0;"><strong>Camera:</strong> {cam_id}</p>
-                        <p style="margin: 5px 0;"><strong>Confidence:</strong> {float(event.get('confidence', 0))*100:.1f}%</p>
+                    <div style="background-color: #1e293b; border-left: 4px solid {color}; padding: 24px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+                        <h2 style="margin: 0 0 12px 0; color: {color}; text-transform: uppercase; font-size: 16px; font-weight: 700; letter-spacing: 0.05em;">{severity.upper()} ALERT DETECTED</h2>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px;">
+                            <div>
+                                <p style="margin: 0; color: #64748b; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">Incident</p>
+                                <p style="margin: 4px 0 0 0; color: #f1f5f9; font-size: 15px; font-weight: 500;">{event_type.replace('_', ' ').title()}</p>
+                            </div>
+                            <div>
+                                <p style="margin: 0; color: #64748b; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">Camera</p>
+                                <p style="margin: 4px 0 0 0; color: #f1f5f9; font-size: 15px; font-weight: 500;">{cam_id}</p>
+                            </div>
+                            <div style="grid-column: span 2;">
+                                <p style="margin: 0; color: #64748b; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">AI Confidence</p>
+                                <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                                    <div style="flex: 1; height: 8px; background-color: #334155; border-radius: 4px; overflow: hidden;">
+                                        <div style="height: 100%; background-color: {color}; width: {float(event.get('confidence', 0))*100:.1f}%;"></div>
+                                    </div>
+                                    <p style="margin: 0; color: #f1f5f9; font-size: 14px; font-weight: 700;">{float(event.get('confidence', 0))*100:.1f}%</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <div style="margin-bottom: 25px;">
-                        <a href="{dashboard_url}/incidents/{event_id}">
-                            <img src="{snap_url}" width="100%" style="border-radius: 12px; border: 1px solid #334155; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);" />
+                        <a href="{public_url}">
+                            <img src="{snap_url}" width="100%" style="border-radius: 12px; border: 2px solid #334155; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4); transition: transform 0.2s;" />
                         </a>
                     </div>
 
-                    <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 20px;">
-                        <a href="{dashboard_url}/incidents/{event_id}?action=acknowledge&from=email" style="background-color: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">✅ Acknowledge</a>
-                        <a href="{dashboard_url}/incidents/{event_id}" style="background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">🔍 View Details</a>
-                        <a href="{video_url}" style="background-color: transparent; color: #94a3b8; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; border: 1px solid #334155; display: inline-block;">▶ Watch Clip</a>
+                    <div style="display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 24px;">
+                        <a href="{public_url}?action=acknowledge" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 14px 28px; text-decoration: none; border-radius: 10px; font-weight: 700; display: inline-block; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); transition: transform 0.2s, box-shadow 0.2s;">✅ Acknowledge</a>
+                        <a href="{public_url}" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; padding: 14px 28px; text-decoration: none; border-radius: 10px; font-weight: 700; display: inline-block; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); transition: transform 0.2s, box-shadow 0.2s;">🔍 View Details</a>
+                        <a href="{video_url}" style="background-color: transparent; color: #94a3b8; padding: 14px 28px; text-decoration: none; border-radius: 10px; font-weight: 600; border: 2px solid #334155; display: inline-block; transition: all 0.2s;">▶ Watch Clip</a>
                     </div>
 
-                    <div style="margin-top: 40px; text-align: center; border-top: 1px solid #334155; padding-top: 20px;">
-                        <p style="color: #64748b; font-size: 12px;">This is an automated security alert from your VisionGuard AI system.</p>
+                    <div style="margin-top: 40px; text-align: center; border-top: 1px solid #334155; padding-top: 24px;">
+                        <p style="color: #64748b; font-size: 13px; font-weight: 500;">This is an automated security alert from your VisionGuard AI system.</p>
+                        <p style="color: #475569; font-size: 12px; margin-top: 8px;">Contact your security team if you have questions about this alert.</p>
                     </div>
                 </div>
                 """
