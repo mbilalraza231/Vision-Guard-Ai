@@ -92,7 +92,7 @@ class AlertWorker:
             else:
                 cam_id = "****"
         
-        dashboard_url = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
+        dashboard_url = os.getenv("FRONTEND_URL", "http://localhost:8080").rstrip("/")
         # Generate secure token for public access (using event ID + timestamp)
         token_payload = f"{event_id}{int(time.time())}"
         secure_token = hashlib.sha256(token_payload.encode()).hexdigest()[:32]
@@ -177,7 +177,7 @@ class AlertWorker:
             if email_enabled and contact.get('email') and contact.get('email_alert'):
                 color = "#ff4b2b" if severity == "critical" else "#ffa502" if severity == "high" else "#2ed573"
                 subject = f"⚠️ VisionGuard: {severity.upper()} {event_type.replace('_', ' ').title()}"
-                dashboard_url = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
+                dashboard_url = os.getenv("FRONTEND_URL", "http://localhost:8080").rstrip("/")
                 # Generate secure token for public access (using contact ID + event ID + timestamp)
                 import hashlib
                 token_payload = f"{contact.get('id', '')}{event_id}{int(time.time())}"
