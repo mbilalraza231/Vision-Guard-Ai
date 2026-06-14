@@ -597,7 +597,7 @@ export default function IncidentDetails() {
                             )}
                           </div>
                         </div>
-                        <div className="space-y-1.5">
+                        <div className="space-y-1.5 overflow-hidden">
                           {sortedGroupNotes.map((note) => {
                             // Shorten system note messages for display
                             let displayContent = note.content;
@@ -608,11 +608,11 @@ export default function IncidentDetails() {
                             }
                             
                             return (
-                              <div key={note.id} className="flex gap-2 text-xs">
+                              <div key={note.id} className="flex gap-2 text-xs min-w-0">
                                 <span className="text-muted-foreground shrink-0 font-mono">
                                   {formatDateTime(note.created_at * 1000, timezone).split(',')[1]?.trim() || formatDateTime(note.created_at * 1000, timezone)}
                                 </span>
-                                <span className="text-foreground/90 whitespace-pre-wrap flex-1">{displayContent}</span>
+                                <span className="text-foreground/90 whitespace-pre-wrap break-words flex-1 min-w-0">{displayContent}</span>
                               </div>
                             );
                           })}

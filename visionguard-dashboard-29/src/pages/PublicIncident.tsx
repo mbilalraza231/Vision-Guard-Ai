@@ -435,13 +435,13 @@ export default function PublicIncident() {
                   notes.map((note: any) => (
                     <div
                       key={note.id}
-                      className="p-3 rounded-lg border bg-secondary/20 border-white/5"
+                      className="p-3 rounded-lg border bg-secondary/20 border-white/5 overflow-hidden"
                     >
-                      <div className="flex items-center justify-between mb-1.5 gap-2">
+                      <div className="flex items-center justify-between mb-1.5 gap-2 min-w-0">
                         <span className="text-xs font-semibold text-primary truncate">{note.user_name}</span>
                         <span className="text-[10px] text-muted-foreground shrink-0">{formatDateTime(note.created_at * 1000, timezone)}</span>
                       </div>
-                      <p className="text-sm text-foreground/90 whitespace-pre-wrap">
+                      <p className="text-sm text-foreground/90 whitespace-pre-wrap break-words">
                         {(() => {
                           // Shorten system note messages for display
                           let displayContent = note.content;
