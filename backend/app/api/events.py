@@ -403,7 +403,7 @@ async def acknowledge_incident(
     # Automatically post a system note
     note_id = str(uuid.uuid4())
     channel = _action_channel_label(payload.source)
-    system_content = f"Ack"
+    system_content = f"Acknowledged"
     await db.execute(
         """
         INSERT INTO incident_notes (id, event_id, content, created_at, user_name)
@@ -546,7 +546,7 @@ async def public_acknowledge_incident(
     # Automatically post a system note
     note_id = str(uuid.uuid4())
     channel = _action_channel_label(payload.source)
-    system_content = f"Ack"
+    system_content = f"Acknowledged"
     await db.execute(
         """
         INSERT INTO incident_notes (id, event_id, content, created_at, user_name)
