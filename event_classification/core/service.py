@@ -24,15 +24,16 @@ from ..classification.rule_engine import RuleEngine
 from ..redis_client.stream_consumer import StreamConsumer
 from ..cleanup.cleanup_manager import CleanupManager
 from ..output.database_writer import DatabaseWriter
+from ..output.zone_priority_resolver import ZonePriorityResolver
 from ..settings_runtime import apply_runtime_settings
 
 
 class ECSService:
     """
     Event Classification Service (ECS).
-    
+
     Single-instance, deterministic classification brain.
-    
+
     Main loop:
     1. Consume AI results from Redis stream
     2. Add to frame buffer
@@ -43,20 +44,20 @@ class ECSService:
     7. Remove from buffer
     8. Handle expired frames (TTL-based)
     """
-    
+
     def __init__(self, config: ECSConfig):
         """
         Initialize ECS.
-        
+
         Args:
             config: ECS configuration
         """
         self.config = config
-        
+
         # Process control
         self.process: Optional[Process] = None
         self.stop_event = ProcessEvent()
-        
+
         # Components (initialized in process)
         self.logger: Optional[logging.Logger] = None
         self.frame_buffer: Optional[FrameBuffer] = None
@@ -68,67 +69,69 @@ class ECSService:
         self.camera_history_manager: Optional[CameraHistoryManager] = None
         # Clip request publisher
         self._clip_redis: Optional[redis_lib.Redis] = None
+        # Zone priority resolver (camera -> zone -> severity override)
+        self.zone_priority_resolver: Optional[ZonePriorityResolver] = None
         # Metrics reporter
         self._metrics_reporter = None
-    
+
     def start(self) -> bool:
         """
         Start ECS process.
-        
+
         Returns:
             True if process started successfully
         """
         self.stop_event.clear()
-        
+
         self.process = Process(
             target=self._run,
             name="ECS-Service",
             daemon=False
         )
         self.process.start()
-        
+
         return self.process.is_alive()
-    
+
     def stop(self, timeout: float = 10.0) -> None:
         """
         Stop ECS process gracefully.
-        
+
         Args:
             timeout: Maximum time to wait for process to stop
         """
         if not self.process:
             return
-        
+
         # Signal process to stop
         self.stop_event.set()
-        
+
         # Wait for process to finish
         self.process.join(timeout=timeout)
-        
+
         # Force terminate if still alive
         if self.process.is_alive():
             self.process.terminate()
             self.process.join(timeout=2.0)
-        
+
         # Force kill if still alive
         if self.process.is_alive():
             self.process.kill()
             self.process.join()
-    
+
     def is_alive(self) -> bool:
         """Check if process is alive."""
         return self.process is not None and self.process.is_alive()
-    
+
     def _run(self) -> None:
         """
         Main process loop (runs in separate process).
-        
+
         This is the entry point for the ECS process.
         """
         # Setup logging for this process
         self.logger = logging.getLogger("event_classification")
         self.logger.setLevel(getattr(logging, self.config.log_level))
-        
+
         handler = logging.StreamHandler()
         if self.config.log_format == "json":
             # TODO: Use JSON formatter
@@ -141,9 +144,9 @@ class ECSService:
             )
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
-        
+
         self.logger.info("ECS starting (SINGLE INSTANCE)")
-        
+
         # Setup metrics reporter inside the process
         try:
             r_client = redis_lib.Redis(
@@ -152,6 +155,7 @@ class ECSService:
                 db=self.config.redis_db or 0
             )
             # Create a simplified reporter here as well
+
             class MetricsReporter:
                 def __init__(self, r, name):
                     self.r, self.name = r, name
@@ -172,18 +176,20 @@ class ECSService:
                             # Total usage = self + all children
                             mem_bytes = self.process.memory_info().rss
                             cpu_total = self.process.cpu_percent(interval=0.1)
-                            
+
                             try:
-                                children = self.process.children(recursive=True)
+                                children = self.process.children(
+                                    recursive=True)
                                 for child in children:
                                     try:
                                         mem_bytes += child.memory_info().rss
-                                        cpu_total += child.cpu_percent(interval=0.1)
+                                        cpu_total += child.cpu_percent(
+                                            interval=0.1)
                                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                                         continue
                             except (psutil.NoSuchProcess, psutil.AccessDenied):
                                 pass
-                                
+
                             self.r.setex(self.key, 15, json.dumps({
                                 "cpu_percent": round(cpu_total, 2),
                                 "memory_gb": round(mem_bytes / (1024**3), 4),
@@ -201,16 +207,16 @@ class ECSService:
             self.logger.info("ECS metrics heartbeat started")
         except Exception as e:
             self.logger.warning(f"Failed to start metrics reporter: {e}")
-        
+
         try:
             # Initialize components
             if not self._initialize():
                 self.logger.error("Failed to initialize ECS")
                 return
-            
+
             # Main classification loop
             self._classification_loop()
-            
+
         except Exception as e:
             self.logger.error(
                 f"Fatal error in ECS: {e}",
@@ -221,22 +227,22 @@ class ECSService:
             if self._metrics_reporter:
                 self._metrics_reporter.stop()
             self._shutdown()
-    
+
     def _initialize(self) -> bool:
         """
         Initialize all components.
-        
+
         Returns:
             True if initialization successful
         """
         try:
             # Initialize frame buffer
             self.frame_buffer = FrameBuffer()
-            
+
             # Initialize rule engine (thresholds may be overridden from Redis immediately after)
             self.rule_engine = RuleEngine(self.config)
             self._apply_runtime_settings()
-            
+
             # V2: Initialize camera history manager
             self.camera_history_manager = CameraHistoryManager(
                 history_window_seconds=self.config.camera_history_window_sec
@@ -245,7 +251,7 @@ class ECSService:
                 "CameraHistoryManager initialized",
                 extra={"window_sec": self.config.camera_history_window_sec}
             )
-            
+
             # Connect clip Redis client (critical for state management now)
             try:
                 self._clip_redis = redis_lib.Redis(
@@ -257,7 +263,8 @@ class ECSService:
                 self._clip_redis.ping()
                 self.logger.info("Internal Redis client connected")
             except Exception as e:
-                self.logger.warning(f"Internal Redis client failed to connect: {e} — state persistence and clips disabled")
+                self.logger.warning(
+                    f"Internal Redis client failed to connect: {e} — state persistence and clips disabled")
                 self._clip_redis = None
 
             # Initialize Redis stream consumer
@@ -270,7 +277,7 @@ class ECSService:
                 block_ms=self.config.read_block_ms,
                 count=self.config.read_count
             )
-            
+
             # REFINEMENT: Set start ID based on saved state OR config
             saved_id = None
             if self._clip_redis:
@@ -278,7 +285,7 @@ class ECSService:
                     saved_id = self._clip_redis.get("vg:ecs:last_id")
                 except Exception:
                     pass
-            
+
             if saved_id:
                 self.logger.info(f"Resuming from saved stream ID: {saved_id}")
                 self.stream_consumer.set_start_id(saved_id)
@@ -286,11 +293,12 @@ class ECSService:
                 self.stream_consumer.set_start_id("$")  # Start from latest
             else:
                 # Read from beginning (explicit backlog replay)
-                self.stream_consumer.set_start_id("0")  # Start from first message
-            
+                self.stream_consumer.set_start_id(
+                    "0")  # Start from first message
+
             # Initialize cleanup manager (AUTHORITATIVE)
             self.cleanup_manager = CleanupManager()
-            
+
             # Initialize output dispatchers
             if self.config.enable_database:
                 self.database_writer = DatabaseWriter(
@@ -306,19 +314,35 @@ class ECSService:
                     batch_size=self.config.database_batch_size,
                     model_version=self.config.model_version
                 )
-            
+
+            # Initialize zone priority resolver
+            try:
+                self.zone_priority_resolver = ZonePriorityResolver(
+                    postgres_config={
+                        "user": self.config.postgres_user,
+                        "password": self.config.postgres_password,
+                        "host": self.config.postgres_host,
+                        "port": self.config.postgres_port,
+                        "db": self.config.postgres_db
+                    },
+                    refresh_interval_sec=60.0,
+                )
+            except Exception as e:
+                self.logger.warning(
+                    f"ZonePriorityResolver failed to init (using defaults): {e}")
+                self.zone_priority_resolver = None
+
             self.logger.info("ECS initialized successfully")
 
-
             return True
-            
+
         except Exception as e:
             self.logger.error(
                 f"Initialization failed: {e}",
                 extra={"error": str(e)}
             )
             return False
-    
+
     def _apply_runtime_settings(self) -> None:
         """Reload ECS thresholds/timing from Redis dashboard settings (~10s cadence)."""
         try:
@@ -342,7 +366,7 @@ class ECSService:
 
         # Apply dashboard settings once at loop start (may override container env).
         self._apply_runtime_settings()
-        
+
         # Start Pub/Sub Listener thread
         if self._clip_redis:
             def _settings_listener():
@@ -354,22 +378,24 @@ class ECSService:
                             self._apply_runtime_settings()
                 except Exception as e:
                     if self.logger:
-                        self.logger.warning(f"Settings Pub/Sub thread died: {e}")
-            
+                        self.logger.warning(
+                            f"Settings Pub/Sub thread died: {e}")
+
             t = threading.Thread(target=_settings_listener, daemon=True)
             t.start()
-        
+
         while not self.stop_event.is_set():
             try:
                 now = time.time()
 
                 # 1. Consume messages from Redis stream
                 messages = self.stream_consumer.consume()
-                
+
                 for msg in messages:
                     ingest_timestamp = time.time()
                     try:
-                        ingest_timestamp = int(str(msg.id).split("-", 1)[0]) / 1000.0
+                        ingest_timestamp = int(
+                            str(msg.id).split("-", 1)[0]) / 1000.0
                     except Exception:
                         pass
 
@@ -382,7 +408,7 @@ class ECSService:
                             "frame_id": msg.frame_id
                         }
                     )
-                    
+
                     # 2. Add result to frame buffer
                     ai_result = AIResult(
                         model_type=msg.model_type,
@@ -391,7 +417,7 @@ class ECSService:
                         ingest_timestamp=ingest_timestamp,
                         bbox=msg.bbox
                     )
-                    
+
                     frame_state = self.frame_buffer.add_result(
                         frame_id=msg.frame_id,
                         camera_id=msg.camera_id,
@@ -399,11 +425,11 @@ class ECSService:
                         model_type=msg.model_type,
                         result=ai_result
                     )
-                    
+
                     # 3. Check if ready for classification
                     # Weapon short-circuits correlation window
                     should_classify = False
-                    
+
                     if self.rule_engine.should_classify_immediately(frame_state):
                         should_classify = True
                         self.logger.debug(
@@ -419,7 +445,7 @@ class ECSService:
                                 "age_ms": frame_state.get_age_ms()
                             }
                         )
-                    
+
                     if should_classify:
                         # 4. Classify with camera history (v2) only once
                         if not frame_state.classification_attempted:
@@ -430,13 +456,14 @@ class ECSService:
                             event = self.rule_engine.classify(
                                 frame_state, camera_history
                             )
-                            
+
                             if event:
                                 # 5. Dispatch outputs
+                                self._apply_zone_priority(event)
                                 if self.database_writer:
                                     self.database_writer.write(event)
                                 self._publish_clip_request(event)
-                        
+
                         # 6. Cleanup shared memory ONLY if all models reported
                         if frame_state.has_all_models():
                             self.cleanup_manager.cleanup_frame(
@@ -450,8 +477,9 @@ class ECSService:
                         try:
                             self._clip_redis.set("vg:ecs:last_id", msg.id)
                         except Exception as e:
-                            self.logger.warning(f"Failed to persist stream state: {e}")
-                
+                            self.logger.warning(
+                                f"Failed to persist stream state: {e}")
+
                 # 9. V2 Periodic classification scan
                 current_time = time.time()
                 if current_time - last_classification_scan >= 1.0:
@@ -460,7 +488,7 @@ class ECSService:
                             self.config.correlation_window_ms
                         )
                     )
-                    
+
                     for frame_state in aged_frames:
                         if not frame_state.classification_attempted:
                             frame_state.classification_attempted = True
@@ -470,7 +498,7 @@ class ECSService:
                             event = self.rule_engine.classify(
                                 frame_state, camera_history
                             )
-                            
+
                             if event:
                                 self.logger.info(
                                     f"Classified aged frame: {event.event_type}",
@@ -481,10 +509,11 @@ class ECSService:
                                         "age_ms": frame_state.get_age_ms()
                                     }
                                 )
+                                self._apply_zone_priority(event)
                                 if self.database_writer:
                                     self.database_writer.write(event)
                                 self._publish_clip_request(event)
-                        
+
                         if frame_state.has_all_models():
                             self.cleanup_manager.cleanup_frame(
                                 frame_state.shared_memory_key
@@ -492,14 +521,14 @@ class ECSService:
                             self.frame_buffer.remove_frame(
                                 frame_state.frame_id
                             )
-                    
+
                     last_classification_scan = current_time
-                
+
                 # 10. Handle expired frames (safety net)
                 expired_frames = self.frame_buffer.get_expired_frames(
                     self.config.hard_ttl_seconds
                 )
-                
+
                 for frame_state in expired_frames:
                     # Force classify before expiry
                     if not frame_state.classification_attempted:
@@ -520,10 +549,11 @@ class ECSService:
                                     "confidence": event.confidence,
                                 }
                             )
+                            self._apply_zone_priority(event)
                             if self.database_writer:
                                 self.database_writer.write(event)
                             self._publish_clip_request(event)
-                    
+
                     self.logger.warning(
                         f"Frame expired (TTL)",
                         extra={
@@ -547,7 +577,7 @@ class ECSService:
                         }
                     )
                     last_heartbeat = time.time()
-                
+
             except KeyboardInterrupt:
                 self.logger.info("Received keyboard interrupt")
                 break
@@ -558,55 +588,87 @@ class ECSService:
                 )
                 # Continue processing
                 time.sleep(0.1)
-        
+
         self.logger.info("Classification loop ended")
-    
+
     def _shutdown(self) -> None:
         """Cleanup resources."""
         self.logger.info("Shutting down ECS")
-        
+
         # Close Redis connection
         if self.stream_consumer:
             self.stream_consumer.close()
-        
+
         # Log final statistics
         if self.frame_buffer:
             self.logger.info(
                 "Frame buffer stats",
                 extra=self.frame_buffer.get_stats()
             )
-        
+
         if self.rule_engine:
             self.logger.info(
                 "Rule engine stats",
                 extra=self.rule_engine.get_stats()
             )
-        
+
         if self.stream_consumer:
             self.logger.info(
                 "Stream consumer stats",
                 extra=self.stream_consumer.get_stats()
             )
-        
+
         if self.cleanup_manager:
             self.logger.info(
                 "Cleanup manager stats",
                 extra=self.cleanup_manager.get_stats()
             )
-        
+
         if self.alert_dispatcher:
             self.logger.info(
                 "Alert dispatcher stats",
                 extra=self.alert_dispatcher.get_stats()
             )
-        
+
         if self.database_writer:
             self.logger.info(
                 "Database writer stats",
                 extra=self.database_writer.get_stats()
             )
-        
+
+        if self.zone_priority_resolver:
+            self.zone_priority_resolver.stop()
+
         self.logger.info("ECS shutdown complete")
+
+    def _apply_zone_priority(self, event) -> None:
+        """
+        Override event severity with zone-adjusted priority if the camera
+        belongs to a zone that has custom priority overrides.
+
+        Mutates event.severity in-place. Fail-safe: on any error, the
+        original rule-engine severity is preserved.
+        """
+        if not self.zone_priority_resolver:
+            return
+        try:
+            original = event.severity
+            adjusted = self.zone_priority_resolver.resolve(
+                event.camera_id, event.model_type, event.severity
+            )
+            if adjusted != event.severity.lower():
+                self.logger.info(
+                    f"Severity overridden by zone: {original} -> {adjusted}",
+                    extra={
+                        "camera_id": event.camera_id,
+                        "model_type": event.model_type,
+                        "original_severity": original,
+                    }
+                )
+                event.severity = adjusted
+        except Exception as e:
+            self.logger.warning(
+                f"Zone priority override failed (keeping default): {e}")
 
     def _publish_clip_request(self, event) -> None:
         """
@@ -626,7 +688,8 @@ class ECSService:
             # This means cameras.json is the SINGLE source of truth — no env var needed.
             camera_source = ""
             try:
-                camera_source = self._clip_redis.hget("vg:camera:sources", event.camera_id) or ""
+                camera_source = self._clip_redis.hget(
+                    "vg:camera:sources", event.camera_id) or ""
             except Exception:
                 pass
 
@@ -646,7 +709,8 @@ class ECSService:
             )
             self.logger.debug(
                 f"Clip request published for event {event.event_id}",
-                extra={"event_type": event.event_type, "camera_id": event.camera_id},
+                extra={"event_type": event.event_type,
+                       "camera_id": event.camera_id},
             )
         except Exception as e:
             self.logger.warning(
