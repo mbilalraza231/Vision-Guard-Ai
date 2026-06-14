@@ -77,7 +77,7 @@ export default function PublicIncident() {
   const token = searchParams.get('token');
   const action = searchParams.get('action');
   const source = parseActionSource(searchParams.get('from'));
-  const contactNameParam = searchParams.get('contact') || 'Alert Contact';
+  const contactNameParam = decodeURIComponent(searchParams.get('contact') || 'Alert Contact');
   
   const [contactName, setContactName] = useState(contactNameParam);
   const [isResolveModalOpen, setIsResolveModalOpen] = useState(false);
