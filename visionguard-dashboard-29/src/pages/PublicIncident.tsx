@@ -54,6 +54,23 @@ function parseActionSource(value: string | null): ActionSource {
   return 'email';
 }
 
+function parseNoteAuthor(userName: string | undefined): { name: string; channel?: string } {
+  const raw = String(userName ?? '').trim();
+  const channelMatch = raw.match(/^\[System:(\w+)\] (.+)$/);
+  if (channelMatch) {
+    const source = parseActionSource(channelMatch[1]);
+    return { name: channelMatch[2], channel: source === 'email' ? 'Email' : source === 'whatsapp' ? 'WhatsApp' : 'Dashboard' };
+  }
+  if (raw.startsWith('[System] ')) {
+    return { name: raw.slice('[System] '.length), channel: 'Dashboard' };
+  }
+  return { name: raw || 'Unknown' };
+}
+
+function isSystemNote(userName: string | undefined): boolean {
+  return /^\[System(?::\w+)?\]/.test(String(userName ?? ''));
+}
+
 export default function PublicIncident() {
   const { id } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -104,7 +121,7 @@ export default function PublicIncident() {
   const acknowledgeMutation = useMutation({
     mutationFn: () => {
       return apiService.putData(`${API_ENDPOINTS.incidents.list}/${id}/public/acknowledge?token=${token}`, {
-        user_name: 'Alert Contact',
+        user_name: `[System:${source}] Alert Contact`,
         source,
       });
     },
@@ -121,7 +138,7 @@ export default function PublicIncident() {
   const resolveMutation = useMutation({
     mutationFn: (data: { resolution: string; content?: string }) => {
       return apiService.putData(`${API_ENDPOINTS.incidents.list}/${id}/public/resolve?token=${token}`, {
-        user_name: 'Alert Contact',
+        user_name: `[System:${source}] Alert Contact`,
         resolution: data.resolution,
         content: data.content,
         source,
@@ -143,7 +160,7 @@ export default function PublicIncident() {
     mutationFn: (noteContent: string) => {
       return apiService.postData(`${API_ENDPOINTS.incidents.list}/${id}/public/notes?token=${token}`, {
         content: noteContent,
-        user_name: `[System:${source}] Alert Contact`,
+        user_name: `[System:${source}] Alert Contact (${source === 'email' ? 'Email' : 'WhatsApp'})`,
       });
     },
     onSuccess: () => {
@@ -403,29 +420,77 @@ export default function PublicIncident() {
                       : 'Notes can be added after this incident is resolved.'}
                   </p>
                 ) : (
-                  notes.map((note: any) => (
-                    <div
-                      key={note.id}
-                      className="p-3 rounded-lg border bg-secondary/20 border-white/5 overflow-hidden"
-                    >
-                      <div className="flex items-center justify-between mb-1.5 gap-2 min-w-0">
-                        <span className="text-xs font-semibold text-primary truncate">{note.user_name}</span>
-                        <span className="text-[10px] text-muted-foreground shrink-0">{formatDateTime(note.created_at * 1000, timezone)}</span>
+                  // Group notes by author
+                  Object.entries(
+                    notes.reduce((groups: Record<string, any[]>, note) => {
+                      const author = parseNoteAuthor(note.user_name).name;
+                      if (!groups[author]) groups[author] = [];
+                      groups[author].push(note);
+                      return groups;
+                    }, {})
+                  ).map(([author, groupNotes]: [string, any[]], groupIndex) => {
+                    const systemNote = isSystemNote(groupNotes[0].user_name);
+                    const { channel } = parseNoteAuthor(groupNotes[0].user_name);
+                    
+                    // Sort notes within group: follow-up → resolve → acknowledge
+                    const sortedGroupNotes = [...groupNotes].sort((a, b) => {
+                      const aIsAck = a.content.startsWith('Acknowledged');
+                      const aIsRes = a.content.startsWith('Resolved');
+                      const bIsAck = b.content.startsWith('Acknowledged');
+                      const bIsRes = b.content.startsWith('Resolved');
+                      
+                      // Follow-up notes (not ack/resolve) come first
+                      if (!aIsAck && !aIsRes && (bIsAck || bIsRes)) return -1;
+                      if ((aIsAck || aIsRes) && !bIsAck && !bIsRes) return 1;
+                      
+                      // Resolves come before acknowledges
+                      if (aIsRes && bIsAck) return -1;
+                      if (aIsAck && bIsRes) return 1;
+                      
+                      // Same type: newer first
+                      return b.created_at - a.created_at;
+                    });
+                    
+                    return (
+                      <div
+                        key={groupIndex}
+                        className={`p-3 rounded-lg border ${
+                          systemNote
+                            ? 'bg-secondary/20 border-white/5'
+                            : 'bg-primary/5 border-primary/20'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-2 gap-2">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-xs font-semibold text-primary truncate">{author}</span>
+                            {systemNote && channel && (
+                              <span className="text-[10px] text-muted-foreground shrink-0">· {channel}</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="space-y-1.5 overflow-hidden">
+                          {sortedGroupNotes.map((note) => {
+                            // Shorten system note messages for display
+                            let displayContent = note.content;
+                            if (displayContent.startsWith('Acknowledged the incident')) {
+                              displayContent = 'Acknowledged';
+                            } else if (displayContent.startsWith('Resolved the incident')) {
+                              displayContent = displayContent.replace('Resolved the incident', 'Resolved');
+                            }
+                            
+                            return (
+                              <div key={note.id} className="flex gap-2 text-xs min-w-0">
+                                <span className="text-muted-foreground shrink-0 font-mono">
+                                  {formatDateTime(note.created_at * 1000, timezone).split(',')[1]?.trim() || formatDateTime(note.created_at * 1000, timezone)}
+                                </span>
+                                <span className="text-foreground/90 whitespace-pre-wrap break-words flex-1 min-w-0">{displayContent}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                      <p className="text-sm text-foreground/90 whitespace-pre-wrap break-words">
-                        {(() => {
-                          // Shorten system note messages for display
-                          let displayContent = note.content;
-                          if (displayContent.startsWith('Acknowledged the incident')) {
-                            displayContent = 'Acknowledged';
-                          } else if (displayContent.startsWith('Resolved the incident')) {
-                            displayContent = displayContent.replace('Resolved the incident', 'Resolved');
-                          }
-                          return displayContent;
-                        })()}
-                      </p>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
