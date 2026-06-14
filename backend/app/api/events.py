@@ -403,7 +403,7 @@ async def acknowledge_incident(
     # Automatically post a system note
     note_id = str(uuid.uuid4())
     channel = _action_channel_label(payload.source)
-    system_content = f"Acknowledged the incident by {payload.user_name} via {channel}."
+    system_content = f"Ack"
     await db.execute(
         """
         INSERT INTO incident_notes (id, event_id, content, created_at, user_name)
@@ -458,7 +458,7 @@ async def resolve_incident(
     # Automatically post a system note
     note_id = str(uuid.uuid4())
     channel = _action_channel_label(payload.source)
-    system_content = f"Resolved the incident ({payload.resolution}) by {payload.user_name} via {channel}."
+    system_content = f"Resolved ({payload.resolution})"
     if payload.content and payload.content.strip():
         system_content += f"\n\"{payload.content.strip()}\""
 
@@ -546,7 +546,7 @@ async def public_acknowledge_incident(
     # Automatically post a system note
     note_id = str(uuid.uuid4())
     channel = _action_channel_label(payload.source)
-    system_content = f"Acknowledged the incident by {payload.user_name} via {channel}."
+    system_content = f"Ack"
     await db.execute(
         """
         INSERT INTO incident_notes (id, event_id, content, created_at, user_name)
@@ -606,7 +606,7 @@ async def public_resolve_incident(
     # Automatically post a system note
     note_id = str(uuid.uuid4())
     channel = _action_channel_label(payload.source)
-    system_content = f"Resolved the incident ({payload.resolution}) by {payload.user_name} via {channel}."
+    system_content = f"Resolved ({payload.resolution})"
     if payload.content and payload.content.strip():
         system_content += f"\n\"{payload.content.strip()}\""
 
