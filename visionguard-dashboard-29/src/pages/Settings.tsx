@@ -130,6 +130,7 @@ const defaultSettings: SystemSettings = {
   clips: {
     preSeconds: 0,
     postSeconds: 10,
+    fps: 10,
     enableBackgroundBuffer: false,
   },
   system: {
