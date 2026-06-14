@@ -96,6 +96,7 @@ class AlertWorker:
         # Generate simple token for public access (using event ID + timestamp)
         token_payload = f"{event_id}{int(time.time())}"
         secure_token = hashlib.sha256(token_payload.encode()).hexdigest()[:32]
+        # Note: contact name will be added in the main loop where contact is available
         public_url = f"{dashboard_url}/public-incident/{event_id}?token={secure_token}&from=whatsapp"
         
         return (
@@ -171,7 +172,13 @@ class AlertWorker:
             if push_enabled and contact.get('phone') and contact.get('whatsapp'):
                 phone = contact['phone']
                 to = f"whatsapp:{phone}" if not phone.startswith('whatsapp:') else phone
-                tasks.append(self.notifier.send_twilio(to, whatsapp_msg, anonymize=anonymize_data))
+                # Add contact name to WhatsApp URL
+                contact_name = contact.get('name', 'Alert Contact')
+                whatsapp_msg_with_contact = whatsapp_msg.replace(
+                    f"{dashboard_url}/public-incident/{event_id}?token=",
+                    f"{dashboard_url}/public-incident/{event_id}?token={secure_token}&from=whatsapp&contact={contact_name}"
+                )
+                tasks.append(self.notifier.send_twilio(to, whatsapp_msg_with_contact, anonymize=anonymize_data))
                 
             # Send Premium Email
             if email_enabled and contact.get('email') and contact.get('email_alert'):
@@ -182,7 +189,8 @@ class AlertWorker:
                 import hashlib
                 token_payload = f"{event_id}{int(time.time())}"
                 secure_token = hashlib.sha256(token_payload.encode()).hexdigest()[:32]
-                public_url = f"{dashboard_url}/public-incident/{event_id}?token={secure_token}&from=email"
+                contact_name = contact.get('name', 'Alert Contact')
+                public_url = f"{dashboard_url}/public-incident/{event_id}?token={secure_token}&from=email&contact={contact_name}"
                 
                 body = f"""
                 <div style="background-color: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 40px 20px; max-width: 600px; margin: auto; border-radius: 16px;">

@@ -481,7 +481,8 @@ async def resolve_incident(
 @router.get("/events/{event_id}/public")
 async def get_public_event(
     event_id: str = Path(..., description="Event UUID"),
-    token: str = Query(..., description="Access token for public view")
+    token: str = Query(..., description="Access token for public view"),
+    contact: str = Query(None, description="Contact name from URL")
 ) -> dict:
     """Get event data for public view with token validation."""
     reader = get_db_reader()
@@ -494,8 +495,8 @@ async def get_public_event(
     if event is None:
         raise HTTPException(status_code=404, detail=f"Incident {event_id} not found")
     
-    # For now, use generic contact name since we can't validate token without database storage
-    event['contact_name'] = 'Alert Contact'
+    # Use contact name from URL parameter if provided, otherwise use generic name
+    event['contact_name'] = contact or 'Alert Contact'
     event['contact_source'] = 'email'
     
     return event

@@ -77,8 +77,9 @@ export default function PublicIncident() {
   const token = searchParams.get('token');
   const action = searchParams.get('action');
   const source = parseActionSource(searchParams.get('from'));
+  const contactNameParam = searchParams.get('contact') || 'Alert Contact';
   
-  const [contactName, setContactName] = useState('');
+  const [contactName, setContactName] = useState(contactNameParam);
   const [isResolveModalOpen, setIsResolveModalOpen] = useState(false);
   const [resolutionType, setResolutionType] = useState('False Alarm');
   const [resolveNote, setResolveNote] = useState('');
@@ -120,7 +121,6 @@ export default function PublicIncident() {
 
   const acknowledgeMutation = useMutation({
     mutationFn: () => {
-      const contactName = incident?.contact_name || 'Alert Contact';
       return apiService.putData(`${API_ENDPOINTS.incidents.list}/${id}/public/acknowledge?token=${token}`, {
         user_name: `[System:${source}] ${contactName} (Contacts)`,
         source,
@@ -138,7 +138,6 @@ export default function PublicIncident() {
 
   const resolveMutation = useMutation({
     mutationFn: (data: { resolution: string; content?: string }) => {
-      const contactName = incident?.contact_name || 'Alert Contact';
       return apiService.putData(`${API_ENDPOINTS.incidents.list}/${id}/public/resolve?token=${token}`, {
         user_name: `[System:${source}] ${contactName} (Contacts)`,
         resolution: data.resolution,
@@ -160,7 +159,6 @@ export default function PublicIncident() {
 
   const addNoteMutation = useMutation({
     mutationFn: (noteContent: string) => {
-      const contactName = incident?.contact_name || 'Alert Contact';
       return apiService.postData(`${API_ENDPOINTS.incidents.list}/${id}/public/notes?token=${token}`, {
         content: noteContent,
         user_name: `[System:${source}] ${contactName} (Contacts)`,
@@ -333,12 +331,6 @@ export default function PublicIncident() {
                   <span className="text-muted-foreground">Status</span>
                   <StatusBadge status={incident.status || 'active'} />
                 </div>
-                {incident.acknowledged_by && (
-                  <div className="flex justify-between items-center py-2 border-t border-white/5">
-                    <span className="text-muted-foreground text-xs">Acknowledged By</span>
-                    <span className="text-xs font-semibold">{incident.acknowledged_by}</span>
-                  </div>
-                )}
                 {incident.resolved_by && (
                   <div className="flex flex-col gap-1 py-2 border-t border-white/5">
                     <div className="flex justify-between items-center">
