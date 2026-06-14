@@ -92,7 +92,7 @@ export default function PublicIncident() {
   const { data: incident, isLoading: incidentLoading, error: incidentError } = useQuery({
     queryKey: ['public-incident', id, token],
     queryFn: async () => {
-      const response = await fetch(`${API_CONFIG.baseUrl}${API_ENDPOINTS.incidents.list}/${id}/public?token=${token}`);
+      const response = await fetch(`${API_CONFIG.baseUrl}${API_ENDPOINTS.incidents.list}/${id}/public?token=${token}&contact=${encodeURIComponent(contactNameParam)}`);
       if (!response.ok) {
         if (response.status === 401) {
           throw new Error('Invalid or expired access token');
@@ -102,7 +102,12 @@ export default function PublicIncident() {
         }
         throw new Error('Failed to load incident');
       }
-      return response.json();
+      const data = await response.json();
+      // Update contact name from backend response if available
+      if (data.contact_name && data.contact_name !== 'Alert Contact') {
+        setContactName(data.contact_name);
+      }
+      return data;
     },
     enabled: !!id && !!token,
   });
