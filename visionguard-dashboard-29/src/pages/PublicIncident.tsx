@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { SeverityBadge, StatusBadge } from '@/components/common/StatusBadge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { formatDateTime, formatTimeString } from '@/lib/utils';
-import { API_ENDPOINTS, buildApiUrl } from '@/config/api';
+import { API_ENDPOINTS, buildApiUrl, API_CONFIG } from '@/config/api';
 import { apiService } from '@/services/api.service';
 import {
   ChevronLeft,
