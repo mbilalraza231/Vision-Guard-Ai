@@ -103,10 +103,9 @@ export default function PublicIncident() {
 
   const acknowledgeMutation = useMutation({
     mutationFn: () => {
-      return apiService.putData(`${API_ENDPOINTS.incidents.list}/${id}/public/acknowledge`, {
-        user_name: contactName || 'Alert Contact',
+      return apiService.putData(`${API_ENDPOINTS.incidents.list}/${id}/public/acknowledge?token=${token}`, {
+        user_name: 'Alert Contact',
         source,
-        token,
       });
     },
     onSuccess: () => {
@@ -121,12 +120,11 @@ export default function PublicIncident() {
 
   const resolveMutation = useMutation({
     mutationFn: (data: { resolution: string; content?: string }) => {
-      return apiService.putData(`${API_ENDPOINTS.incidents.list}/${id}/public/resolve`, {
-        user_name: contactName || 'Alert Contact',
+      return apiService.putData(`${API_ENDPOINTS.incidents.list}/${id}/public/resolve?token=${token}`, {
+        user_name: 'Alert Contact',
         resolution: data.resolution,
         content: data.content,
         source,
-        token,
       });
     },
     onSuccess: () => {
@@ -143,10 +141,9 @@ export default function PublicIncident() {
 
   const addNoteMutation = useMutation({
     mutationFn: (noteContent: string) => {
-      return apiService.postData(`${API_ENDPOINTS.incidents.list}/${id}/public/notes`, {
+      return apiService.postData(`${API_ENDPOINTS.incidents.list}/${id}/public/notes?token=${token}`, {
         content: noteContent,
-        user_name: `[System:${source}] ${contactName || 'Alert Contact'}`,
-        token,
+        user_name: `[System:${source}] Alert Contact`,
       });
     },
     onSuccess: () => {
@@ -198,26 +195,14 @@ export default function PublicIncident() {
   };
 
   const handleAcknowledge = () => {
-    if (!contactName.trim()) {
-      toast.error('Please enter your name first');
-      return;
-    }
     acknowledgeMutation.mutate();
   };
 
   const handleResolve = () => {
-    if (!contactName.trim()) {
-      toast.error('Please enter your name first');
-      return;
-    }
     resolveMutation.mutate({ resolution: resolutionType, content: resolveNote });
   };
 
   const handleAddNote = () => {
-    if (!contactName.trim()) {
-      toast.error('Please enter your name first');
-      return;
-    }
     if (!newNote.trim()) {
       toast.error('Please enter a note');
       return;
@@ -244,20 +229,6 @@ export default function PublicIncident() {
       </div>
 
       <div className="p-6 max-w-7xl mx-auto">
-        {/* Contact Name Input */}
-        <div className="mb-6 p-4 bg-secondary/20 border border-white/10 rounded-lg">
-          <label className="block text-sm font-semibold text-muted-foreground mb-2">
-            Your Name (required for actions)
-          </label>
-          <input
-            type="text"
-            className="w-full bg-background border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-            placeholder="Enter your name"
-            value={contactName}
-            onChange={(e) => setContactName(e.target.value)}
-          />
-        </div>
-
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* Main Content: Media */}
           <div className="lg:col-span-2 space-y-6">
@@ -392,7 +363,7 @@ export default function PublicIncident() {
                     Acknowledge Alert
                   </Button>
                 )}
-                {(incident.status === 'active' || incident.status === 'acknowledged') && (
+                {incident.status === 'acknowledged' && (
                   <Button 
                     className="w-full gap-2"
                     variant="outline"
