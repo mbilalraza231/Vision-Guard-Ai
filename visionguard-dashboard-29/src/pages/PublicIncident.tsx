@@ -74,7 +74,7 @@ export default function PublicIncident() {
   const { data: incident, isLoading: incidentLoading, error: incidentError } = useQuery({
     queryKey: ['public-incident', id, token],
     queryFn: async () => {
-      const response = await fetch(`${API_ENDPOINTS.incidents.list}/${id}/public?token=${token}`);
+      const response = await fetch(`${API_CONFIG.baseUrl}${API_ENDPOINTS.incidents.list}/${id}/public?token=${token}`);
       if (!response.ok) {
         if (response.status === 401) {
           throw new Error('Invalid or expired access token');
