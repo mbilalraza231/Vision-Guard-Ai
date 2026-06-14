@@ -106,7 +106,7 @@ export default function IncidentDetails() {
         : 'Security Operator';
       return apiService.postData(API_ENDPOINTS.incidents.notes(id!), { 
         content: noteContent,
-        user_name: userStr
+        user_name: `[System:dashboard] ${userStr}`
       });
     },
     onSuccess: () => {

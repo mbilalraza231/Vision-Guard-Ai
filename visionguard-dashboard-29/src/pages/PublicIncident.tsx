@@ -145,7 +145,7 @@ export default function PublicIncident() {
     mutationFn: (noteContent: string) => {
       return apiService.postData(`${API_ENDPOINTS.incidents.list}/${id}/public/notes`, {
         content: noteContent,
-        user_name: contactName || 'Alert Contact',
+        user_name: `[System:${source}] ${contactName || 'Alert Contact'}`,
         token,
       });
     },
