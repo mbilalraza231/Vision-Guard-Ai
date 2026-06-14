@@ -27,6 +27,7 @@ import AlertContacts from "@/pages/AlertContacts";
 import Settings from "@/pages/Settings";
 import Profile from "@/pages/Profile";
 import IncidentDetails from "@/pages/IncidentDetails";
+import PublicIncident from "@/pages/PublicIncident";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -87,6 +88,9 @@ const App = () => (
               <Route path="/profile" element={<Profile />} />
               <Route path="/incidents/:id" element={<IncidentDetails />} />
             </Route>
+
+            {/* Public incident route (no auth required) */}
+            <Route path="/public-incident/:id" element={<PublicIncident />} />
 
             {/* Catch-all */}
             <Route path="*" element={<NotFound />} />
