@@ -74,49 +74,24 @@ def load_worker_runtime_settings(model_type: str) -> Dict[str, Any]:
         except Exception:
             max_snapshot_buffer = 100
 
-    # Use model-specific settings based on worker type
-    model_settings_key = f"{model_type}Model"
-    model_settings = workers.get(model_settings_key, {})
-    if not isinstance(model_settings, dict):
-        model_settings = {}
-
-    # Fallback to fireModel for backward compatibility  
-    if not model_settings:
-        model_settings = workers.get("fireModel", {})
-    
-    if not isinstance(model_settings, dict):
-        model_settings = {}
-
+    # Critical model settings: Use environment variables as PRIMARY source
+    # Redis removed these settings to prevent frontend from breaking workers
+    # Environment variables set in docker-compose.yml are the authoritative source
     fire_runtime = {
         "iouThreshold": float(
-            model_settings.get(
-                "iouThreshold",
-                os.getenv("WORKER_IOU_THRESHOLD", "0.45"),
-            )
+            os.getenv("WORKER_IOU_THRESHOLD", "0.45"),
         ),
         "agnosticNms": bool(
-            model_settings.get(
-                "agnosticNms",
-                os.getenv("WORKER_AGNOSTIC_NMS", "true").lower() == "true",
-            )
+            os.getenv("WORKER_AGNOSTIC_NMS", "true").lower() == "true",
         ),
         "allowedClassIds": str(
-            model_settings.get(
-                "allowedClassIds",
-                os.getenv("WORKER_ALLOWED_CLASS_IDS", "0"),
-            )
+            os.getenv("WORKER_ALLOWED_CLASS_IDS", "0"),
         ),
         "inputWidth": int(
-            model_settings.get(
-                "inputWidth",
-                os.getenv("WORKER_INPUT_WIDTH", "416"),
-            )
+            os.getenv("WORKER_INPUT_WIDTH", "640"),  # Default to 640 for weapon/fall
         ),
         "inputHeight": int(
-            model_settings.get(
-                "inputHeight",
-                os.getenv("WORKER_INPUT_HEIGHT", "416"),
-            )
+            os.getenv("WORKER_INPUT_HEIGHT", "640"),  # Default to 640 for weapon/fall
         ),
     }
 
