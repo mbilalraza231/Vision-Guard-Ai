@@ -51,7 +51,7 @@ services:
     volumes:
       - vg-db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-visionguard}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-visionguard}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -153,8 +153,8 @@ services:
       - ECS_WEAPON_THRESHOLD=${ECS_WEAPON_THRESHOLD:-0.30}
       - ECS_FIRE_THRESHOLD=${ECS_FIRE_THRESHOLD:-0.30}
       - ECS_FALL_THRESHOLD=${ECS_FALL_THRESHOLD:-0.30}
-      - ECS_CORRELATION_WINDOW_MS=${ECS_CORRELATION_WINDOW_MS:-400}
-      - ECS_HARD_TTL_SECONDS=${ECS_HARD_TTL_SECONDS:-2.0}
+      - ECS_CORRELATION_WINDOW_MS=${ECS_CORRELATION_WINDOW_MS:-2000}
+      - ECS_HARD_TTL_SECONDS=${ECS_HARD_TTL_SECONDS:-15.0}
       - ECS_ENABLE_ALERTS=${ECS_ENABLE_ALERTS:-true}
       - ECS_ENABLE_DATABASE=${ECS_ENABLE_DATABASE:-true}
       - ECS_ENABLE_FRONTEND=${ECS_ENABLE_FRONTEND:-true}
@@ -218,8 +218,8 @@ services:
       - VG_POSTGRES_HOST=postgres
       - VG_POSTGRES_PORT=5432
       - SHARED_FRAMES_DIR=/shared-frames
-      - ECS_HARD_TTL_SECONDS=${ECS_HARD_TTL_SECONDS:-2.0}
-      - ECS_CORRELATION_WINDOW_MS=${ECS_CORRELATION_WINDOW_MS:-400}
+      - ECS_HARD_TTL_SECONDS=${ECS_HARD_TTL_SECONDS:-15.0}
+      - ECS_CORRELATION_WINDOW_MS=${ECS_CORRELATION_WINDOW_MS:-2000}
       - ECS_ENABLE_ALERTS=${ECS_ENABLE_ALERTS:-true}
       - ECS_ENABLE_DATABASE=${ECS_ENABLE_DATABASE:-true}
       - ECS_ENABLE_FRONTEND=${ECS_ENABLE_FRONTEND:-true}

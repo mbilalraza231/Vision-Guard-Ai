@@ -17,7 +17,8 @@ PriorityLevel = Literal["critical", "high", "medium"]
 REDIS_QUEUES = {
     "critical": "vg:critical",  # Fast-path processing
     "high": "vg:high",          # Normal processing priority
-    "medium": "vg:medium"        # Low urgency processing
+    "medium": "vg:medium",       # Low urgency processing
+    "low": "vg:medium"           # Alias for medium (no separate low queue)
 }
 
 
@@ -25,17 +26,17 @@ REDIS_QUEUES = {
 class TaskMetadata:
     """
     Redis task payload structure.
-    
+
     This is the ONLY data sent to Redis queues.
     Frame data is stored in shared memory and referenced by key.
     """
-    
+
     camera_id: str              # Unique camera identifier
     frame_id: str               # Unique frame identifier (timestamp-based)
     shared_memory_key: str      # Reference to frame in shared memory
     timestamp: float            # Unix timestamp when frame was captured
     priority: PriorityLevel     # Operational priority (NOT threat type)
-    
+
     def to_dict(self) -> dict:
         """Convert to dictionary for Redis serialization."""
         return {
@@ -45,7 +46,7 @@ class TaskMetadata:
             "timestamp": self.timestamp,
             "priority": self.priority
         }
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> 'TaskMetadata':
         """Create from dictionary (for deserialization)."""
@@ -56,12 +57,12 @@ class TaskMetadata:
             timestamp=data["timestamp"],
             priority=data["priority"]
         )
-    
+
     @staticmethod
     def generate_frame_id(camera_id: str) -> str:
         """Generate unique frame ID."""
         return f"{camera_id}_{int(time.time() * 1000000)}"
-    
+
     def get_queue_name(self) -> str:
         """Get Redis queue name based on priority."""
         return REDIS_QUEUES[self.priority]

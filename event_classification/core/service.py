@@ -460,8 +460,10 @@ class ECSService:
                                     self.database_writer.write(event)
                                 self._publish_clip_request(event)
 
-                        # 6. Cleanup shared memory ONLY if all models reported
-                        if frame_state.has_all_models():
+                        # 6. Cleanup shared memory — immediately if all models
+                        #    reported, OR if frame already classified (don't
+                        #    block cleanup waiting for slow/down workers)
+                        if frame_state.has_all_models() or frame_state.classification_attempted:
                             self.cleanup_manager.cleanup_frame(
                                 frame_state.shared_memory_key
                             )
@@ -510,13 +512,59 @@ class ECSService:
                                     self.database_writer.write(event)
                                 self._publish_clip_request(event)
 
-                        if frame_state.has_all_models():
+                        # Cleanup after classification (don't wait for all models)
+                        if frame_state.has_all_models() or frame_state.classification_attempted:
                             self.cleanup_manager.cleanup_frame(
                                 frame_state.shared_memory_key
                             )
                             self.frame_buffer.remove_frame(
                                 frame_state.frame_id
                             )
+
+                    # 9b. STALE FRAME SWEEP — cleanup frames that have been in
+                    # the buffer too long without classification (e.g. when a
+                    # worker is down and frames never get all 3 model results).
+                    # Uses 2x correlation window as grace period.
+                    stale_threshold_ms = self.config.correlation_window_ms * 2
+                    stale_frames = [
+                        fs for fs in list(self.frame_buffer.frames.values())
+                        if fs.get_age_ms() >= stale_threshold_ms
+                        and not fs.classification_attempted
+                    ]
+                    for frame_state in stale_frames:
+                        # Force classify before cleanup
+                        frame_state.classification_attempted = True
+                        frame_state.classification_reason = "stale_sweep"
+                        camera_history = self.camera_history_manager.get(
+                            frame_state.camera_id
+                        )
+                        event = self.rule_engine.classify(
+                            frame_state, camera_history
+                        )
+                        if event:
+                            self.logger.info(
+                                f"Stale sweep classification: {event.event_type}",
+                                extra={
+                                    "frame_id": frame_state.frame_id,
+                                    "event_type": event.event_type,
+                                    "confidence": event.confidence,
+                                }
+                            )
+                            self._apply_zone_priority(event)
+                            if self.database_writer:
+                                self.database_writer.write(event)
+                            self._publish_clip_request(event)
+
+                        self.cleanup_manager.cleanup_frame(
+                            frame_state.shared_memory_key
+                        )
+                        self.frame_buffer.remove_frame(frame_state.frame_id)
+
+                    if stale_frames:
+                        self.logger.warning(
+                            f"Stale frame sweep cleaned {len(stale_frames)} frames",
+                            extra={"stale_count": len(stale_frames)}
+                        )
 
                     last_classification_scan = current_time
 
@@ -620,11 +668,7 @@ class ECSService:
                 extra=self.cleanup_manager.get_stats()
             )
 
-        if self.alert_dispatcher:
-            self.logger.info(
-                "Alert dispatcher stats",
-                extra=self.alert_dispatcher.get_stats()
-            )
+        # Alert dispatcher removed — alerts are handled by alert-worker service
 
         if self.database_writer:
             self.logger.info(
