@@ -213,6 +213,10 @@ class AlertWorker:
                                 <p style="margin: 4px 0 0 0; color: #f1f5f9; font-size: 15px; font-weight: 500;">{cam_id}</p>
                             </div>
                             <div style="grid-column: span 2;">
+                                <p style="margin: 0; color: #64748b; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">Time</p>
+                                <p style="margin: 4px 0 0 0; color: #f1f5f9; font-size: 15px; font-weight: 500;">{ts_str}</p>
+                            </div>
+                            <div style="grid-column: span 2;">
                                 <p style="margin: 0; color: #64748b; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">AI Confidence</p>
                                 <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
                                     <div style="flex: 1; height: 8px; background-color: #334155; border-radius: 4px; overflow: hidden;">
@@ -230,10 +234,10 @@ class AlertWorker:
                         </a>
                     </div>
 
-                    <div style="display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 24px;">
-                        <a href="{public_url}?action=acknowledge" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 14px 28px; text-decoration: none; border-radius: 10px; font-weight: 700; display: inline-block; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); transition: transform 0.2s, box-shadow 0.2s;">✅ Acknowledge</a>
-                        <a href="{public_url}" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; padding: 14px 28px; text-decoration: none; border-radius: 10px; font-weight: 700; display: inline-block; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); transition: transform 0.2s, box-shadow 0.2s;">🔍 View Details</a>
-                        <a href="{video_url}" style="background-color: transparent; color: #94a3b8; padding: 14px 28px; text-decoration: none; border-radius: 10px; font-weight: 600; border: 2px solid #334155; display: inline-block; transition: all 0.2s;">▶ Watch Clip</a>
+                    <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 24px;">
+                        <a href="{public_url}?action=acknowledge" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 16px 32px; text-decoration: none; border-radius: 10px; font-weight: 700; display: block; text-align: center; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); transition: transform 0.2s, box-shadow 0.2s;">✅ Acknowledge Alert</a>
+                        <a href="{public_url}" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; padding: 16px 32px; text-decoration: none; border-radius: 10px; font-weight: 700; display: block; text-align: center; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); transition: transform 0.2s, box-shadow 0.2s;">🔍 View Full Details</a>
+                        <a href="{video_url}" style="background-color: transparent; color: #94a3b8; padding: 16px 32px; text-decoration: none; border-radius: 10px; font-weight: 600; border: 2px solid #334155; display: block; text-align: center; transition: all 0.2s;">▶ Watch Video Clip</a>
                     </div>
 
                     <div style="margin-top: 40px; text-align: center; border-top: 1px solid #334155; padding-top: 24px;">

@@ -91,6 +91,12 @@ class AlertNotifier:
         message["From"] = self.config.gmail_user
         message["To"] = to
         message["Subject"] = subject
+        # Add unique headers to prevent email grouping
+        import time
+        import uuid
+        message["Message-ID"] = f"<{uuid.uuid4()}@visionguard.ai>"
+        message["X-Entity-SE-UUID"] = str(uuid.uuid4())
+        message["Date"] = time.strftime("%a, %d %b %Y %H:%M:%S %z")
         message.attach(MIMEText(body, "html"))
 
         try:
