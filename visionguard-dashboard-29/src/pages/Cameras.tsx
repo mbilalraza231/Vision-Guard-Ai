@@ -67,7 +67,7 @@ export default function Cameras() {
   const [name, setName] = useState('');
   const [source, setSource] = useState('');
   const [fps, setFps] = useState(5);
-  const [priority, setPriority] = useState('medium');
+  const [priority, setPriority] = useState('all');
   const [motionThreshold, setMotionThreshold] = useState(0.02);
   const [enabled, setEnabled] = useState(false); // Default to false (stopped on add)
   const [zoneId, setZoneId] = useState<string>('');
@@ -286,18 +286,21 @@ export default function Cameras() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="priority">Priority</Label>
+                      <Label htmlFor="priority">Worker Selection</Label>
                       <select
                         id="priority"
                         className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 text-foreground"
                         value={priority}
                         onChange={(e) => setPriority(e.target.value)}
                       >
-                        <option value="critical">Critical</option>
-                        <option value="high">High</option>
-                        <option value="medium">Medium</option>
-                        <option value="low">Low</option>
+                        <option value="all">All workers (Weapon, Fire, Fall)</option>
+                        <option value="critical">Weapon only (Critical queue)</option>
+                        <option value="high">Fire only (High queue)</option>
+                        <option value="medium">Fall only (Medium queue)</option>
                       </select>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Controls which AI workers process frames. Zone priority controls event severity (separate from this).
+                      </p>
                     </div>
                   </div>
 
@@ -432,17 +435,21 @@ function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdi
           </div>
           
           <div className="flex items-center gap-1.5 ml-2 shrink-0">
-            <Badge 
-              variant="secondary" 
+            <Badge
+              variant="secondary"
               className={cn(
                 "capitalize text-[10px] px-2 py-0.5 font-semibold border",
+                camera.priority === 'all' && "bg-green-500/10 text-green-500 border-green-500/20",
                 camera.priority === 'critical' && "bg-red-500/10 text-red-500 border-red-500/20",
                 camera.priority === 'high' && "bg-amber-500/10 text-amber-500 border-amber-500/20",
                 camera.priority === 'medium' && "bg-blue-500/10 text-blue-500 border-blue-500/20",
                 camera.priority === 'low' && "bg-slate-500/10 text-slate-500 border-slate-500/20"
               )}
             >
-              {camera.priority}
+              {camera.priority === 'all' ? 'All Workers' : 
+               camera.priority === 'critical' ? 'Weapon' :
+               camera.priority === 'high' ? 'Fire' :
+               camera.priority === 'medium' ? 'Fall' : camera.priority}
             </Badge>
           </div>
         </div>
