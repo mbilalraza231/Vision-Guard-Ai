@@ -70,3 +70,6 @@ datasets/
 mediamtx
 models/backup/
 scratch/
+
+
+scripts/
