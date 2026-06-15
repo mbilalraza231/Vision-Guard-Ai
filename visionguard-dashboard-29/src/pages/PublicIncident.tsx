@@ -132,7 +132,7 @@ export default function PublicIncident() {
   const acknowledgeMutation = useMutation({
     mutationFn: () => {
       return apiService.putData(`${API_ENDPOINTS.incidents.list}/${id}/public/acknowledge?token=${token}`, {
-        user_name: `[System:${source}] ${contactName} (Contacts)`,
+        user_name: `${contactName} (Contacts)`,
         source,
       });
     },
@@ -149,7 +149,7 @@ export default function PublicIncident() {
   const resolveMutation = useMutation({
     mutationFn: (data: { resolution: string; content?: string }) => {
       return apiService.putData(`${API_ENDPOINTS.incidents.list}/${id}/public/resolve?token=${token}`, {
-        user_name: `[System:${source}] ${contactName} (Contacts)`,
+        user_name: `${contactName} (Contacts)`,
         resolution: data.resolution,
         content: data.content,
         source,
@@ -171,7 +171,7 @@ export default function PublicIncident() {
     mutationFn: (noteContent: string) => {
       return apiService.postData(`${API_ENDPOINTS.incidents.list}/${id}/public/notes?token=${token}`, {
         content: noteContent,
-        user_name: `[System:${source}] ${contactName} (Contacts)`,
+        user_name: `${contactName} (Contacts)`,
       });
     },
     onSuccess: () => {
