@@ -74,37 +74,46 @@ def load_worker_runtime_settings(model_type: str) -> Dict[str, Any]:
         except Exception:
             max_snapshot_buffer = 100
 
-    fire_model = workers.get("fireModel", {})
-    if not isinstance(fire_model, dict):
-        fire_model = {}
+    # Use model-specific settings based on worker type
+    model_settings_key = f"{model_type}Model"
+    model_settings = workers.get(model_settings_key, {})
+    if not isinstance(model_settings, dict):
+        model_settings = {}
+
+    # Fallback to fireModel for backward compatibility  
+    if not model_settings:
+        model_settings = workers.get("fireModel", {})
+    
+    if not isinstance(model_settings, dict):
+        model_settings = {}
 
     fire_runtime = {
         "iouThreshold": float(
-            fire_model.get(
+            model_settings.get(
                 "iouThreshold",
                 os.getenv("WORKER_IOU_THRESHOLD", "0.45"),
             )
         ),
         "agnosticNms": bool(
-            fire_model.get(
+            model_settings.get(
                 "agnosticNms",
                 os.getenv("WORKER_AGNOSTIC_NMS", "true").lower() == "true",
             )
         ),
         "allowedClassIds": str(
-            fire_model.get(
+            model_settings.get(
                 "allowedClassIds",
                 os.getenv("WORKER_ALLOWED_CLASS_IDS", "0"),
             )
         ),
         "inputWidth": int(
-            fire_model.get(
+            model_settings.get(
                 "inputWidth",
                 os.getenv("WORKER_INPUT_WIDTH", "416"),
             )
         ),
         "inputHeight": int(
-            fire_model.get(
+            model_settings.get(
                 "inputHeight",
                 os.getenv("WORKER_INPUT_HEIGHT", "416"),
             )
