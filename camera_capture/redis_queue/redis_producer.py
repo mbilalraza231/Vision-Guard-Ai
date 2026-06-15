@@ -102,8 +102,9 @@ class RedisProducer:
     
     def enqueue(self, task: TaskMetadata) -> bool:
         """
-        Enqueue task metadata to Redis.
+        Enqueue task metadata to Redis with TTL.
         
+        Uses sorted set with timestamp for automatic cleanup of old tasks.
         If Redis is unavailable, task is buffered briefly.
         If buffer is full, oldest/newest task is dropped based on policy.
         
@@ -128,18 +129,39 @@ class RedisProducer:
             # Serialize task
             task_json = json.dumps(task.to_dict())
             
-            # Enqueue to Redis (LPUSH for queue)
-            self.client.lpush(queue_name, task_json)
+            # Use sorted set with timestamp for TTL support
+            # Score = timestamp, member = task_json
+            timestamp = task.timestamp
+            self.client.zadd(queue_name, {task_json: timestamp})
+            
+            # Clean up old tasks (older than TTL)
+            # This prevents orphaned tasks when camera restarts
+            ttl_seconds = self.buffer_config.task_ttl_seconds
+            cutoff_time = timestamp - ttl_seconds
+            self.client.zremrangebyscore(queue_name, 0, cutoff_time)
+            
+            # Enforce max queue size (remove oldest if over limit)
+            max_size = self.buffer_config.max_queue_size
+            current_size = self.client.zcard(queue_name)
+            if current_size > max_size:
+                # Remove oldest tasks (lowest scores) to stay under limit
+                remove_count = current_size - max_size
+                self.client.zremrangebyrank(queue_name, 0, remove_count - 1)
+                self.logger.warning(
+                    f"Queue exceeded max size, removed {remove_count} oldest tasks",
+                    extra={"queue": queue_name, "max_size": max_size, "current_size": current_size}
+                )
             
             self.tasks_enqueued += 1
             
             self.logger.debug(
-                f"Enqueued task to Redis",
+                f"Enqueued task to Redis with TTL",
                 extra={
                     "queue": queue_name,
                     "camera_id": task.camera_id,
                     "frame_id": task.frame_id,
-                    "priority": task.priority
+                    "priority": task.priority,
+                    "timestamp": timestamp
                 }
             )
             
@@ -166,7 +188,7 @@ class RedisProducer:
         Used for backpressure monitoring.
         
         Args:
-            queue_name: The name of the Redis list/queue.
+            queue_name: The name of the Redis sorted set/queue.
             
         Returns:
             The integer length of the queue, or 0 if disconnected/error.
@@ -175,7 +197,7 @@ class RedisProducer:
             return 0
             
         try:
-            return self.client.llen(queue_name)
+            return self.client.zcard(queue_name)
         except redis.RedisError as e:
             self.logger.warning(
                 f"Redis error checking queue length: {e}",
@@ -246,7 +268,8 @@ class RedisProducer:
             try:
                 queue_name = task.get_queue_name()
                 task_json = json.dumps(task.to_dict())
-                self.client.lpush(queue_name, task_json)
+                timestamp = task.timestamp
+                self.client.zadd(queue_name, {task_json: timestamp})
                 flushed += 1
                 self.tasks_enqueued += 1
                 

@@ -32,12 +32,13 @@ import type {
   GeneralSettings,
   ModelSettings,
   PrivacySettings,
+  QueueManagementSettings,
   StorageSettings,
   SystemInfo,
   SystemSettings,
 } from '@/types';
 
-type SettingsTab = 'general' | 'alerts' | 'cameras' | 'performance' | 'storage' | 'models' | 'privacy' | 'system';
+type SettingsTab = 'general' | 'alerts' | 'cameras' | 'performance' | 'storage' | 'models' | 'privacy' | 'system' | 'queue';
 
 interface TabItem {
   id: SettingsTab;
@@ -52,6 +53,7 @@ const tabs: TabItem[] = [
   { id: 'storage', label: 'Storage' },
   { id: 'models', label: 'Models' },
   { id: 'privacy', label: 'Privacy' },
+  { id: 'queue', label: 'Queue Management' },
   { id: 'system', label: 'System' },
 ];
 
@@ -136,6 +138,10 @@ const defaultSettings: SystemSettings = {
   },
   notifications: {
     recipients: [],
+  },
+  queueManagement: {
+    maxQueueSize: 1000,
+    taskTtlSeconds: 60,
   }
 };
 
@@ -186,6 +192,7 @@ function mergeSettingsFromApi(data: Partial<SystemSettings>): SystemSettings {
       ...data.notifications,
       recipients: data.notifications?.recipients ?? defaultSettings.notifications.recipients,
     },
+    queueManagement: { ...defaultSettings.queueManagement, ...data.queueManagement },
   };
 }
 
@@ -381,6 +388,7 @@ export default function Settings() {
       }
       else if (activeTab === 'performance') payload.cameras = settings.cameras;
       else if (activeTab === 'privacy') payload.privacy = settings.privacy;
+      else if (activeTab === 'queue') payload.queueManagement = settings.queueManagement;
       else if (activeTab === 'system') {
         payload.ecs = settings.ecs;
         payload.systemOverrides = settings.systemOverrides;
@@ -440,6 +448,7 @@ export default function Settings() {
         cameras: ['cameras', 'cameraCapture'],
         performance: ['cameras'],
         privacy: ['privacy'],
+        queue: ['queueManagement'],
         system: ['ecs', 'systemOverrides'],
       };
 
@@ -473,6 +482,7 @@ export default function Settings() {
           payload.cameraCapture = defaults.cameraCapture;
         } else if (activeTab === 'performance') payload.cameras = defaults.cameras;
         else if (activeTab === 'privacy') payload.privacy = defaults.privacy;
+        else if (activeTab === 'queue') payload.queueManagement = defaults.queueManagement;
         else if (activeTab === 'system') {
           payload.ecs = defaults.ecs;
           payload.systemOverrides = defaults.systemOverrides;
@@ -582,6 +592,10 @@ export default function Settings() {
 
   const updateSystemOverrides = (patch: Partial<SystemSettings['systemOverrides']>) => {
     setSettings((prev: SystemSettings) => ({ ...prev, systemOverrides: { ...prev.systemOverrides, ...patch } }));
+  };
+
+  const updateQueueManagement = (patch: Partial<SystemSettings['queueManagement']>) => {
+    setSettings((prev: SystemSettings) => ({ ...prev, queueManagement: { ...prev.queueManagement, ...patch } }));
   };
 
   return (
@@ -848,6 +862,89 @@ export default function Settings() {
                       </div>
                     </>
                   )}
+                </div>
+              )}
+
+              {activeTab === 'queue' && (
+                <div className="animate-fade-in">
+                  <h2 className="text-2xl font-bold mb-6">Queue Management</h2>
+                  <div className="space-y-6 max-w-3xl">
+                    <div>
+                      <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                        <Activity className="h-5 w-5 text-primary" />
+                        Task Queue Limits
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="rounded-xl border border-white/5 bg-secondary/10 p-5 space-y-3">
+                          <Label className="text-base font-semibold">Max Queue Size</Label>
+                          <Input
+                            type="number"
+                            min={100}
+                            max={10000}
+                            value={settings.queueManagement?.maxQueueSize ?? 1000}
+                            onChange={(e) =>
+                              updateQueueManagement({
+                                maxQueueSize: Math.max(100, Math.min(10000, Number(e.target.value) || 1000))
+                              })
+                            }
+                            className="bg-background/50 font-mono text-sm w-40"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Maximum tasks per queue (vg:critical, vg:high, vg:medium). Oldest tasks removed when exceeded.
+                          </p>
+                        </div>
+
+                        <div className="rounded-xl border border-white/5 bg-secondary/10 p-5 space-y-3">
+                          <Label className="text-base font-semibold">Task TTL (seconds)</Label>
+                          <Input
+                            type="number"
+                            min={10}
+                            max={300}
+                            value={settings.queueManagement?.taskTtlSeconds ?? 60}
+                            onChange={(e) =>
+                              updateQueueManagement({
+                                taskTtlSeconds: Math.max(10, Math.min(300, Number(e.target.value) || 60))
+                              })
+                            }
+                            className="bg-background/50 font-mono text-sm w-40"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Auto-cleanup tasks older than this. Prevents orphans when camera restarts (min 10s).
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-white/5 bg-secondary/10 p-5">
+                      <h4 className="text-sm font-semibold mb-3">Redis Queues in System</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                        <div className="flex justify-between py-1 border-b border-white/5">
+                          <span className="text-muted-foreground">vg:critical</span>
+                          <span className="font-mono">Weapon tasks</span>
+                        </div>
+                        <div className="flex justify-between py-1 border-b border-white/5">
+                          <span className="text-muted-foreground">vg:high</span>
+                          <span className="font-mono">Fire tasks</span>
+                        </div>
+                        <div className="flex justify-between py-1 border-b border-white/5">
+                          <span className="text-muted-foreground">vg:medium</span>
+                          <span className="font-mono">Fall tasks</span>
+                        </div>
+                        <div className="flex justify-between py-1 border-b border-white/5">
+                          <span className="text-muted-foreground">vg:ai:results</span>
+                          <span className="font-mono">AI results stream</span>
+                        </div>
+                        <div className="flex justify-between py-1 border-b border-white/5">
+                          <span className="text-muted-foreground">vg:events:finalized</span>
+                          <span className="font-mono">Clip requests</span>
+                        </div>
+                        <div className="flex justify-between py-1">
+                          <span className="text-muted-foreground">vg:system_settings</span>
+                          <span className="font-mono">Dashboard settings</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
 

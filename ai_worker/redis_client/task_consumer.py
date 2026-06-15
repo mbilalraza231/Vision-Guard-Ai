@@ -104,9 +104,10 @@ class TaskConsumer:
     
     def consume(self, timeout: Optional[int] = None) -> Optional[TaskMetadata]:
         """
-        Consume one task from the queue (blocking).
+        Consume one task from the queue (non-blocking with retry).
         
-        Uses BRPOP (blocking right pop) for efficient queue consumption.
+        Uses ZPOPMIN to consume oldest task from sorted set.
+        Retries with sleep if no task available.
         
         Args:
             timeout: Override default timeout (seconds)
@@ -115,18 +116,17 @@ class TaskConsumer:
             TaskMetadata if task available, None if timeout
         """
         try:
-            # BRPOP: blocks until task available or timeout
-            result = self.client.brpop(
-                self.queue_name,
-                timeout=timeout or self.timeout
-            )
+            # ZPOPMIN: removes and returns the member with the lowest score (oldest)
+            result = self.client.zpopmin(self.queue_name)
             
-            if result is None:
-                # Timeout - no task available
+            if not result:
+                # No task available - sleep briefly and retry
+                import time
+                time.sleep(0.1)
                 return None
             
-            # Parse result: (queue_name, task_json)
-            _, task_json = result
+            # Parse result: [(task_json, score), ...]
+            task_json, score = result[0]
             
             # Deserialize task
             task_dict = json.loads(task_json)
@@ -140,7 +140,8 @@ class TaskConsumer:
                     "queue_name": self.queue_name,
                     "camera_id": task.camera_id,
                     "frame_id": task.frame_id,
-                    "shared_memory_key": task.shared_memory_key
+                    "shared_memory_key": task.shared_memory_key,
+                    "score": score
                 }
             )
             

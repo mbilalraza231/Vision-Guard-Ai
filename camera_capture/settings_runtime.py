@@ -43,6 +43,8 @@ def load_camera_runtime_settings() -> Dict[str, Any]:
       - default_fps: int         (from cameraCapture.defaultFps)
       - motion_threshold: float  (from cameraCapture.motionThreshold)
       - global_fps_target: int   (from cameras.globalFpsTarget)
+      - max_queue_size: int      (from queueManagement.maxQueueSize)
+      - task_ttl_seconds: int    (from queueManagement.taskTtlSeconds)
 
     Falls back to .env / hardcoded defaults if Redis is unavailable.
     """
@@ -50,6 +52,7 @@ def load_camera_runtime_settings() -> Dict[str, Any]:
 
     camera_capture = blob.get("cameraCapture", {})
     cameras_section = blob.get("cameras", {})
+    queue_management = blob.get("queueManagement", {})
 
     default_fps = int(
         camera_capture.get(
@@ -69,9 +72,23 @@ def load_camera_runtime_settings() -> Dict[str, Any]:
             int(os.getenv("VG_GLOBAL_FPS_TARGET", "15"))
         )
     )
+    max_queue_size = int(
+        queue_management.get(
+            "maxQueueSize",
+            1000
+        )
+    )
+    task_ttl_seconds = int(
+        queue_management.get(
+            "taskTtlSeconds",
+            60
+        )
+    )
 
     return {
         "default_fps": default_fps,
         "motion_threshold": motion_threshold,
         "global_fps_target": global_fps_target,
+        "max_queue_size": max_queue_size,
+        "task_ttl_seconds": task_ttl_seconds,
     }

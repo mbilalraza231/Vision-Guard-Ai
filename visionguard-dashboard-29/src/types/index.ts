@@ -196,6 +196,7 @@ export interface SystemSettings {
   system: SystemInfo;
   systemOverrides: SystemOverrides;
   notifications: NotificationSettings;
+  queueManagement: QueueManagementSettings;
 }
 
 export interface CameraSettings {
@@ -302,6 +303,11 @@ export interface NotificationSettings {
     emailAlert: boolean;
     minSeverity: 'critical' | 'high' | 'medium' | 'low';
   }>;
+}
+
+export interface QueueManagementSettings {
+  maxQueueSize: number;
+  taskTtlSeconds: number;
 }
 
 // WebSocket Event Types

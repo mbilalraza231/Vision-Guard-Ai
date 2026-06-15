@@ -125,15 +125,22 @@ def main():
 
     # Load live settings from Redis (Dashboard > Camera Rules) and apply them.
     # This ensures the user's settings survive container restarts.
+    queue_settings = {}
     try:
         cam_runtime = load_camera_runtime_settings()
         default_fps = cam_runtime["default_fps"]
         motion_threshold = cam_runtime["motion_threshold"]
         global_fps_target = cam_runtime["global_fps_target"]
+        queue_settings = {
+            "max_queue_size": cam_runtime["max_queue_size"],
+            "task_ttl_seconds": cam_runtime["task_ttl_seconds"]
+        }
         logger.info(
             f"Camera runtime settings (from Redis): "
             f"default_fps={default_fps}, motion_threshold={motion_threshold}, "
-            f"global_fps_target={global_fps_target}"
+            f"global_fps_target={global_fps_target}, "
+            f"max_queue_size={queue_settings['max_queue_size']}, "
+            f"task_ttl_seconds={queue_settings['task_ttl_seconds']}"
         )
         # Apply to any camera that is using the generic cameras.json default (fps=5)
         # Per-camera overrides in cameras.json are respected and NOT changed.
@@ -162,8 +169,14 @@ def main():
             "max_backoff_seconds": float(os.getenv("CAMERA_RECONNECT_MAX_DELAY_SEC", "60")),
             "backoff_multiplier": float(os.getenv("CAMERA_RECONNECT_BACKOFF_MULTIPLIER", "2.0")),
         },
-        redis={"host": os.getenv("REDIS_HOST", "localhost"), 
-               "port": int(os.getenv("REDIS_PORT", "6379"))}
+        redis={"host": os.getenv("REDIS_HOST", "localhost"),
+               "port": int(os.getenv("REDIS_PORT", "6379"))},
+        buffer={
+            "max_buffer_size": 100,
+            "drop_policy": "oldest",
+            "max_queue_size": queue_settings.get("max_queue_size", 1000),
+            "task_ttl_seconds": queue_settings.get("task_ttl_seconds", 60)
+        }
     )
 
     # Register camera source URLs in Redis so other services (ECS, clip-recorder)

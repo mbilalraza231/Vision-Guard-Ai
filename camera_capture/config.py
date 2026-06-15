@@ -94,6 +94,16 @@ class BufferConfig(BaseModel):
         default="oldest",
         description="Policy for dropping tasks when buffer is full (oldest/newest)"
     )
+    max_queue_size: int = Field(
+        default=1000,
+        ge=100,
+        description="Maximum number of tasks per Redis queue (prevents infinite growth)"
+    )
+    task_ttl_seconds: int = Field(
+        default=60,
+        ge=10,
+        description="TTL for tasks in seconds (prevents orphans after camera restart)"
+    )
     
     @validator('drop_policy')
     def validate_drop_policy(cls, v):
