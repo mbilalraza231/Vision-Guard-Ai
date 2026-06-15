@@ -822,6 +822,89 @@ class ClipRecorder:
             if cap:
                 cap.release()
 
+    async def _event_exists(self, event_id: str) -> bool:
+        """Check if an event exists in the events table."""
+        try:
+            row = await self.db.fetch_one(
+                "SELECT id FROM events WHERE id = $1",
+                event_id
+            )
+            return row is not None
+        except Exception as e:
+            logger.error(f"Error checking event existence: {e}")
+            return False
+
+    async def _insert_evidence_with_retry(self, event_id: str, evidence_type: str, 
+                                         provider: str, url: str, max_retries: int = 3) -> bool:
+        """
+        Insert evidence with retry logic to handle foreign key constraints.
+        Returns True if successful, False otherwise.
+        """
+        for attempt in range(max_retries):
+            try:
+                # First check if event exists
+                if not await self._event_exists(event_id):
+                    if attempt < max_retries - 1:
+                        logger.warning(
+                            f"Event {event_id} not found in database (attempt {attempt + 1}/{max_retries}), "
+                            f"retrying in 2 seconds..."
+                        )
+                        await asyncio.sleep(2)
+                        continue
+                    else:
+                        logger.error(
+                            f"Event {event_id} not found in database after {max_retries} attempts, "
+                            f"skipping {evidence_type} evidence insertion"
+                        )
+                        return False
+
+                # Check if evidence already exists
+                row = await self.db.fetch_one(
+                    "SELECT id FROM event_evidence WHERE event_id = $1 AND evidence_type = $2",
+                    event_id, evidence_type
+                )
+                
+                if row:
+                    # Update existing evidence
+                    await self.db.execute(
+                        "UPDATE event_evidence SET storage_provider = $1, public_url = $2 WHERE id = $3",
+                        provider, url, row['id']
+                    )
+                else:
+                    # Insert new evidence
+                    await self.db.execute(
+                        """
+                        INSERT INTO event_evidence
+                            (id, event_id, evidence_type, storage_provider, public_url, created_at)
+                        VALUES ($1, $2, $3, $4, $5, $6)
+                        """,
+                        str(uuid.uuid4()), event_id, evidence_type, provider, url, time.time()
+                    )
+                
+                return True
+                
+            except Exception as e:
+                error_msg = str(e)
+                if "foreign key constraint" in error_msg.lower() or "fk_event" in error_msg.lower():
+                    if attempt < max_retries - 1:
+                        logger.warning(
+                            f"Foreign key constraint violation for {evidence_type} evidence "
+                            f"(attempt {attempt + 1}/{max_retries}), retrying in 2 seconds..."
+                        )
+                        await asyncio.sleep(2)
+                        continue
+                    else:
+                        logger.error(
+                            f"Failed to insert {evidence_type} evidence after {max_retries} attempts "
+                            f"due to foreign key constraint: {e}"
+                        )
+                        return False
+                else:
+                    logger.error(f"Unexpected error inserting {evidence_type} evidence: {e}")
+                    return False
+        
+        return False
+
     async def _write_evidence(
         self,
         event_id: str,
@@ -860,52 +943,25 @@ class ClipRecorder:
         now = time.time()
         
         try:
-            # Process Snapshot
+            # Process Snapshot with retry logic
             if final_snapshot:
-                row = await self.db.fetch_one(
-                    "SELECT id FROM event_evidence WHERE event_id = $1 AND evidence_type = $2",
-                    event_id, "snapshot"
+                success = await self._insert_evidence_with_retry(
+                    event_id, "snapshot", provider_snap, final_snapshot
                 )
-                
-                if row:
-                    await self.db.execute(
-                        "UPDATE event_evidence SET storage_provider = $1, public_url = $2 WHERE id = $3",
-                        provider_snap, final_snapshot, row['id']
-                    )
-                else:
-                    await self.db.execute(
-                        """
-                        INSERT INTO event_evidence
-                            (id, event_id, evidence_type, storage_provider, public_url, created_at)
-                        VALUES ($1, $2, $3, $4, $5, $6)
-                        """,
-                        str(uuid.uuid4()), event_id, "snapshot", provider_snap, final_snapshot, now
-                    )
+                if not success:
+                    logger.warning(f"Failed to write snapshot evidence for event {event_id}")
 
-            # Process Clip
+            # Process Clip with retry logic
             if final_clip:
-                row = await self.db.fetch_one(
-                    "SELECT id FROM event_evidence WHERE event_id = $1 AND evidence_type = $2",
-                    event_id, "clip"
+                success = await self._insert_evidence_with_retry(
+                    event_id, "clip", provider_clip, final_clip
                 )
-                
-                if row:
-                    await self.db.execute(
-                        "UPDATE event_evidence SET storage_provider = $1, public_url = $2 WHERE id = $3",
-                        provider_clip, final_clip, row['id']
-                    )
-                else:
-                    await self.db.execute(
-                        """
-                        INSERT INTO event_evidence
-                            (id, event_id, evidence_type, storage_provider, public_url, created_at)
-                        VALUES ($1, $2, $3, $4, $5, $6)
-                        """,
-                        str(uuid.uuid4()), event_id, "clip", provider_clip, final_clip, now
-                    )
+                if not success:
+                    logger.warning(f"Failed to write clip evidence for event {event_id}")
+                    
         except Exception as e:
-            logger.error(f"PostgreSQL Error for event {event_id}: {e}")
-            raise
+            logger.error(f"Unexpected error writing evidence for event {event_id}: {e}")
+            # Don't raise - allow clip pipeline to continue even if evidence writing fails
 
     async def _update_clip_status(
         self,
