@@ -136,6 +136,13 @@ class AlertWorker:
 
         whatsapp_msg = self.format_message(event, snap_url, video_url, anonymize=anonymize_data)
         
+        # Format timestamp for email template
+        ts_val = event.get('timestamp')
+        try:
+            ts_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(float(ts_val)))
+        except:
+            ts_str = "Recently"
+        
         # Determine camera ID string to use in notifications
         cam_id = event.get('camera_id', 'Unknown')
         if anonymize_data:

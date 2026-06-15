@@ -9,6 +9,7 @@ import time
 import logging
 import os
 import cv2
+import threading
 from multiprocessing import Process, Event
 from typing import Optional, TYPE_CHECKING
 
