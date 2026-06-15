@@ -205,14 +205,6 @@ export interface CameraSettings {
   targetFalsePositiveRate: number;
 }
 
-export interface FireModelSettings {
-  iouThreshold: number;
-  agnosticNms: boolean;
-  allowedClassIds: string;
-  inputWidth: number;
-  inputHeight: number;
-}
-
 export interface WorkerSettings {
   thresholds: {
     weapon: number;
@@ -221,7 +213,6 @@ export interface WorkerSettings {
   };
   imageSaveThreshold: number;
   maxSnapshotBuffer?: number;
-  fireModel: FireModelSettings;
 }
 
 export interface EcsPersistenceSettings {

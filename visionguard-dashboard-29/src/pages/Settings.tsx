@@ -98,13 +98,6 @@ const defaultSettings: SystemSettings = {
     },
     imageSaveThreshold: 0.30,
     maxSnapshotBuffer: 100,
-    fireModel: {
-      iouThreshold: 0.45,
-      agnosticNms: true,
-      allowedClassIds: '0',
-      inputWidth: 416,
-      inputHeight: 416,
-    },
   },
   ecs: {
     thresholds: {
@@ -163,10 +156,6 @@ function mergeSettingsFromApi(data: Partial<SystemSettings>): SystemSettings {
       thresholds: {
         ...defaultSettings.workers.thresholds,
         ...data.workers?.thresholds,
-      },
-      fireModel: {
-        ...defaultSettings.workers.fireModel,
-        ...data.workers?.fireModel,
       },
     },
     ecs: {
@@ -556,16 +545,7 @@ export default function Settings() {
     }));
   };
 
-  const updateFireModel = (patch: Partial<SystemSettings['workers']['fireModel']>) => {
-    setSettings((prev: SystemSettings) => ({
-      ...prev,
-      workers: {
-        ...defaultSettings.workers,
-        ...prev.workers,
-        fireModel: { ...defaultSettings.workers.fireModel, ...prev.workers?.fireModel, ...patch },
-      },
-    }));
-  };
+  // Critical model settings removed from frontend - configured via environment variables
 
   const updateEcsPersistence = (
     kind: 'weaponPersistence' | 'firePersistence' | 'fallPersistence',
@@ -1211,66 +1191,6 @@ export default function Settings() {
                             max={500}
                             step={5}
                             onValueChange={(value) => updateWorkers({ maxSnapshotBuffer: value[0] })}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="pt-6 border-t border-white/5">
-                      <h3 className="text-lg font-semibold mb-1">Fire worker (NMS & input)</h3>
-                      <p className="text-xs text-muted-foreground mb-3">
-                        Fire-model tuning. IoU and NMS apply live via Redis. Input size needs a worker container restart.
-                      </p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
-                        <div className="space-y-2">
-                          <Label>IoU threshold ({(settings.workers?.fireModel?.iouThreshold ?? 0.45).toFixed(2)})</Label>
-                          <Slider
-                            value={[(settings.workers?.fireModel?.iouThreshold ?? 0.45) * 100]}
-                            min={10}
-                            max={90}
-                            step={1}
-                            onValueChange={(v) => updateFireModel({ iouThreshold: v[0] / 100 })}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Allowed class IDs</Label>
-                          <Input
-                            value={settings.workers?.fireModel?.allowedClassIds ?? '0'}
-                            onChange={(e) => updateFireModel({ allowedClassIds: e.target.value })}
-                            className="font-mono text-sm"
-                            placeholder="0"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Input width</Label>
-                          <Input
-                            type="number"
-                            min={32}
-                            max={1280}
-                            value={settings.workers?.fireModel?.inputWidth ?? 416}
-                            onChange={(e) => updateFireModel({ inputWidth: Number(e.target.value) || 416 })}
-                            className="font-mono text-sm w-28"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Input height</Label>
-                          <Input
-                            type="number"
-                            min={32}
-                            max={1280}
-                            value={settings.workers?.fireModel?.inputHeight ?? 416}
-                            onChange={(e) => updateFireModel({ inputHeight: Number(e.target.value) || 416 })}
-                            className="font-mono text-sm w-28"
-                          />
-                        </div>
-                        <div className="flex items-center justify-between rounded-lg border border-white/5 p-4 md:col-span-2">
-                          <div>
-                            <Label>Agnostic NMS</Label>
-                            <p className="text-xs text-muted-foreground">Merge overlapping fire/smoke boxes across classes.</p>
-                          </div>
-                          <Switch
-                            checked={settings.workers?.fireModel?.agnosticNms ?? true}
-                            onCheckedChange={(checked) => updateFireModel({ agnosticNms: checked })}
                           />
                         </div>
                       </div>
