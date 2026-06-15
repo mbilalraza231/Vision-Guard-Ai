@@ -898,49 +898,19 @@ export default function Settings() {
                           <Label className="text-base font-semibold">Task TTL (seconds)</Label>
                           <Input
                             type="number"
-                            min={10}
+                            min={0}
                             max={300}
                             value={settings.queueManagement?.taskTtlSeconds ?? 60}
                             onChange={(e) =>
                               updateQueueManagement({
-                                taskTtlSeconds: Math.max(10, Math.min(300, Number(e.target.value) || 60))
+                                taskTtlSeconds: Math.max(0, Math.min(300, Number(e.target.value) || 60))
                               })
                             }
                             className="bg-background/50 font-mono text-sm w-40"
                           />
                           <p className="text-xs text-muted-foreground">
-                            Auto-cleanup tasks older than this. Prevents orphans when camera restarts (min 10s).
+                            Auto-cleanup tasks older than this. Prevents orphans when camera restarts (0 = no TTL).
                           </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border border-white/5 bg-secondary/10 p-5">
-                      <h4 className="text-sm font-semibold mb-3">Redis Queues in System</h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-                        <div className="flex justify-between py-1 border-b border-white/5">
-                          <span className="text-muted-foreground">vg:critical</span>
-                          <span className="font-mono">Weapon tasks</span>
-                        </div>
-                        <div className="flex justify-between py-1 border-b border-white/5">
-                          <span className="text-muted-foreground">vg:high</span>
-                          <span className="font-mono">Fire tasks</span>
-                        </div>
-                        <div className="flex justify-between py-1 border-b border-white/5">
-                          <span className="text-muted-foreground">vg:medium</span>
-                          <span className="font-mono">Fall tasks</span>
-                        </div>
-                        <div className="flex justify-between py-1 border-b border-white/5">
-                          <span className="text-muted-foreground">vg:ai:results</span>
-                          <span className="font-mono">AI results stream</span>
-                        </div>
-                        <div className="flex justify-between py-1 border-b border-white/5">
-                          <span className="text-muted-foreground">vg:events:finalized</span>
-                          <span className="font-mono">Clip requests</span>
-                        </div>
-                        <div className="flex justify-between py-1">
-                          <span className="text-muted-foreground">vg:system_settings</span>
-                          <span className="font-mono">Dashboard settings</span>
                         </div>
                       </div>
                     </div>

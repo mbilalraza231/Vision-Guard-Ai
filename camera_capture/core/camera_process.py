@@ -365,8 +365,24 @@ class CameraProcess:
             # Generate frame ID
             frame_id = TaskMetadata.generate_frame_id(self.camera_config.camera_id)
             
-            # Publish to ALL queues so each worker model gets the frame
-            for priority in ["critical", "high", "medium"]:
+            # Publish to worker queues based on camera priority configuration
+            # Camera priority determines which queues to send to:
+            # - "ALL": Send to all worker queues (critical, high, medium)
+            # - Specific priority: Send to that priority queue only
+            # Future enhancement: Fetch zone detection priority mapping
+            camera_priority = getattr(self.camera_config, 'priority', 'all').lower()
+            
+            if camera_priority == 'all' or camera_priority == '':
+                # "ALL" priority: Send to all worker queues (weapon, fire, fall)
+                target_queues = ["critical", "high", "medium"]
+            elif camera_priority in ["critical", "high", "medium", "low"]:
+                # Specific priority: Send to that queue only
+                target_queues = [camera_priority]
+            else:
+                # Invalid priority: Default to all queues
+                target_queues = ["critical", "high", "medium"]
+            
+            for priority in target_queues:
                 task = TaskMetadata(
                     camera_id=self.camera_config.camera_id,
                     frame_id=frame_id,
