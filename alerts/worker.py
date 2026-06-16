@@ -7,6 +7,7 @@ import socket
 import sys
 import time
 from typing import List, Dict, Any, Optional
+from urllib.parse import quote
 
 import redis.asyncio as redis
 import psutil
@@ -186,7 +187,6 @@ class AlertWorker:
                 phone = contact['phone']
                 to = f"whatsapp:{phone}" if not phone.startswith('whatsapp:') else phone
                 # Add contact name to WhatsApp URL
-                from urllib.parse import quote
                 contact_name = contact.get('name', 'Alert Contact')
                 whatsapp_msg_with_contact = whatsapp_msg.replace(
                     f"{dashboard_url}/public-incident/{event_id}?token=",
@@ -200,8 +200,6 @@ class AlertWorker:
                 subject = f"⚠️ VisionGuard: {severity.upper()} {event_type.replace('_', ' ').title()}"
                 dashboard_url = os.getenv("FRONTEND_URL", "http://localhost:8080").rstrip("/")
                 # Generate simple token for public access (using event ID + timestamp)
-                import hashlib
-                from urllib.parse import quote
                 token_payload = f"{event_id}{int(time.time())}"
                 secure_token = hashlib.sha256(token_payload.encode()).hexdigest()[:32]
                 contact_name = contact.get('name', 'Alert Contact')
@@ -317,24 +315,27 @@ class AlertWorker:
 
     async def _process_pending_messages(self):
         """Process any pending stream entries for this consumer."""
-        while not self._stop.is_set():
-            pending = await self.redis.xreadgroup(
-                self.group_name,
-                self.consumer_name,
-                {self.stream_key: "0"},
-                count=10,
-                block=1000
-            )
-            if not pending:
-                return
-            for stream, messages in pending:
-                for msg_id, data in messages:
-                    try:
-                        await self.process_event(data)
-                        await self.redis.xack(self.stream_key, self.group_name, msg_id)
-                    except Exception as e:
-                        logger.error(f"Pending event {msg_id} failed: {e}")
-                        await asyncio.sleep(1)
+        try:
+            while not self._stop.is_set():
+                pending = await self.redis.xreadgroup(
+                    self.group_name,
+                    self.consumer_name,
+                    {self.stream_key: "0"},
+                    count=10,
+                    block=1000
+                )
+                if not pending:
+                    return
+                for stream, messages in pending:
+                    for msg_id, data in messages:
+                        try:
+                            await self.process_event(data)
+                            await self.redis.xack(self.stream_key, self.group_name, msg_id)
+                        except Exception as e:
+                            logger.error(f"Pending event {msg_id} failed: {e}")
+                            await asyncio.sleep(1)
+        except Exception as e:
+            logger.warning(f"Pending message processing skipped: {e}")
 
     async def run(self):
         """Main loop listening to Redis stream."""
@@ -360,7 +361,7 @@ class AlertWorker:
 
         use_consumer_group = True
         try:
-            await self.redis.xgroup_create(self.stream_key, self.group_name, id="0", mkstream=True)
+            await self.redis.xgroup_create(self.stream_key, self.group_name, id="$", mkstream=True)
         except Exception as e:
             if "BUSYGROUP" in str(e):
                 pass  # Group already exists — that's fine
@@ -368,19 +369,25 @@ class AlertWorker:
                 logger.warning(f"Consumer group not available, falling back to plain XREAD: {e}")
                 use_consumer_group = False
 
-        if use_consumer_group:
-            await self._process_pending_messages()
-
         while not self._stop.is_set():
             try:
                 if use_consumer_group:
-                    results = await self.redis.xreadgroup(
-                        self.group_name,
-                        self.consumer_name,
-                        {self.stream_key: ">"},
-                        count=1,
-                        block=5000
-                    )
+                    try:
+                        results = await self.redis.xreadgroup(
+                            self.group_name,
+                            self.consumer_name,
+                            {self.stream_key: ">"},
+                            count=1,
+                            block=5000
+                        )
+                    except Exception as e:
+                        if "NOGROUP" in str(e):
+                            # Consumer group was destroyed, recreate it
+                            logger.warning("Consumer group lost, recreating...")
+                            await self.redis.xgroup_create(self.stream_key, self.group_name, id="$", mkstream=True)
+                            continue
+                        else:
+                            raise
                 else:
                     results = await self.redis.xread(
                         {self.stream_key: "$"},
