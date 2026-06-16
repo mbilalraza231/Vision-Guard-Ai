@@ -83,6 +83,10 @@ export default function PublicIncident() {
   // Remove any action parameter that might have been appended to contact name
   contactNameParam = contactNameParam.split('?')[0].split('&')[0];
   contactNameParam = decodeURIComponent(contactNameParam);
+  // Remove any hash/ID that might be appended to contact name for WhatsApp only (e.g., "Bilal5886..." -> "Bilal")
+  if (source === 'whatsapp') {
+    contactNameParam = contactNameParam.replace(/[a-f0-9]{32}/g, '').trim();
+  }
   
   const [contactName, setContactName] = useState(contactNameParam);
   const [isResolveModalOpen, setIsResolveModalOpen] = useState(false);
