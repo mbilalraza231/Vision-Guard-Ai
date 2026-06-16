@@ -74,7 +74,7 @@ class ECSConfig(BaseModel):
         description="Min per-frame confidence for a weapon detection to COUNT toward the persistence window"
     )
     weapon_min_detections: int = Field(
-        default=3,
+        default=5,
         ge=1,
         description="How many weapon detections within the persistence window are required to fire an event"
     )

@@ -44,7 +44,7 @@ class AlertEvaluator:
         
         dedup_window = self._get_dedup_window(severity)
         if dedup_window == 0:
-            return True
+            return False  # No dedup window for this severity — always allow through
         
         since_ts = time.time() - dedup_window
         recent = await self.repo.find_recent_alerts(camera_id, event_type, severity, since_ts)

@@ -512,6 +512,7 @@ services:
       - VG_GMAIL_USER=${VG_GMAIL_USER}
       - VG_GMAIL_PASSWORD=${VG_GMAIL_PASSWORD}
       - VG_CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:8080}
     depends_on:
       redis:
         condition: service_healthy

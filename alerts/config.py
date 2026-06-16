@@ -26,6 +26,10 @@ class AlertConfig:
     max_attempts: int = 5
     backoff_schedule: tuple = (0, 30, 120, 600, 1800)
     expire_after_hours: int = 24
+    # Deduplication windows (seconds). 0 = no dedup for that severity.
+    dedup_window_critical_sec: int = 300   # 5 min
+    dedup_window_high_sec: int = 120       # 2 min
+    confidence_jump_threshold: float = 0.15
     
     def __post_init__(self):
         if self.db_path is None:

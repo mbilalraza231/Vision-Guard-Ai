@@ -15,7 +15,7 @@ from typing import Any, Dict
 ECS_THRESHOLD_DEFAULT = 0.30
 
 # Fixed product defaults for Reset (match event_classification/config.py).
-ECS_WEAPON_PERSISTENCE = {"minDetections": 3, "windowSec": 5.0, "cooldownSec": 30.0}
+ECS_WEAPON_PERSISTENCE = {"minDetections": 5, "windowSec": 5.0, "cooldownSec": 30.0}
 ECS_FIRE_PERSISTENCE = {"minDetections": 3, "windowSec": 8.0, "cooldownSec": 60.0}
 ECS_FALL_PERSISTENCE = {"minDetections": 3, "windowSec": 6.0, "cooldownSec": 30.0}
 
@@ -122,10 +122,10 @@ def _load_default_settings() -> Dict[str, Any]:
             "memoryTotalGbOverride": _env_float("VG_SYSTEM_MEMORY_GB", 0.0),
         },
         "alerts": {
-            "emailNotifications": False,
-            "smsNotifications": False,
-            "pushNotifications": False,
-            "alertThreshold": "low",
+            "emailNotifications": _env_bool("VG_DEFAULT_EMAIL_ALERTS", True),
+            "smsNotifications": _env_bool("VG_DEFAULT_SMS_ALERTS", True),
+            "pushNotifications": _env_bool("VG_DEFAULT_PUSH_ALERTS", True),
+            "alertThreshold": os.environ.get("VG_DEFAULT_ALERT_THRESHOLD", "low"),
         },
         "storage": {
             "retentionDays": 30,

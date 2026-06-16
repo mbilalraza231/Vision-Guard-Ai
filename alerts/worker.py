@@ -55,6 +55,9 @@ class AlertWorker:
         self.contacts = []
         self._last_cache_update = 0
         self._stop = asyncio.Event()
+        self.stream_key = "vg:events:finalized"
+        self.group_name = os.getenv("VG_ALERT_WORKER_GROUP", "alert_worker_group")
+        self.consumer_name = os.getenv("VG_ALERT_WORKER_CONSUMER", "alert-worker")
 
     async def update_contact_cache(self):
         """Fetch active contacts from DB every 60 seconds."""
@@ -134,6 +137,9 @@ class AlertWorker:
         privacy_settings = sys_settings.get('privacy', {})
         anonymize_data = privacy_settings.get('anonymizeData', False)
 
+        dashboard_url = os.getenv("FRONTEND_URL", "http://localhost:8080").rstrip("/")
+        token_payload = f"{event_id}{int(time.time())}"
+        secure_token = hashlib.sha256(token_payload.encode()).hexdigest()[:32]
         whatsapp_msg = self.format_message(event, snap_url, video_url, anonymize=anonymize_data)
         
         # Format timestamp for email template
@@ -309,6 +315,27 @@ class AlertWorker:
             else:
                 logger.info(f"All notifications dispatched successfully for event {event_id}.")
 
+    async def _process_pending_messages(self):
+        """Process any pending stream entries for this consumer."""
+        while not self._stop.is_set():
+            pending = await self.redis.xreadgroup(
+                self.group_name,
+                self.consumer_name,
+                {self.stream_key: "0"},
+                count=10,
+                block=1000
+            )
+            if not pending:
+                return
+            for stream, messages in pending:
+                for msg_id, data in messages:
+                    try:
+                        await self.process_event(data)
+                        await self.redis.xack(self.stream_key, self.group_name, msg_id)
+                    except Exception as e:
+                        logger.error(f"Pending event {msg_id} failed: {e}")
+                        await asyncio.sleep(1)
+
     async def run(self):
         """Main loop listening to Redis stream."""
         while not self._stop.is_set():
@@ -329,21 +356,47 @@ class AlertWorker:
 
         await self.update_contact_cache()
 
-        logger.info("Alert Worker active. Listening to vg:events:finalized...")
-        stream_key = "vg:events:finalized"
-        last_id = "$" 
+        logger.info(f"Alert Worker active. Listening to {self.stream_key} (group={self.group_name})")
+
+        use_consumer_group = True
+        try:
+            await self.redis.xgroup_create(self.stream_key, self.group_name, id="0", mkstream=True)
+        except Exception as e:
+            if "BUSYGROUP" in str(e):
+                pass  # Group already exists — that's fine
+            else:
+                logger.warning(f"Consumer group not available, falling back to plain XREAD: {e}")
+                use_consumer_group = False
+
+        if use_consumer_group:
+            await self._process_pending_messages()
 
         while not self._stop.is_set():
             try:
-                results = await self.redis.xread({stream_key: last_id}, count=1, block=5000)
+                if use_consumer_group:
+                    results = await self.redis.xreadgroup(
+                        self.group_name,
+                        self.consumer_name,
+                        {self.stream_key: ">"},
+                        count=1,
+                        block=5000
+                    )
+                else:
+                    results = await self.redis.xread(
+                        {self.stream_key: "$"},
+                        count=1,
+                        block=5000
+                    )
+
                 if not results:
                     continue
-                
+
                 for stream, messages in results:
                     for msg_id, data in messages:
-                        last_id = msg_id
                         await self.process_event(data)
-                        
+                        if use_consumer_group:
+                            await self.redis.xack(self.stream_key, self.group_name, msg_id)
+
             except Exception as e:
                 logger.error(f"Loop error: {e}")
                 await asyncio.sleep(2)

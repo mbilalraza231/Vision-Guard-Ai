@@ -66,9 +66,9 @@ const defaultSettings: SystemSettings = {
     language: 'en',
   },
   alerts: {
-    emailNotifications: false,
-    smsNotifications: false,
-    pushNotifications: false,
+    emailNotifications: true,
+    smsNotifications: true,
+    pushNotifications: true,
     alertThreshold: 'low',
   },
   storage: {
