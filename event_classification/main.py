@@ -9,6 +9,8 @@ import sys
 import os
 import signal
 import logging
+import threading
+import redis
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -117,9 +119,45 @@ def main():
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
     
+    # Start Pub/Sub Listener thread to instantly apply dashboard settings
+    def start_settings_listener(ecs_service):
+        try:
+            r_client_pubsub = redis.Redis(
+                host=os.getenv("ECS_REDIS_HOST", os.getenv("REDIS_HOST", "localhost")),
+                port=int(os.getenv("ECS_REDIS_PORT", os.getenv("REDIS_PORT", "6379")))
+            )
+            def _settings_listener():
+                pubsub = r_client_pubsub.pubsub()
+                try:
+                    pubsub.subscribe("vg:settings:updates")
+                    for message in pubsub.listen():
+                        if message["type"] == "message":
+                            logger.info("Settings update detected via pub/sub, applying runtime settings...")
+                            try:
+                                changed, snapshot = apply_runtime_settings(config)
+                                if changed:
+                                    logger.info(f"Runtime settings applied: {snapshot}")
+                                    # Note: Some settings like correlation_window_ms require service restart
+                                    # to take full effect, but thresholds and toggles apply immediately
+                                else:
+                                    logger.debug("Settings unchanged")
+                            except Exception as e:
+                                logger.warning(f"Failed to apply runtime settings: {e}")
+                except Exception as e:
+                    logger.warning(f"Settings Pub/Sub thread died: {e}")
+            
+            t = threading.Thread(target=_settings_listener, daemon=True)
+            t.start()
+            logger.info("Settings Pub/Sub listener started for ECS")
+        except Exception as e:
+            logger.warning(f"Failed to start Pub/Sub listener: {e}")
+
     try:
         # Start ECS
         ecs_service = start_ecs(config)
+        
+        # Start settings listener
+        start_settings_listener(ecs_service)
         
         # Keep running
         logger.info("ECS running. Press Ctrl+C to stop.")

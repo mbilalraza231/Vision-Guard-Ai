@@ -107,12 +107,14 @@ class BufferConfig(BaseModel):
     max_queue_size: int = Field(
         default=1000,
         ge=100,
-        description="Maximum number of tasks per Redis queue (prevents infinite growth)"
+        le=10000,
+        description="Maximum tasks per queue (vg:critical, vg:high, vg:medium). Oldest tasks removed when exceeded."
     )
     task_ttl_seconds: int = Field(
         default=60,
         ge=10,
-        description="TTL for tasks in seconds (prevents orphans after camera restart)"
+        le=5000,
+        description="Task TTL in seconds (default: 60). Auto-cleanup tasks older than this. Prevents orphans when camera restarts."
     )
 
     @validator('drop_policy')

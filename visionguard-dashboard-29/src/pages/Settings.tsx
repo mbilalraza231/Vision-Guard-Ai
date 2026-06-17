@@ -784,7 +784,7 @@ export default function Settings() {
                               className="bg-background/50 font-mono text-sm w-40"
                             />
                             <p className="text-xs text-muted-foreground">
-                              Time window to correlate multiple detections into a single event.
+                              Time window to correlate multiple detections into a single event (default: 400).
                             </p>
                           </div>
 
@@ -802,7 +802,7 @@ export default function Settings() {
                               className="bg-background/50 font-mono text-sm w-40"
                             />
                             <p className="text-xs text-muted-foreground">
-                              Upper bound on how long ECS will wait before finalizing an event.
+                              Upper bound on how long ECS will wait before finalizing an event (default: 2.0).
                             </p>
                           </div>
 
@@ -890,7 +890,7 @@ export default function Settings() {
                             className="bg-background/50 font-mono text-sm w-40"
                           />
                           <p className="text-xs text-muted-foreground">
-                            Maximum tasks per queue (vg:critical, vg:high, vg:medium). Oldest tasks removed when exceeded.
+                            Maximum tasks per queue (default: 1000). Applies to vg:critical, vg:high, vg:medium. Oldest tasks removed when exceeded.
                           </p>
                         </div>
 
@@ -909,7 +909,7 @@ export default function Settings() {
                             className="bg-background/50 font-mono text-sm w-40"
                           />
                           <p className="text-xs text-muted-foreground">
-                            Auto-cleanup tasks older than this. Prevents orphans when camera restarts (0 = no TTL).
+                            Task TTL in seconds (default: 60). Auto-cleanup tasks older than this. Prevents orphans when camera restarts.
                           </p>
                         </div>
                       </div>
@@ -1195,7 +1195,7 @@ export default function Settings() {
                     <div className="pt-6 border-t border-white/5">
                       <h3 className="text-lg font-semibold mb-1">ECS Thresholds</h3>
                       <p className="text-xs text-muted-foreground mb-3">
-                        Minimum confidence before ECS creates an incident (second filter after workers).
+                        Minimum confidence before ECS creates an incident (second filter after workers). Applied via Redis pub/sub at runtime.
                       </p>
 
                       <div className="space-y-5">
@@ -1237,7 +1237,7 @@ export default function Settings() {
                     <div className="pt-6 border-t border-white/5">
                       <h3 className="text-lg font-semibold mb-1">Detection image save</h3>
                       <p className="text-xs text-muted-foreground mb-3">
-                        Minimum confidence to write a JPEG to disk (for clips/UI). Often lower than the worker publish gate so evidence exists for ECS incidents.
+                        Minimum confidence to write a JPEG to disk (for clips/UI). Often lower than the worker publish gate so evidence exists for ECS incidents. Applied via Redis pub/sub at runtime.
                       </p>
                       <div className="space-y-4 max-w-md">
                         <div className="space-y-2">

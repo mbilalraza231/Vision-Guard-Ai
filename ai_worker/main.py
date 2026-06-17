@@ -8,13 +8,13 @@ import sys
 import os
 import signal
 import logging
+import threading
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import time
 import json
 import psutil
-import threading
 import socket
 import redis
 
@@ -166,8 +166,44 @@ def main():
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
     
+    # Start Pub/Sub Listener thread for runtime confidence threshold updates
+    def start_settings_listener():
+        try:
+            r_client_pubsub = redis.Redis(
+                host=os.getenv("REDIS_HOST", "localhost"),
+                port=int(os.getenv("REDIS_PORT", "6379"))
+            )
+            def _settings_listener():
+                pubsub = r_client_pubsub.pubsub()
+                try:
+                    pubsub.subscribe("vg:settings:updates")
+                    for message in pubsub.listen():
+                        if message["type"] == "message":
+                            logger.info("Settings update detected via pub/sub, checking for confidence threshold changes...")
+                            try:
+                                runtime = load_worker_runtime_settings(model_type)
+                                new_threshold = runtime["confidence_threshold"]
+                                if new_threshold != config.confidence_threshold:
+                                    logger.info(f"Updating confidence threshold from {config.confidence_threshold} to {new_threshold}")
+                                    config.confidence_threshold = new_threshold
+                                else:
+                                    logger.debug("Confidence threshold unchanged")
+                            except Exception as e:
+                                logger.warning(f"Failed to apply runtime settings: {e}")
+                except Exception as e:
+                    logger.warning(f"Settings Pub/Sub thread died: {e}")
+            
+            t = threading.Thread(target=_settings_listener, daemon=True)
+            t.start()
+            logger.info("Settings Pub/Sub listener started for AI worker")
+        except Exception as e:
+            logger.warning(f"Failed to start Pub/Sub listener: {e}")
+    
     try:
         worker = start_worker(config)
+        
+        # Start settings listener
+        start_settings_listener()
         
         logger.info(f"AI Worker ({config.model_type}) running. Press Ctrl+C to stop.")
         signal.pause()
