@@ -744,7 +744,7 @@ class ECSService:
                     "confidence":    str(event.confidence),
                     "severity":      str(getattr(event, 'severity', 'unknown')),
                 },
-                maxlen=500,  # Cap stream to avoid unbounded growth
+                maxlen=1000,  # Cap stream to avoid unbounded growth
                 approximate=True,
             )
             self.logger.debug(
