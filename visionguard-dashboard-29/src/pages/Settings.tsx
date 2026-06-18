@@ -141,7 +141,7 @@ const defaultSettings: SystemSettings = {
   },
   queueManagement: {
     maxQueueSize: 1000,
-    taskTtlSeconds: 60,
+    taskTtlSeconds: 300,
   }
 };
 
@@ -899,17 +899,17 @@ export default function Settings() {
                           <Input
                             type="number"
                             min={0}
-                            max={300}
-                            value={settings.queueManagement?.taskTtlSeconds ?? 60}
+                            max={3600}
+                            value={settings.queueManagement?.taskTtlSeconds ?? 300}
                             onChange={(e) =>
                               updateQueueManagement({
-                                taskTtlSeconds: Math.max(0, Math.min(300, Number(e.target.value) || 60))
+                                taskTtlSeconds: Math.max(0, Math.min(3600, Number(e.target.value) || 300))
                               })
                             }
                             className="bg-background/50 font-mono text-sm w-40"
                           />
                           <p className="text-xs text-muted-foreground">
-                            Task TTL in seconds (default: 60). Auto-cleanup tasks older than this. Prevents orphans when camera restarts.
+                            Task TTL in seconds (default: 300). Auto-cleanup tasks older than this. Prevents orphans when camera restarts.
                           </p>
                         </div>
                       </div>

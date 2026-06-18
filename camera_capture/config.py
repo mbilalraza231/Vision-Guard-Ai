@@ -111,10 +111,10 @@ class BufferConfig(BaseModel):
         description="Maximum tasks per queue (vg:critical, vg:high, vg:medium). Oldest tasks removed when exceeded."
     )
     task_ttl_seconds: int = Field(
-        default=60,
+        default=300,
         ge=10,
-        le=5000,
-        description="Task TTL in seconds (default: 60). Auto-cleanup tasks older than this. Prevents orphans when camera restarts."
+        le=3600,
+        description="Task TTL in seconds (default: 300). Auto-cleanup tasks older than this. Prevents orphans when camera restarts."
     )
 
     @validator('drop_policy')

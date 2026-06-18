@@ -15,9 +15,12 @@ from typing import Any, Dict
 ECS_THRESHOLD_DEFAULT = 0.30
 
 # Fixed product defaults for Reset (match event_classification/config.py).
-ECS_WEAPON_PERSISTENCE = {"minDetections": 5, "windowSec": 5.0, "cooldownSec": 30.0}
-ECS_FIRE_PERSISTENCE = {"minDetections": 3, "windowSec": 8.0, "cooldownSec": 60.0}
-ECS_FALL_PERSISTENCE = {"minDetections": 3, "windowSec": 6.0, "cooldownSec": 30.0}
+ECS_WEAPON_PERSISTENCE = {"minDetections": 5,
+                          "windowSec": 5.0, "cooldownSec": 30.0}
+ECS_FIRE_PERSISTENCE = {"minDetections": 3,
+                        "windowSec": 8.0, "cooldownSec": 60.0}
+ECS_FALL_PERSISTENCE = {"minDetections": 3,
+                        "windowSec": 6.0, "cooldownSec": 30.0}
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -144,6 +147,10 @@ def _load_default_settings() -> Dict[str, Any]:
         },
         "notifications": {
             "recipients": [],
+        },
+        "queueManagement": {
+            "maxQueueSize": 1000,
+            "taskTtlSeconds": 300,
         },
     }
 

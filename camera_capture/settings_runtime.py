@@ -84,11 +84,11 @@ def load_camera_runtime_settings() -> Dict[str, Any]:
     task_ttl_seconds = int(
         queue_management.get(
             "taskTtlSeconds",
-            60
+            300
         )
     )
     # Clamp to maximum limit
-    task_ttl_seconds = min(task_ttl_seconds, 5000)
+    task_ttl_seconds = min(task_ttl_seconds, 3600)
 
     return {
         "default_fps": default_fps,
