@@ -375,7 +375,9 @@ class AlertWorker:
                 self.redis = redis.Redis(
                     host=self.config.redis_host,
                     port=self.config.redis_port,
-                    decode_responses=True
+                    decode_responses=True,
+                    socket_timeout=10,
+                    socket_connect_timeout=5,
                 )
                 await self.redis.ping()  # type: ignore
                 break
