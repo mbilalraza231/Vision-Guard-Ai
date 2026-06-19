@@ -20,7 +20,6 @@ import os
 import time
 import json
 import glob
-import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -28,7 +27,10 @@ from pathlib import Path
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 # Docker maps 6379→6380 on host
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6380"))
-DB_PATH = os.getenv("VG_DB_PATH", "/data/events.db")
+# PostgreSQL connection (read-only debug access)
+PG_HOST = os.getenv("VG_POSTGRES_HOST", "localhost")
+PG_USER = os.getenv("VG_POSTGRES_USER", "postgres")
+PG_DB = os.getenv("VG_POSTGRES_DB", "visionguard")
 
 # Detection images directory — try Docker volume first, then host path
 DETECTION_DIRS = [
@@ -158,98 +160,16 @@ def get_db_connection():
 
 
 def get_detection_dir():
-    """Find detection images directory — tries local paths, then Docker volume."""
-    # Try local paths first (works if mounted as bind mount)
+    """Find detection images directory from shared volume paths."""
     for d in DETECTION_DIRS:
         if os.path.isdir(d):
             return d
 
-    # Try local cache directory (synced from Docker)
+    # Try local cache directory
     local_cache = os.path.join(os.path.dirname(__file__), ".detection_cache")
     if os.path.isdir(local_cache):
         return local_cache
 
-    # Try Docker volume inspect for direct access
-    try:
-        import subprocess
-        result = subprocess.run(
-            ["docker", "volume", "inspect", "--format", "{{.Mountpoint}}",
-             "vg-app-data"],
-            capture_output=True, text=True, timeout=3
-        )
-        if result.returncode == 0:
-            vol_path = result.stdout.strip()
-            det_path = os.path.join(vol_path, "visionguard/detections")
-            if os.path.isdir(det_path):
-                return det_path
-    except Exception:
-        pass
-    return None
-
-
-def sync_detection_images():
-    """
-    Sync detection images from Docker container to local cache.
-    Uses docker cp to copy from worker container to host-readable path.
-    Returns the local cache path if images were found.
-    """
-    import subprocess
-
-    local_cache = os.path.join(os.path.dirname(__file__), ".detection_cache")
-    os.makedirs(local_cache, exist_ok=True)
-
-    # Try each worker container
-    containers = ["vg-worker-weapon", "vg-worker-fire", "vg-worker-fall"]
-
-    for container in containers:
-        try:
-            # Check if detections directory exists in container
-            check = subprocess.run(
-                ["docker", "exec", container, "ls",
-                    "/data/visionguard/detections/"],
-                capture_output=True, text=True, timeout=5
-            )
-            if check.returncode != 0:
-                continue
-
-            # Get list of images in container
-            files = check.stdout.strip().split("\n")
-            jpg_files = [f for f in files if f.endswith('.jpg')]
-
-            if not jpg_files:
-                continue
-
-            # Copy new images that don't exist locally
-            existing = set(os.listdir(local_cache))
-            for jpg in jpg_files:
-                if jpg not in existing:
-                    try:
-                        subprocess.run(
-                            ["docker", "cp",
-                             f"{container}:/data/visionguard/detections/{jpg}",
-                             os.path.join(local_cache, jpg)],
-                            capture_output=True, timeout=5
-                        )
-                    except Exception:
-                        pass
-
-            # Cleanup old local files (keep last 60)
-            all_local = sorted(
-                [f for f in os.listdir(local_cache) if f.endswith('.jpg')],
-                key=lambda f: os.path.getmtime(os.path.join(local_cache, f)),
-                reverse=True
-            )
-            for old in all_local[60:]:
-                try:
-                    os.remove(os.path.join(local_cache, old))
-                except Exception:
-                    pass
-
-        except Exception:
-            continue
-
-    if os.listdir(local_cache):
-        return local_cache
     return None
 
 
@@ -297,101 +217,6 @@ def model_emoji(model_type: str) -> str:
     return {"weapon": "🔫", "fire": "🔥", "fall": "🤸"}.get(model_type, "❓")
 
 
-def clear_database() -> tuple[bool, str]:
-    """Truncate DB tables in PostgreSQL."""
-    conn = get_db_connection()
-    if not conn:
-        return False, "Database connection failed"
-
-    try:
-        cursor = conn.cursor()
-        cursor.execute(
-            "TRUNCATE TABLE alerts, event_evidence, events RESTART IDENTITY CASCADE")
-        conn.commit()
-        return True, "Database cleared successfully (PostgreSQL Truncate)"
-    except Exception as e:
-        return False, f"Failed to clear database: {e}"
-    finally:
-        conn.close()
-
-
-def clear_detection_images() -> tuple[bool, str]:
-    """Delete detection jpg files from host-visible paths and worker containers."""
-    deleted_total = 0
-    checked_locations = 0
-
-    # Host-visible directories
-    local_cache = os.path.join(os.path.dirname(__file__), ".detection_cache")
-    candidate_dirs = set(DETECTION_DIRS + [local_cache])
-
-    current_dir = get_detection_dir()
-    if current_dir:
-        candidate_dirs.add(current_dir)
-
-    for d in sorted(candidate_dirs):
-        if not d or not os.path.isdir(d):
-            continue
-        checked_locations += 1
-        for img in glob.glob(os.path.join(d, "*.jpg")):
-            try:
-                os.remove(img)
-                deleted_total += 1
-            except Exception:
-                pass
-
-    # Container-side cleanup (for Docker volume paths not directly visible)
-    for container in ["vg-worker-weapon", "vg-worker-fire", "vg-worker-fall"]:
-        try:
-            checked_locations += 1
-            proc = subprocess.run(
-                [
-                    "docker", "exec", container, "sh", "-lc",
-                    "count=$(find /data/visionguard/detections -maxdepth 1 -name '*.jpg' 2>/dev/null | wc -l); "
-                    "find /data/visionguard/detections -maxdepth 1 -name '*.jpg' -delete 2>/dev/null; "
-                    "echo $count"
-                ],
-                capture_output=True,
-                text=True,
-                timeout=8,
-            )
-            if proc.returncode == 0:
-                out = proc.stdout.strip().splitlines()
-                if out:
-                    try:
-                        deleted_total += int(out[-1])
-                    except ValueError:
-                        pass
-        except Exception:
-            continue
-
-    if checked_locations == 0:
-        return False, "No detection image locations found"
-    return True, f"Detection images cleared (deleted {deleted_total} files)"
-
-
-def clear_redis_queues_and_streams(rconn) -> tuple[bool, str]:
-    """Clear pipeline queues/streams used in development."""
-    if not rconn:
-        return False, "Redis not connected"
-
-    targets = [
-        "vg:critical",
-        "vg:high",
-        "vg:medium",
-        "vg:ai:results",
-        "vg:events:finalized",
-    ]
-
-    removed = 0
-    for key in targets:
-        try:
-            removed += rconn.delete(key)
-        except Exception:
-            pass
-
-    return True, f"Queues/streams cleared (removed {removed} keys)"
-
-
 # ───────── Sidebar ─────────
 with st.sidebar:
     st.title("🛡️ VisionGuard Debug")
@@ -434,40 +259,14 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### Configuration")
     st.markdown(f"**Redis:** `{REDIS_HOST}:{REDIS_PORT}`")
-    st.markdown(f"**DB:** `{DB_PATH}`")
+    st.markdown(f"**PostgreSQL:** `{PG_USER}@{PG_HOST}/{PG_DB}`")
     if det_dir:
         st.markdown(f"**Images:** `{det_dir}`")
 
     st.markdown("---")
-    st.markdown("### 🧪 Development Actions")
-    st.caption("Destructive utilities for local development only")
-
-    confirm_dev_actions = st.checkbox(
-        "Enable destructive actions",
-        value=False,
-        help="Required to use clear/reset buttons below",
-    )
-
-    if st.button("🗑️ Clear Database", disabled=not confirm_dev_actions):
-        ok, msg = clear_database()
-        if ok:
-            st.success(msg)
-        else:
-            st.error(msg)
-
-    if st.button("🧹 Clear Detection Images", disabled=not confirm_dev_actions):
-        ok, msg = clear_detection_images()
-        if ok:
-            st.success(msg)
-        else:
-            st.error(msg)
-
-    if st.button("📭 Clear Queues/Streams", disabled=not confirm_dev_actions):
-        ok, msg = clear_redis_queues_and_streams(r)
-        if ok:
-            st.success(msg)
-        else:
-            st.error(msg)
+    st.markdown("### 🔒 Read-Only Mode")
+    st.caption(
+        "This dashboard only READS from Redis and PostgreSQL. No destructive actions available.")
 
     st.markdown("---")
     if st.button("🔄 Force Refresh"):
@@ -485,8 +284,7 @@ st.caption(
 # ═══════════════════════════════════════════════════════════
 st.markdown("## 📸 Live Detection Gallery")
 
-# Sync detection images from Docker containers to local cache
-sync_detection_images()
+# Get detection images directory
 det_dir = get_detection_dir()
 
 if det_dir:
@@ -586,7 +384,7 @@ else:
 st.markdown("### 📤 Results Stream")
 
 if r:
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     try:
         stream_len = r.xlen(RESULT_STREAM)
     except Exception:
@@ -599,6 +397,19 @@ if r:
     except Exception:
         last_entry = None
         last_id = "N/A"
+
+    # Calculate throughput: look at last 60 messages, measure time span
+    throughput = None
+    try:
+        sample = r.xrevrange(RESULT_STREAM, count=60)
+        if len(sample) >= 2:
+            newest_ms = int(str(sample[0][0]).split("-")[0])
+            oldest_ms = int(str(sample[-1][0]).split("-")[0])
+            span_s = (newest_ms - oldest_ms) / 1000.0
+            if span_s > 0:
+                throughput = len(sample) / span_s
+    except Exception:
+        pass
 
     with col1:
         st.metric("Stream Length", stream_len)
@@ -616,10 +427,16 @@ if r:
                 st.metric("Last Message Age", "N/A")
         else:
             st.metric("Last Message Age", "No messages")
+    with col4:
+        if throughput is not None:
+            st.metric("Worker Throughput", f"{throughput:.1f} results/s",
+                      help="AI inference results per second (all models combined, measured over last 60 messages)")
+        else:
+            st.metric("Worker Throughput", "N/A")
 
-    # Show recent stream messages with detection_image indicator
+    # Per-model breakdown
     if stream_len and stream_len > 0:
-        with st.expander(f"📋 Recent Stream Messages (last 10)", expanded=False):
+        with st.expander(f"📋 Recent Stream Messages (last 10) + Per-Model Throughput", expanded=False):
             try:
                 recent = r.xrevrange(RESULT_STREAM, count=10)
                 for msg_id, data in recent:
@@ -631,6 +448,24 @@ if r:
                         f"  {has_img} [{msg_id}] model={model} conf={conf} camera={camera}")
             except Exception as e:
                 st.error(f"Error reading stream: {e}")
+
+            # Per-model breakdown from the throughput sample
+            if throughput is not None:
+                st.markdown("**Per-model rate** (from last 60 results):")
+                model_counts = {}
+                try:
+                    sample2 = r.xrevrange(RESULT_STREAM, count=60)
+                    for _, data in sample2:
+                        m = data.get("model_type", data.get(
+                            "model", "unknown"))
+                        model_counts[m] = model_counts.get(m, 0) + 1
+                    total = sum(model_counts.values())
+                    for m, cnt in sorted(model_counts.items()):
+                        pct = cnt / total * 100
+                        rate = throughput * cnt / total
+                        st.text(f"  {m}: {rate:.1f}/s ({pct:.0f}%)")
+                except Exception:
+                    pass
 
 # ═══════════════════════════════════════════════════════════
 # SECTION 3: ECS STATE
@@ -710,10 +545,12 @@ if db:
         cursor = db.cursor()
 
         # Total counts
-        total = cursor.execute("SELECT COUNT(*) FROM events").fetchone()[0]
-        by_type = cursor.execute(
+        cursor.execute("SELECT COUNT(*) FROM events")
+        total = cursor.fetchone()[0]
+        cursor.execute(
             "SELECT event_type, COUNT(*) FROM events GROUP BY event_type"
-        ).fetchall()
+        )
+        by_type = cursor.fetchall()
 
         col1, col2, col3, col4 = st.columns(4)
         with col1:
@@ -733,14 +570,15 @@ if db:
             st.metric("🤸 Fall", fall_count)
 
         # Recent events table
-        recent_events = cursor.execute("""
+        cursor.execute("""
             SELECT event_type, confidence, camera_id, 
                    to_timestamp(created_at) as time,
                    model_version
             FROM events 
             ORDER BY created_at DESC 
             LIMIT 20
-        """).fetchall()
+        """)
+        recent_events = cursor.fetchall()
 
         if recent_events:
             st.markdown("### Recent Events (last 20)")
@@ -762,7 +600,7 @@ if db:
 
         # Event statistics
         try:
-            rate_query = cursor.execute("""
+            cursor.execute("""
                 SELECT event_type,
                        COUNT(*) as count,
                        MIN(confidence) as min_conf,
@@ -770,7 +608,8 @@ if db:
                        AVG(confidence) as avg_conf
                 FROM events 
                 GROUP BY event_type
-            """).fetchall()
+            """)
+            rate_query = cursor.fetchall()
 
             if rate_query:
                 st.markdown("### Event Statistics")
@@ -793,7 +632,7 @@ if db:
         # Duplicate detection
         with st.expander("🔍 Duplicate Event Detection", expanded=False):
             try:
-                dupes = cursor.execute("""
+                cursor.execute("""
                     SELECT 
                         e1.event_type,
                         ROUND(e1.confidence, 3) as conf,
@@ -811,7 +650,8 @@ if db:
                     )
                     ORDER BY e1.created_at DESC
                     LIMIT 20
-                """).fetchall()
+                """)
+                dupes = cursor.fetchall()
 
                 if dupes:
                     st.warning(
@@ -840,7 +680,7 @@ if db:
         st.error(f"Database error: {e}")
         db.close()
 else:
-    st.warning("Database not found — set VG_DB_PATH if running outside Docker")
+    st.warning("Database not available — check PostgreSQL connection")
 
 # ═══════════════════════════════════════════════════════════
 # SECTION 5: REDIS KEYS
