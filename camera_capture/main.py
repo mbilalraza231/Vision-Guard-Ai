@@ -218,6 +218,9 @@ def main():
     except Exception as e:
         logger.warning(f"Failed to start metrics reporter: {e}")
 
+    # Shared event: Pub/Sub listener sets this to trigger instant config reload
+    reload_event = threading.Event()
+
     # Start Pub/Sub Listener thread to instantly apply dashboard settings
     try:
         r_client_pubsub = redis.Redis(host=os.getenv(
@@ -229,7 +232,9 @@ def main():
                 pubsub.subscribe("vg:settings:updates")
                 for message in pubsub.listen():
                     if message["type"] == "message":
-                        # Simply touch the cameras.json file to trigger the hot-reload loop
+                        # Signal the main loop to reload immediately
+                        reload_event.set()
+                        # Also touch file as fallback (manual edits still work)
                         if os.path.exists(config_path):
                             os.utime(config_path, None)
             except Exception as e:
@@ -262,16 +267,19 @@ def main():
             last_mtime = os.path.getmtime(config_path)
 
         while True:
-            time.sleep(2)
+            # Wait up to 2s for Pub/Sub signal, or timeout for file polling fallback
+            pubsub_triggered = reload_event.wait(timeout=2)
+            reload_event.clear()
             if os.path.exists(config_path):
                 try:
                     mtime = os.path.getmtime(config_path)
                 except OSError:
                     continue
 
-                if mtime > last_mtime:
+                if mtime > last_mtime or pubsub_triggered:
+                    source = "Pub/Sub (instant)" if pubsub_triggered else "file poll"
                     logger.info(
-                        "Config file change detected! Reloading cameras...")
+                        f"Config change detected via {source}. Reloading cameras...")
                     last_mtime = mtime
 
                     try:
