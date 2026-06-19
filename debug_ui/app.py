@@ -405,7 +405,12 @@ if cam_fps:
     # Read camera config from cameras.json file (not Redis settings)
     cam_config_map = {}
     try:
-        cam_config_path = os.path.join(os.path.dirname(__file__), "..", "cameras.json")
+        # Try absolute path first (Docker mount)
+        cam_config_path = "/app/cameras.json"
+        if not os.path.exists(cam_config_path):
+            # Fallback to relative path (local development)
+            cam_config_path = os.path.join(os.path.dirname(__file__), "..", "cameras.json")
+        
         if os.path.exists(cam_config_path):
             with open(cam_config_path, 'r') as f:
                 cam_data = json.load(f)
@@ -413,8 +418,8 @@ if cam_fps:
                     for cam in cam_data["cameras"]:
                         if cam.get("id"):
                             cam_config_map[cam["id"]] = cam.get("fps", default_fps)
-    except Exception:
-        pass
+    except Exception as e:
+        st.warning(f"Could not read cameras.json: {e}")
     
     cam_cols = st.columns(min(len(cam_fps), 4))
     for idx, (cam_id, fps) in enumerate(sorted(cam_fps.items())):
