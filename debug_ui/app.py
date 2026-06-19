@@ -26,7 +26,8 @@ from pathlib import Path
 
 # ───────── Configuration ─────────
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-REDIS_PORT = int(os.getenv("REDIS_PORT", "6380"))  # Docker maps 6379→6380 on host
+# Docker maps 6379→6380 on host
+REDIS_PORT = int(os.getenv("REDIS_PORT", "6380"))
 DB_PATH = os.getenv("VG_DB_PATH", "/data/events.db")
 
 # Detection images directory — try Docker volume first, then host path
@@ -142,7 +143,7 @@ def get_db_connection():
     user = os.environ.get("VG_POSTGRES_USER", "postgres")
     db_name = os.environ.get("VG_POSTGRES_DB", "visionguard")
     password = os.environ.get("VG_POSTGRES_PASSWORD", "postgres")
-    
+
     try:
         import psycopg2
         return psycopg2.connect(
@@ -162,12 +163,12 @@ def get_detection_dir():
     for d in DETECTION_DIRS:
         if os.path.isdir(d):
             return d
-    
+
     # Try local cache directory (synced from Docker)
     local_cache = os.path.join(os.path.dirname(__file__), ".detection_cache")
     if os.path.isdir(local_cache):
         return local_cache
-    
+
     # Try Docker volume inspect for direct access
     try:
         import subprocess
@@ -193,30 +194,31 @@ def sync_detection_images():
     Returns the local cache path if images were found.
     """
     import subprocess
-    
+
     local_cache = os.path.join(os.path.dirname(__file__), ".detection_cache")
     os.makedirs(local_cache, exist_ok=True)
-    
+
     # Try each worker container
     containers = ["vg-worker-weapon", "vg-worker-fire", "vg-worker-fall"]
-    
+
     for container in containers:
         try:
             # Check if detections directory exists in container
             check = subprocess.run(
-                ["docker", "exec", container, "ls", "/data/visionguard/detections/"],
+                ["docker", "exec", container, "ls",
+                    "/data/visionguard/detections/"],
                 capture_output=True, text=True, timeout=5
             )
             if check.returncode != 0:
                 continue
-            
+
             # Get list of images in container
             files = check.stdout.strip().split("\n")
             jpg_files = [f for f in files if f.endswith('.jpg')]
-            
+
             if not jpg_files:
                 continue
-            
+
             # Copy new images that don't exist locally
             existing = set(os.listdir(local_cache))
             for jpg in jpg_files:
@@ -230,7 +232,7 @@ def sync_detection_images():
                         )
                     except Exception:
                         pass
-            
+
             # Cleanup old local files (keep last 60)
             all_local = sorted(
                 [f for f in os.listdir(local_cache) if f.endswith('.jpg')],
@@ -242,10 +244,10 @@ def sync_detection_images():
                     os.remove(os.path.join(local_cache, old))
                 except Exception:
                     pass
-                    
+
         except Exception:
             continue
-    
+
     if os.listdir(local_cache):
         return local_cache
     return None
@@ -255,11 +257,11 @@ def get_detection_images(detection_dir, model_filter=None, limit=12):
     """Get most recent detection images."""
     if not detection_dir or not os.path.isdir(detection_dir):
         return []
-    
+
     pattern = "*.jpg"
     if model_filter:
         pattern = f"{model_filter}_*.jpg"
-    
+
     images = glob.glob(os.path.join(detection_dir, pattern))
     # Sort by modification time (newest first)
     images.sort(key=os.path.getmtime, reverse=True)
@@ -303,7 +305,8 @@ def clear_database() -> tuple[bool, str]:
 
     try:
         cursor = conn.cursor()
-        cursor.execute("TRUNCATE TABLE alerts, event_evidence, events RESTART IDENTITY CASCADE")
+        cursor.execute(
+            "TRUNCATE TABLE alerts, event_evidence, events RESTART IDENTITY CASCADE")
         conn.commit()
         return True, "Database cleared successfully (PostgreSQL Truncate)"
     except Exception as e:
@@ -398,29 +401,35 @@ with st.sidebar:
         [2, 5, 10, 30],
         index=1,
     )
-    
+
     st.markdown("---")
     st.markdown("### Connections")
-    
+
     r = get_redis()
     if r:
-        st.markdown('<span class="status-healthy">● Redis Connected</span>', unsafe_allow_html=True)
+        st.markdown(
+            '<span class="status-healthy">● Redis Connected</span>', unsafe_allow_html=True)
     else:
-        st.markdown('<span class="status-error">● Redis Disconnected</span>', unsafe_allow_html=True)
+        st.markdown(
+            '<span class="status-error">● Redis Disconnected</span>', unsafe_allow_html=True)
 
     db = get_db_connection()
     if db:
-        st.markdown('<span class="status-healthy">● Database Available</span>', unsafe_allow_html=True)
+        st.markdown(
+            '<span class="status-healthy">● Database Available</span>', unsafe_allow_html=True)
         db.close()
     else:
-        st.markdown('<span class="status-error">● Database Not Found</span>', unsafe_allow_html=True)
-    
+        st.markdown(
+            '<span class="status-error">● Database Not Found</span>', unsafe_allow_html=True)
+
     det_dir = get_detection_dir()
     if det_dir:
         img_count = len(glob.glob(os.path.join(det_dir, "*.jpg")))
-        st.markdown(f'<span class="status-healthy">● Detection Images ({img_count})</span>', unsafe_allow_html=True)
+        st.markdown(
+            f'<span class="status-healthy">● Detection Images ({img_count})</span>', unsafe_allow_html=True)
     else:
-        st.markdown('<span class="status-warning">● No Detection Images Dir</span>', unsafe_allow_html=True)
+        st.markdown(
+            '<span class="status-warning">● No Detection Images Dir</span>', unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown("### Configuration")
@@ -428,7 +437,7 @@ with st.sidebar:
     st.markdown(f"**DB:** `{DB_PATH}`")
     if det_dir:
         st.markdown(f"**Images:** `{det_dir}`")
-    
+
     st.markdown("---")
     st.markdown("### 🧪 Development Actions")
     st.caption("Destructive utilities for local development only")
@@ -468,7 +477,8 @@ with st.sidebar:
 
 # ───────── Main Header ─────────
 st.title("🛡️ VisionGuard AI — Pipeline Debug Dashboard")
-st.caption(f"Last refresh: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  •  Auto-refresh every {refresh_rate}s")
+st.caption(
+    f"Last refresh: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  •  Auto-refresh every {refresh_rate}s")
 
 # ═══════════════════════════════════════════════════════════
 # SECTION 1: LIVE DETECTION GALLERY (NEW — Most Important)
@@ -489,11 +499,11 @@ if det_dir:
             index=0,
             key="gallery_filter"
         )
-    
+
     # Get detection images
     filter_val = None if model_filter == "all" else model_filter
     images = get_detection_images(det_dir, model_filter=filter_val, limit=12)
-    
+
     if images:
         # Display in a grid — 3 columns for larger images
         cols_per_row = 3
@@ -514,7 +524,8 @@ if det_dir:
                         f"**{emoji} {model.upper()}** • cam: `{camera}` • {ts_str}"
                     )
     else:
-        st.info("📭 No detection images yet — detections will appear here with bounding boxes when they occur.")
+        st.info(
+            "📭 No detection images yet — detections will appear here with bounding boxes when they occur.")
 else:
     st.warning("Detection images directory not found. Images will appear after workers detect objects and save annotated frames.")
 
@@ -539,7 +550,7 @@ if r:
     total_queued = 0
     for q in TASK_QUEUES:
         try:
-            l = r.llen(q)
+            l = r.zcard(q)  # Sorted sets, not lists
         except Exception:
             l = -1
         queue_lengths[q] = l
@@ -547,20 +558,27 @@ if r:
             total_queued += l
 
     with col1:
-        st.metric("🔴 Weapon Stream (vg:critical)", queue_lengths.get("vg:critical", 0), help="Weapon frames waiting for worker processing")
+        st.metric("🔴 Weapon Stream (vg:critical)", queue_lengths.get(
+            "vg:critical", 0), help="Weapon frames waiting for worker processing")
     with col2:
-        st.metric("🟡 Fire Stream (vg:high)", queue_lengths.get("vg:high", 0), help="Fire/smoke frames waiting for worker processing")
+        st.metric("🟡 Fire Stream (vg:high)", queue_lengths.get(
+            "vg:high", 0), help="Fire/smoke frames waiting for worker processing")
     with col3:
-        st.metric("🟢 Fall Stream (vg:medium)", queue_lengths.get("vg:medium", 0), help="Fall frames waiting for worker processing")
+        st.metric("🟢 Fall Stream (vg:medium)", queue_lengths.get(
+            "vg:medium", 0), help="Fall frames waiting for worker processing")
     with col4:
-        st.metric("📦 Total Frame Backlog", total_queued, help="Sum of frames currently buffered in Redis")
+        st.metric("📦 Total Frame Backlog", total_queued,
+                  help="Sum of frames currently buffered in Redis")
 
     if total_queued > 100:
-        st.warning(f"⚠️ {total_queued} frames queued — Workers are suffering high inference latency and falling behind the camera FPS!")
+        st.warning(
+            f"⚠️ {total_queued} frames queued — Workers are suffering high inference latency and falling behind the camera FPS!")
     elif total_queued == 0:
-        st.success("✅ Real-time processing — Workers are matching Camera FPS with zero latency backlog.")
+        st.success(
+            "✅ Real-time processing — Workers are matching Camera FPS with zero latency backlog.")
     else:
-        st.info(f"ℹ️ {total_queued} frames in pipeline buffer being actively processed...")
+        st.info(
+            f"ℹ️ {total_queued} frames in pipeline buffer being actively processed...")
 else:
     st.error("Cannot connect to Redis")
 
@@ -589,7 +607,8 @@ if r:
     with col3:
         if last_entry:
             try:
-                entry_id = last_entry[0] if isinstance(last_entry, (list, tuple)) else str(last_entry)
+                entry_id = last_entry[0] if isinstance(
+                    last_entry, (list, tuple)) else str(last_entry)
                 ts_ms = int(str(entry_id).split("-")[0])
                 age_s = (time.time() * 1000 - ts_ms) / 1000
                 st.metric("Last Message Age", f"{age_s:.1f}s ago")
@@ -608,7 +627,8 @@ if r:
                     model = data.get("model_type", data.get("model", "?"))
                     conf = data.get("confidence", "?")
                     has_img = "📸" if data.get("detection_image") else "  "
-                    st.text(f"  {has_img} [{msg_id}] model={model} conf={conf} camera={camera}")
+                    st.text(
+                        f"  {has_img} [{msg_id}] model={model} conf={conf} camera={camera}")
             except Exception as e:
                 st.error(f"Error reading stream: {e}")
 
@@ -623,13 +643,13 @@ if r:
     try:
         stream_len = r.xlen(RESULT_STREAM)
         ecs_last_id = r.get("vg:ecs:last_id")
-        
+
         # Calculate real backlog
         # If last_id exists, we count how many messages are AFTER it
         pending_count = 0
         if ecs_last_id and ecs_last_id != "0-0":
             try:
-                # XCOUNT gives us messages in a range. 
+                # XCOUNT gives us messages in a range.
                 # Range is (ecs_last_id to + (the end)
                 # The "(" makes it "exclusive" (messages strictly after the ID)
                 pending_count = r.xcount(RESULT_STREAM, f"({ecs_last_id}", "+")
@@ -649,7 +669,7 @@ if r:
             else:
                 st.metric("Processing", "Backlogged")
                 st.warning(f"{pending_count} unprocessed")
-            
+
             st.caption(f"Stream: {stream_len} | Pending: {pending_count}")
     except Exception as e:
         with col1:
@@ -657,9 +677,9 @@ if r:
             st.caption(f"Error: {e}")
 
     with col2:
-        st.metric("Correlation Window", "2000ms")
+        st.metric("Correlation Window", "400ms")
     with col3:
-        st.metric("Hard TTL", "15.0s")
+        st.metric("Hard TTL", "2.0s")
 
     with st.expander("⏱️ ECS v2 Configuration", expanded=False):
         ecol1, ecol2, ecol3 = st.columns(3)
@@ -700,13 +720,16 @@ if db:
             st.metric("Total Events", total)
         type_counts = {r[0]: r[1] for r in by_type}
         with col2:
-            weapon_count = type_counts.get("weapon_detected", 0) + type_counts.get("weapon", 0)
+            weapon_count = type_counts.get(
+                "weapon_detected", 0) + type_counts.get("weapon", 0)
             st.metric("🔫 Weapon", weapon_count)
         with col3:
-            fire_count = type_counts.get("fire_detected", 0) + type_counts.get("fire", 0)
+            fire_count = type_counts.get(
+                "fire_detected", 0) + type_counts.get("fire", 0)
             st.metric("🔥 Fire", fire_count)
         with col4:
-            fall_count = type_counts.get("fall_detected", 0) + type_counts.get("fall", 0)
+            fall_count = type_counts.get(
+                "fall_detected", 0) + type_counts.get("fall", 0)
             st.metric("🤸 Fall", fall_count)
 
         # Recent events table
@@ -775,9 +798,9 @@ if db:
                         e1.event_type,
                         ROUND(e1.confidence, 3) as conf,
                         e1.camera_id,
-                        datetime(e1.created_at, 'unixepoch', 'localtime'),
-                        datetime(e2.created_at, 'unixepoch', 'localtime'),
-                        ROUND(e2.created_at - e1.created_at, 1) as gap_s
+                        to_timestamp(e1.created_at) as event1_time,
+                        to_timestamp(e2.created_at) as event2_time,
+                        ROUND((e2.created_at - e1.created_at)::numeric, 1) as gap_s
                     FROM events e1
                     JOIN events e2 ON (
                         e1.event_type = e2.event_type AND
@@ -791,7 +814,8 @@ if db:
                 """).fetchall()
 
                 if dupes:
-                    st.warning(f"⚠️ {len(dupes)} potential duplicate pairs found")
+                    st.warning(
+                        f"⚠️ {len(dupes)} potential duplicate pairs found")
                     st.dataframe(
                         [
                             {
@@ -834,6 +858,9 @@ if r:
                     if key_type == "list":
                         length = r.llen(key)
                         st.text(f"  {key} (list, len={length})")
+                    elif key_type == "zset":
+                        length = r.zcard(key)
+                        st.text(f"  {key} (sorted set, len={length})")
                     elif key_type == "stream":
                         length = r.xlen(key)
                         st.text(f"  {key} (stream, len={length})")
@@ -854,7 +881,8 @@ if r:
 
 # ───────── Footer ─────────
 st.markdown("---")
-st.caption("VisionGuard AI — Pipeline Debug Dashboard v2.0 • Detection images with bounding boxes")
+st.caption(
+    "VisionGuard AI — Pipeline Debug Dashboard v2.0 • Detection images with bounding boxes")
 
 # ───────── Auto-refresh ─────────
 time.sleep(refresh_rate)

@@ -480,8 +480,14 @@ services:
       - VG_DB_PATH=/data/visionguard/events.db
       - VG_STREAM_NAME=vg:ai:results
       - VG_REFRESH_SEC=1.5
+      - VG_POSTGRES_HOST=postgres
+      - VG_POSTGRES_USER=postgres
+      - VG_POSTGRES_PASSWORD=postgres
+      - VG_POSTGRES_DB=visionguard
     depends_on:
       redis:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     profiles:
       - debug
