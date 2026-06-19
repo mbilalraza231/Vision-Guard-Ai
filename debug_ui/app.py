@@ -402,10 +402,25 @@ if cam_fps:
                   help=f"Sum of {len(cam_fps)} active camera(s)")
 
     # Per-camera breakdown
+    # Read camera config from cameras.json file (not Redis settings)
+    cam_config_map = {}
+    try:
+        cam_config_path = os.path.join(os.path.dirname(__file__), "..", "cameras.json")
+        if os.path.exists(cam_config_path):
+            with open(cam_config_path, 'r') as f:
+                cam_data = json.load(f)
+                if isinstance(cam_data, dict) and "cameras" in cam_data:
+                    for cam in cam_data["cameras"]:
+                        if cam.get("id"):
+                            cam_config_map[cam["id"]] = cam.get("fps", default_fps)
+    except Exception:
+        pass
+    
     cam_cols = st.columns(min(len(cam_fps), 4))
     for idx, (cam_id, fps) in enumerate(sorted(cam_fps.items())):
+        target_fps = cam_config_map.get(cam_id, default_fps)
         with cam_cols[idx % len(cam_cols)]:
-            st.markdown(f"**📹 {cam_id}**\n\nActual: **{fps:.1f} FPS**")
+            st.markdown(f"**📹 {cam_id}**\n\nActual: **{fps:.1f} FPS** (Target: {target_fps})")
 else:
     with ccol4:
         st.metric("Total Capture FPS", "N/A",
