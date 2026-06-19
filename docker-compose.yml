@@ -473,7 +473,7 @@ services:
     ports:
       - "${DEBUG_UI_PORT:-8501}:8501"
     volumes:
-      - ./data:/data/visionguard
+      - ./data:/data/visionguard:ro
       - ./cameras.json:/app/cameras.json:ro
     environment:
       - REDIS_HOST=redis
