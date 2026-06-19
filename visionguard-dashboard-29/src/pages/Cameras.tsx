@@ -101,7 +101,7 @@ export default function Cameras() {
       const isEditing = editingId !== null;
       toast.success(isEditing ? 'Camera settings updated' : 'Camera registered successfully');
       if (isEditing) {
-        toast.info('Restart the camera service to apply configuration updates.', {
+        toast.success('Camera config updated. Hot-reload will apply within ~2 seconds.', {
           duration: 5000,
         });
       }
