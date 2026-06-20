@@ -42,6 +42,10 @@ def load_camera_runtime_settings() -> Dict[str, Any]:
     Returns a dict with:
       - default_fps: int         (from cameraCapture.defaultFps)
       - motion_threshold: float  (from cameraCapture.motionThreshold)
+      - enable_frame_compression: bool
+      - compression_quality: int
+      - compression_format: str
+      - pre_resize_dimensions: list[int]
       - global_fps_target: int   (from cameras.globalFpsTarget)
       - max_queue_size: int      (from queueManagement.maxQueueSize)
       - task_ttl_seconds: int    (from queueManagement.taskTtlSeconds)
@@ -66,6 +70,37 @@ def load_camera_runtime_settings() -> Dict[str, Any]:
             float(os.getenv("CAMERA_MOTION_THRESHOLD", "0.02"))
         )
     )
+    enable_frame_compression = str(
+        camera_capture.get(
+            "enableFrameCompression",
+            os.getenv("CAMERA_ENABLE_FRAME_COMPRESSION", "False")
+        )
+    ).strip().lower() in {"1", "true", "yes", "y", "on"}
+    compression_quality = int(
+        camera_capture.get(
+            "compressionQuality",
+            int(os.getenv("CAMERA_COMPRESSION_QUALITY", "95"))
+        )
+    )
+    compression_format = str(
+        camera_capture.get(
+            "compressionFormat",
+            os.getenv("CAMERA_COMPRESSION_FORMAT", "jpeg")
+        )
+    )
+    pre_resize_dimensions_str = str(
+        camera_capture.get(
+            "preResizeDimensions",
+            os.getenv("CAMERA_PRE_RESIZE_DIMENSIONS", "640,416")
+        )
+    )
+    pre_resize_dimensions = []
+    if pre_resize_dimensions_str:
+        try:
+            pre_resize_dimensions = [int(x.strip()) for x in pre_resize_dimensions_str.split(',') if x.strip().isdigit()]
+        except ValueError:
+            pass
+            
     global_fps_target = int(
         cameras_section.get(
             "globalFpsTarget",
@@ -93,6 +128,10 @@ def load_camera_runtime_settings() -> Dict[str, Any]:
     return {
         "default_fps": default_fps,
         "motion_threshold": motion_threshold,
+        "enable_frame_compression": enable_frame_compression,
+        "compression_quality": compression_quality,
+        "compression_format": compression_format,
+        "pre_resize_dimensions": pre_resize_dimensions,
         "global_fps_target": global_fps_target,
         "max_queue_size": max_queue_size,
         "task_ttl_seconds": task_ttl_seconds,

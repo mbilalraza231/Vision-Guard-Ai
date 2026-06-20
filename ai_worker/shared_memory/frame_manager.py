@@ -46,18 +46,31 @@ class FrameManager:
             extra={"max_frame_size_mb": max_frame_size_mb}
         )
     
-    def read_frame(self, shared_memory_key: str) -> Optional[np.ndarray]:
+    def read_frame(self, shared_memory_key: str, width: Optional[int] = None) -> Optional[np.ndarray]:
         """
         Read frame from shared memory (READ-ONLY).
         
         Args:
             shared_memory_key: Unique key from task metadata
+            width: Optional requested width. Used to check for pre-resized frames.
             
         Returns:
             Frame as NumPy array, or None if not found
         """
         try:
-            frame = self.shared_memory.read_frame(shared_memory_key)
+            frame = None
+            used_key = shared_memory_key
+            
+            # 1. Attempt to read pre-resized frame if width is specified
+            if width is not None:
+                resized_key = f"{shared_memory_key}_{width}"
+                frame = self.shared_memory.read_frame(resized_key)
+                if frame is not None:
+                    used_key = resized_key
+                    
+            # 2. Fallback to base full-res frame if pre-resized not found
+            if frame is None:
+                frame = self.shared_memory.read_frame(shared_memory_key)
             
             if frame is not None:
                 self.frames_read += 1

@@ -115,6 +115,10 @@ def _load_default_settings() -> Dict[str, Any]:
         "cameraCapture": {
             "defaultFps": _env_int("CAMERA_DEFAULT_FPS", 5),
             "motionThreshold": _env_float("CAMERA_MOTION_THRESHOLD", 0.02),
+            "enableFrameCompression": _env_bool("CAMERA_ENABLE_FRAME_COMPRESSION", False),
+            "compressionQuality": _env_int("CAMERA_COMPRESSION_QUALITY", 95),
+            "compressionFormat": os.environ.get("CAMERA_COMPRESSION_FORMAT", "jpeg"),
+            "preResizeDimensions": os.environ.get("CAMERA_PRE_RESIZE_DIMENSIONS", "640,416"),
         },
         "clips": {
             "preSeconds": _env_int("CLIP_PRE_SECONDS", 0),

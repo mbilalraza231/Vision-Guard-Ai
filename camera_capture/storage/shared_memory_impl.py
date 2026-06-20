@@ -77,7 +77,7 @@ class SharedMemoryImpl(SharedMemoryInterface):
         }
         self._dtype_reverse_map = {v: k for k, v in self._dtype_map.items()}
 
-    def write_frame(self, frame: np.ndarray) -> str:
+    def write_frame(self, frame: np.ndarray, compressed_bytes: Optional[bytes] = None, custom_key: Optional[str] = None) -> str:
         """
         Write frame to shared storage.
 
@@ -87,18 +87,21 @@ class SharedMemoryImpl(SharedMemoryInterface):
         Raises:
             MemoryError: If frame is too large or write fails
         """
-        # Validate frame
-        if not isinstance(frame, np.ndarray):
-            raise ValueError("Frame must be a NumPy array")
-
-        if frame.dtype.type not in self._dtype_map:
-            raise ValueError(
-                f"Unsupported dtype: {frame.dtype}. Supported: {list(self._dtype_map.keys())}")
-
         # Calculate required size
-        header_size = 16  # 4 ints: height, width, channels, dtype
-        frame_size = frame.nbytes
-        total_size = header_size + frame_size
+        if compressed_bytes is not None:
+            total_size = len(compressed_bytes)
+        else:
+            # Validate frame
+            if not isinstance(frame, np.ndarray):
+                raise ValueError("Frame must be a NumPy array")
+
+            if frame.dtype.type not in self._dtype_map:
+                raise ValueError(
+                    f"Unsupported dtype: {frame.dtype}. Supported: {list(self._dtype_map.keys())}")
+            
+            header_size = 16  # 4 ints: height, width, channels, dtype
+            frame_size = frame.nbytes
+            total_size = header_size + frame_size
 
         if total_size > self.max_frame_size_bytes:
             raise MemoryError(
@@ -106,23 +109,24 @@ class SharedMemoryImpl(SharedMemoryInterface):
                 f"({self.max_frame_size_bytes} bytes). Skipping frame."
             )
 
-        # Generate unique key
-        key = str(uuid.uuid4())
+        # Generate or use provided unique key
+        key = custom_key if custom_key else str(uuid.uuid4())
         filepath = os.path.join(self.shared_dir, key)
 
         try:
-            # Build frame data with header
-            height, width = frame.shape[:2]
-            channels = frame.shape[2] if len(frame.shape) == 3 else 1
-            dtype_code = self._dtype_map[frame.dtype.type]
-
-            header = struct.pack('IIII', height, width, channels, dtype_code)
-
-            # Write atomically: write to temp file, then rename
             tmp_path = filepath + ".tmp"
             with open(tmp_path, 'wb') as f:
-                f.write(header)
-                f.write(frame.tobytes())
+                if compressed_bytes is not None:
+                    f.write(compressed_bytes)
+                else:
+                    # Build frame data with header
+                    height, width = frame.shape[:2]
+                    channels = frame.shape[2] if len(frame.shape) == 3 else 1
+                    dtype_code = self._dtype_map[frame.dtype.type]
+
+                    header = struct.pack('IIII', height, width, channels, dtype_code)
+                    f.write(header)
+                    f.write(frame.tobytes())
 
             # Make world-readable for cross-container access
             os.chmod(tmp_path, 0o666)
@@ -162,24 +166,47 @@ class SharedMemoryImpl(SharedMemoryInterface):
 
         try:
             with open(filepath, 'rb') as f:
-                # Read header
-                header_data = f.read(16)
-                if len(header_data) < 16:
-                    raise ValueError("Incomplete header")
+                data = f.read()
 
-                height, width, channels, dtype_code = struct.unpack(
-                    'IIII', header_data)
+            if not data:
+                return None
+                
+            # Attempt to auto-decompress if it's a compressed image
+            try:
+                import sys
+                import os
+                # Ensure project root is in sys.path to find preprocessing module
+                sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+                from preprocessing.resize_and_compress import is_compressed, decompress_frame
+                
+                if is_compressed(data):
+                    frame = decompress_frame(data)
+                    self._logger.debug(
+                        f"Read compressed frame from shared storage",
+                        extra={"shared_memory_key": key, "shape": frame.shape}
+                    )
+                    return frame
+            except ImportError as e:
+                self._logger.warning(f"preprocessing module not found: {e}")
+            except Exception as e:
+                self._logger.error(f"Error checking/decompressing frame: {e}")
+                
+            # Legacy raw numpy array format
+            header_data = data[:16]
+            if len(header_data) < 16:
+                raise ValueError("Incomplete header")
 
-                # Validate dtype
-                if dtype_code not in self._dtype_reverse_map:
-                    raise ValueError(f"Invalid dtype code: {dtype_code}")
+            height, width, channels, dtype_code = struct.unpack(
+                'IIII', header_data)
 
-                dtype = self._dtype_reverse_map[dtype_code]
+            # Validate dtype
+            if dtype_code not in self._dtype_reverse_map:
+                raise ValueError(f"Invalid dtype code: {dtype_code}")
 
-                # Read frame data
-                frame_size = height * width * \
-                    channels * np.dtype(dtype).itemsize
-                frame_bytes = f.read(frame_size)
+            dtype = self._dtype_reverse_map[dtype_code]
+
+            # Read frame data
+            frame_bytes = data[16:]
 
             # Reconstruct frame
             if channels == 1:

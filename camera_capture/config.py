@@ -30,6 +30,24 @@ class CameraConfig(BaseModel):
         default="all",
         description="Queue priority: 'all' (send to all workers) or 'critical'/'high'/'medium' (single queue)"
     )
+    enable_frame_compression: bool = Field(
+        default=False,
+        description="Enable/disable frame compression (JPEG/WebP) for this camera"
+    )
+    compression_quality: int = Field(
+        default=95,
+        ge=1,
+        le=100,
+        description="Quality of compression (1-100)"
+    )
+    compression_format: str = Field(
+        default="jpeg",
+        description="Format for compression ('jpeg', 'webp')"
+    )
+    pre_resize_dimensions: List[int] = Field(
+        default_factory=lambda: [640, 416],
+        description="Target dimensions to pre-resize and compress to"
+    )
 
     @validator('rtsp_url')
     def validate_rtsp_url(cls, v):

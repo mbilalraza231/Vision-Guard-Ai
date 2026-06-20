@@ -154,6 +154,12 @@ def main():
                 cam.fps = default_fps
             if cam.motion_threshold == 0.02:  # Only override if still at factory default
                 cam.motion_threshold = motion_threshold
+                
+            # Apply compression settings from Redis
+            cam.enable_frame_compression = cam_runtime.get("enable_frame_compression", False)
+            cam.compression_quality = cam_runtime.get("compression_quality", 95)
+            cam.compression_format = cam_runtime.get("compression_format", "jpeg")
+            cam.pre_resize_dimensions = cam_runtime.get("pre_resize_dimensions", [640, 416])
     except Exception as e:
         logger.warning(
             f"Could not apply Redis camera settings, using cameras.json values: {e}")
@@ -299,8 +305,15 @@ def main():
                                     cam.fps = new_default_fps
                                 if cam.motion_threshold == 0.02:
                                     cam.motion_threshold = new_motion_thresh
+                                    
+                                # Apply compression settings from Redis
+                                cam.enable_frame_compression = cam_runtime.get("enable_frame_compression", False)
+                                cam.compression_quality = cam_runtime.get("compression_quality", 95)
+                                cam.compression_format = cam_runtime.get("compression_format", "jpeg")
+                                cam.pre_resize_dimensions = cam_runtime.get("pre_resize_dimensions", [640, 416])
+                                
                             logger.info(
-                                f"Applied live Redis settings during hot-reload: fps={new_default_fps}, motion={new_motion_thresh}")
+                                f"Applied live Redis settings during hot-reload: fps={new_default_fps}, motion={new_motion_thresh}, compress={cam_runtime.get('enable_frame_compression', False)}")
                         except Exception as e:
                             logger.warning(
                                 f"Could not apply Redis settings during hot-reload: {e}")
@@ -351,7 +364,11 @@ def main():
                                 if (curr_config.rtsp_url != camera_config.rtsp_url or
                                     curr_config.fps != camera_config.fps or
                                     curr_config.motion_threshold != camera_config.motion_threshold or
-                                        curr_config.motion_enabled != camera_config.motion_enabled):
+                                    curr_config.motion_enabled != camera_config.motion_enabled or
+                                    getattr(curr_config, 'enable_frame_compression', False) != getattr(camera_config, 'enable_frame_compression', False) or
+                                    getattr(curr_config, 'compression_quality', 95) != getattr(camera_config, 'compression_quality', 95) or
+                                    getattr(curr_config, 'compression_format', 'jpeg') != getattr(camera_config, 'compression_format', 'jpeg') or
+                                    getattr(curr_config, 'pre_resize_dimensions', [640, 416]) != getattr(camera_config, 'pre_resize_dimensions', [640, 416])):
 
                                     logger.info(
                                         f"Camera '{cam_id}' configuration updated. Restarting process...")

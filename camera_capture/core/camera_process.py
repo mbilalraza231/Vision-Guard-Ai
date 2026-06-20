@@ -359,8 +359,49 @@ class CameraProcess:
             frame: Frame to process
         """
         try:
-            # Write frame to shared memory
-            shared_memory_key = self.shared_memory.write_frame(frame)
+            # Write frame to shared memory (with optional compression)
+            compressed_bytes = None
+            pre_resize_dict = None
+            if getattr(self.camera_config, 'enable_frame_compression', False):
+                try:
+                    import sys
+                    import os
+                    # Ensure project root is in sys.path
+                    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+                    from preprocessing.resize_and_compress import compress_frame, resize_and_compress_frame
+                    
+                    # 1. Compress base frame
+                    compressed_bytes = compress_frame(
+                        frame,
+                        format=getattr(self.camera_config, 'compression_format', 'jpeg'),
+                        quality=getattr(self.camera_config, 'compression_quality', 95)
+                    )
+                    
+                    # 2. Generate pre-resized versions
+                    pre_resize_dims = getattr(self.camera_config, 'pre_resize_dimensions', [])
+                    if pre_resize_dims:
+                        pre_resize_dict = resize_and_compress_frame(
+                            frame,
+                            sizes=pre_resize_dims,
+                            format=getattr(self.camera_config, 'compression_format', 'jpeg'),
+                            quality=getattr(self.camera_config, 'compression_quality', 95)
+                        )
+                except ImportError as e:
+                    self.logger.warning(f"preprocessing module not found, falling back to raw: {e}")
+                except Exception as e:
+                    self.logger.warning(f"Failed to compress frame, falling back to raw: {e}")
+                    
+            # Write the base full-res frame
+            shared_memory_key = self.shared_memory.write_frame(frame, compressed_bytes=compressed_bytes)
+            
+            # Write pre-resized frames if successfully generated
+            if pre_resize_dict:
+                for size, cbytes in pre_resize_dict.items():
+                    suffix_key = f"{shared_memory_key}_{size}"
+                    try:
+                        self.shared_memory.write_frame(frame, compressed_bytes=cbytes, custom_key=suffix_key)
+                    except Exception as e:
+                        self.logger.warning(f"Failed to write pre-resized frame {size}: {e}")
             
             # Generate frame ID
             frame_id = TaskMetadata.generate_frame_id(self.camera_config.camera_id)

@@ -355,7 +355,11 @@ class AIWorker:
                 )
 
                 # 2. Read frame from shared memory (READ-ONLY)
-                frame = self.frame_manager.read_frame(task.shared_memory_key)
+                # Pass our required input_width so FrameManager can attempt to grab a pre-resized version!
+                frame = self.frame_manager.read_frame(
+                    task.shared_memory_key,
+                    width=self.config.input_width
+                )
 
                 if frame is None:
                     base_logger.error(
