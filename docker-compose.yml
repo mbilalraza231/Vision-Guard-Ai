@@ -203,6 +203,7 @@ services:
       - vg-data:/data/visionguard
       - vg-logs:/var/log/visionguard
       - vg-frames:/shared-frames
+      - ./camera_capture:/app/camera_capture:ro
     environment:
       - ECS_REDIS_HOST=redis
       - ECS_REDIS_PORT=6379

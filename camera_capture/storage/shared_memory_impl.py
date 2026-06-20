@@ -238,27 +238,34 @@ class SharedMemoryImpl(SharedMemoryInterface):
 
     def cleanup(self, key: str) -> None:
         """
-        Release shared frame file.
+        Release shared frame file and any pre-resized variants.
 
         Safe to call multiple times.
         """
         with self._lock:
             self._active_keys.pop(key, None)
 
-        filepath = os.path.join(self.shared_dir, key)
-        try:
-            os.unlink(filepath)
-            self._logger.debug(
-                f"Cleaned up shared frame",
-                extra={"shared_memory_key": key}
-            )
-        except FileNotFoundError:
-            pass  # Already cleaned up
-        except Exception as e:
-            self._logger.warning(
-                f"Error during cleanup: {e}",
-                extra={"shared_memory_key": key, "error": str(e)}
-            )
+        import glob
+        pattern = os.path.join(self.shared_dir, f"{key}*")
+        filepaths = glob.glob(pattern)
+        
+        if not filepaths:
+            return  # Already cleaned up
+            
+        for filepath in filepaths:
+            try:
+                os.unlink(filepath)
+                self._logger.debug(
+                    f"Cleaned up shared frame",
+                    extra={"shared_memory_key": key, "filepath": filepath}
+                )
+            except FileNotFoundError:
+                pass  # Already cleaned up
+            except Exception as e:
+                self._logger.warning(
+                    f"Error during cleanup: {e}",
+                    extra={"shared_memory_key": key, "filepath": filepath, "error": str(e)}
+                )
 
     def get_stats(self) -> dict:
         """Get shared storage statistics."""
