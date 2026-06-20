@@ -31,6 +31,7 @@ htmlcov/
 .antigravity-ide/
 .cursor/
 .copilot/
+docs/
 
 # Test artifacts
 test_metrics.json
