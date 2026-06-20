@@ -69,4 +69,12 @@ LICENSE
 *.md
 !docs/*.md
 .DS_Store
-Thumbs.db
+Thumbs.db\  
+
+
+.qoder/
+.gemini/
+.antigravity-ide/
+.cursor/
+.copilot/
+docs/

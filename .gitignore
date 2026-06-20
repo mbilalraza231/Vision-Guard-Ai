@@ -25,6 +25,13 @@ htmlcov/
 .vscode/
 .idea/
 
+# AI / local tool workspaces (never commit these)
+.qoder/
+.gemini/
+.antigravity-ide/
+.cursor/
+.copilot/
+
 # Test artifacts
 test_metrics.json
 test_report.txt
