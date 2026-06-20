@@ -301,6 +301,7 @@ services:
       - ./test-video.mp4:/app/test-video.mp4:ro
       - ./cameras.json:/app/cameras.json:rw
       - ./camera_capture:/app/camera_capture:rw
+      - ./preprocessing:/app/preprocessing:rw
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -347,6 +348,8 @@ services:
       - vg-data:/data/visionguard
       - vg-logs:/var/log/visionguard
       - vg-frames:/shared-frames
+      - ./preprocessing:/app/preprocessing:rw
+      - ./camera_capture:/app/camera_capture:ro
     tmpfs:
       - /tmp:size=100M
     environment:
@@ -390,6 +393,8 @@ services:
       - vg-data:/data/visionguard
       - vg-logs:/var/log/visionguard
       - vg-frames:/shared-frames
+      - ./preprocessing:/app/preprocessing:rw
+      - ./camera_capture:/app/camera_capture:ro
     tmpfs:
       - /tmp:size=100M
     environment:
@@ -437,6 +442,8 @@ services:
       - vg-data:/data/visionguard
       - vg-logs:/var/log/visionguard
       - vg-frames:/shared-frames
+      - ./preprocessing:/app/preprocessing:rw
+      - ./camera_capture:/app/camera_capture:ro
     tmpfs:
       - /tmp:size=100M
     environment:

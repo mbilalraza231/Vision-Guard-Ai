@@ -174,9 +174,9 @@ class SharedMemoryImpl(SharedMemoryInterface):
             # Attempt to auto-decompress if it's a compressed image
             try:
                 import sys
-                import os
                 # Ensure project root is in sys.path to find preprocessing module
-                sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+                if os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) not in sys.path:
+                    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
                 from preprocessing.resize_and_compress import is_compressed, decompress_frame
                 
                 if is_compressed(data):
