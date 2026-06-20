@@ -38,7 +38,7 @@ import type {
   SystemSettings,
 } from '@/types';
 
-type SettingsTab = 'general' | 'alerts' | 'cameras' | 'performance' | 'storage' | 'models' | 'privacy' | 'system' | 'queue';
+type SettingsTab = 'general' | 'alerts' | 'cameras' | 'preprocessing' | 'performance' | 'storage' | 'models' | 'privacy' | 'system' | 'queue';
 
 interface TabItem {
   id: SettingsTab;
@@ -49,6 +49,7 @@ const tabs: TabItem[] = [
   { id: 'general', label: 'General' },
   { id: 'alerts', label: 'Alert Rules' },
   { id: 'cameras', label: 'Camera Rules' },
+  { id: 'preprocessing', label: 'Preprocessing' },
   { id: 'performance', label: 'Performance' },
   { id: 'storage', label: 'Storage' },
   { id: 'models', label: 'Models' },
@@ -386,6 +387,7 @@ export default function Settings() {
         payload.cameras = settings.cameras;
         payload.cameraCapture = settings.cameraCapture;
       }
+      else if (activeTab === 'preprocessing') payload.cameraCapture = settings.cameraCapture;
       else if (activeTab === 'performance') payload.cameras = settings.cameras;
       else if (activeTab === 'privacy') payload.privacy = settings.privacy;
       else if (activeTab === 'queue') payload.queueManagement = settings.queueManagement;
@@ -446,6 +448,7 @@ export default function Settings() {
         storage: ['storage', 'clips'],
         models: ['models', 'workers', 'ecs'],
         cameras: ['cameras', 'cameraCapture'],
+        preprocessing: ['cameraCapture'],
         performance: ['cameras'],
         privacy: ['privacy'],
         queue: ['queueManagement'],
@@ -480,7 +483,8 @@ export default function Settings() {
         } else if (activeTab === 'cameras') {
           payload.cameras = defaults.cameras;
           payload.cameraCapture = defaults.cameraCapture;
-        } else if (activeTab === 'performance') payload.cameras = defaults.cameras;
+        } else if (activeTab === 'preprocessing') payload.cameraCapture = defaults.cameraCapture;
+        else if (activeTab === 'performance') payload.cameras = defaults.cameras;
         else if (activeTab === 'privacy') payload.privacy = defaults.privacy;
         else if (activeTab === 'queue') payload.queueManagement = defaults.queueManagement;
         else if (activeTab === 'system') {
@@ -1580,15 +1584,31 @@ export default function Settings() {
                         Higher values reduce motion sensitivity (fewer frames processed in low-motion scenes).
                       </p>
                     </div>
+                  </div>
+                </div>
+              )}
 
+              {activeTab === 'preprocessing' && (
+                <div className="animate-fade-in space-y-6">
+                  <div>
+                    <h2 className="text-2xl font-bold mb-1 flex items-center gap-2">
+                      <Camera className="h-6 w-6 text-primary" />
+                      Frame Preprocessing
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      Configure on-the-fly frame compression and resizing to save memory and CPU.
+                    </p>
+                  </div>
+
+                  <div className="space-y-4 max-w-xl">
                     <div className="rounded-xl border border-white/5 bg-secondary/10 p-5 space-y-4">
                       <div className="flex items-center justify-between">
                         <div className="space-y-0.5">
                           <Label htmlFor="cameraEnableCompression" className="text-base font-semibold">
-                            Frame Preprocessing & Compression
+                            Enable Frame Preprocessing
                           </Label>
                           <p className="text-xs text-muted-foreground">
-                            Significantly reduces RAM usage and Worker CPU overhead by preprocessing frames.
+                            Significantly reduces RAM usage and Worker CPU overhead by preprocessing frames before sending to workers.
                           </p>
                         </div>
                         <Switch
