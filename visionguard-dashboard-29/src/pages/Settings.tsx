@@ -1580,6 +1580,73 @@ export default function Settings() {
                         Higher values reduce motion sensitivity (fewer frames processed in low-motion scenes).
                       </p>
                     </div>
+
+                    <div className="rounded-xl border border-white/5 bg-secondary/10 p-5 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <Label htmlFor="cameraEnableCompression" className="text-base font-semibold">
+                            Frame Preprocessing & Compression
+                          </Label>
+                          <p className="text-xs text-muted-foreground">
+                            Significantly reduces RAM usage and Worker CPU overhead by preprocessing frames.
+                          </p>
+                        </div>
+                        <Switch
+                          id="cameraEnableCompression"
+                          checked={settings.cameraCapture?.enableFrameCompression ?? false}
+                          onCheckedChange={(checked) => updateCameraCapture({ enableFrameCompression: checked })}
+                        />
+                      </div>
+
+                      {settings.cameraCapture?.enableFrameCompression && (
+                        <div className="pt-4 border-t border-white/5 space-y-6 animate-fade-in">
+                          <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-sm font-semibold">Compression Quality</Label>
+                              <span className="text-sm font-mono bg-secondary px-2 py-0.5 rounded text-primary font-bold">
+                                {settings.cameraCapture?.compressionQuality ?? 95}%
+                              </span>
+                            </div>
+                            <Slider
+                              value={[settings.cameraCapture?.compressionQuality ?? 95]}
+                              min={10}
+                              max={100}
+                              step={1}
+                              onValueChange={(value) => updateCameraCapture({ compressionQuality: value[0] })}
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label className="text-sm font-semibold">Compression Format</Label>
+                              <Select
+                                value={settings.cameraCapture?.compressionFormat ?? 'jpeg'}
+                                onValueChange={(value) => updateCameraCapture({ compressionFormat: value })}
+                              >
+                                <SelectTrigger className="bg-background/50">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="jpeg">JPEG (Faster)</SelectItem>
+                                  <SelectItem value="webp">WebP (Smaller)</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+
+                            <div className="space-y-2">
+                              <Label className="text-sm font-semibold">Pre-Resize Dimensions</Label>
+                              <Input
+                                value={settings.cameraCapture?.preResizeDimensions ?? '640,416'}
+                                onChange={(e) => updateCameraCapture({ preResizeDimensions: e.target.value })}
+                                placeholder="e.g. 640,416"
+                                className="bg-background/50 font-mono"
+                              />
+                              <p className="text-[10px] text-muted-foreground">Comma-separated widths to generate</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}

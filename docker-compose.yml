@@ -311,6 +311,11 @@ services:
       - CAMERA_RECONNECT_BACKOFF_MULTIPLIER=${CAMERA_RECONNECT_BACKOFF_MULTIPLIER:-2.0}
       - LOG_LEVEL=${CAMERA_LOG_LEVEL:-INFO}
       - SHARED_FRAMES_DIR=/shared-frames
+      # Multi-resolution preprocessing (disabled by default, enable for RAM/CPU savings)
+      - CAMERA_ENABLE_FRAME_COMPRESSION=${CAMERA_ENABLE_FRAME_COMPRESSION:-false}
+      - CAMERA_COMPRESSION_QUALITY=${CAMERA_COMPRESSION_QUALITY:-95}
+      - CAMERA_COMPRESSION_FORMAT=${CAMERA_COMPRESSION_FORMAT:-jpeg}
+      - CAMERA_PRE_RESIZE_DIMENSIONS=${CAMERA_PRE_RESIZE_DIMENSIONS:-640,416}
     depends_on:
       redis:
         condition: service_healthy

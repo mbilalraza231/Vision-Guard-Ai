@@ -243,6 +243,10 @@ export interface EcsSettings {
 export interface CameraCaptureSettings {
   defaultFps: number;
   motionThreshold: number;
+  enableFrameCompression?: boolean;
+  compressionQuality?: number;
+  compressionFormat?: string;
+  preResizeDimensions?: string;
 }
 
 export interface ClipSettings {
