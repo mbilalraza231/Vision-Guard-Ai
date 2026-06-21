@@ -130,12 +130,10 @@ export default function Cameras() {
       queryClient.invalidateQueries({ queryKey: ['cameras-list'] });
       setIsOpen(false);
       const isEditing = editingId !== null;
-      toast.success(isEditing ? 'Camera settings updated' : 'Camera registered successfully');
-      if (isEditing) {
-        toast.success('Camera config updated. Hot-reload will apply within ~2 seconds.', {
-          duration: 5000,
-        });
-      }
+      toast.success(isEditing ? 'Camera config updated instantly via Pub/Sub.' : 'Camera registered successfully', {
+        icon: isEditing ? '⚡' : undefined,
+        duration: isEditing ? 5000 : 3000,
+      });
       // Reset form
       setEditingId(null);
       setCameraId('');
