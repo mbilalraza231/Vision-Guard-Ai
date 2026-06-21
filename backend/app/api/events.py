@@ -25,6 +25,7 @@ import time
 import uuid
 from typing import Optional, List
 
+import redis as sync_redis
 from fastapi import APIRouter, HTTPException, Query, Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(
@@ -39,6 +40,39 @@ _ACTION_SOURCE_LABELS = {
     "email": "Email",
     "whatsapp": "WhatsApp",
 }
+
+
+def _validate_public_token(event_id: str, token: str) -> None:
+    """
+    Validate the public incident token against Redis.
+    Raises HTTPException 401 if the token is missing, expired, or invalid.
+    Token TTL is 1 hour, set at generation time in alerts/worker.py.
+    """
+    if not token or len(token) < 10:
+        raise HTTPException(status_code=401, detail="Invalid access token")
+    try:
+        r = sync_redis.Redis(
+            host=os.getenv("REDIS_HOST", "redis"),
+            port=int(os.getenv("REDIS_PORT", "6379")),
+            socket_connect_timeout=2,
+            decode_responses=True,
+        )
+        stored_token = r.get(f"vg:public_token:{event_id}")
+        r.close()
+        if stored_token is None:
+            raise HTTPException(
+                status_code=401,
+                detail="Access link has expired. Please ask the security team to re-send the alert."
+            )
+        if stored_token != token:
+            raise HTTPException(status_code=401, detail="Invalid access token")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"Redis token validation failed for event {event_id}: {e} — falling back to length check")
+        # Graceful fallback: if Redis is down, allow access (don't lock out security guards)
+        if not token or len(token) < 10:
+            raise HTTPException(status_code=401, detail="Invalid access token")
 
 
 def _normalize_action_source(source: Optional[str]) -> str:
@@ -486,10 +520,8 @@ async def get_public_event(
 ) -> dict:
     """Get event data for public view with token validation."""
     reader = get_db_reader()
-    
-    # Validate token - simple validation for now
-    if not token or len(token) < 10:
-        raise HTTPException(status_code=401, detail="Invalid access token")
+
+    _validate_public_token(event_id, token)
     
     event = await reader.get_event(event_id)
     if event is None:
@@ -509,9 +541,7 @@ async def public_acknowledge_incident(
     token: str = Query(..., description="Access token for public view")
 ) -> DBEvent:
     """Acknowledge an event via public link with token validation."""
-    # Validate token
-    if not token or len(token) < 10:
-        raise HTTPException(status_code=401, detail="Invalid access token")
+    _validate_public_token(event_id, token)
     
     reader = get_db_reader()
     event = await reader.get_event(event_id)
@@ -573,9 +603,7 @@ async def public_resolve_incident(
     token: str = Query(..., description="Access token for public view")
 ) -> DBEvent:
     """Resolve an event via public link with token validation."""
-    # Validate token
-    if not token or len(token) < 10:
-        raise HTTPException(status_code=401, detail="Invalid access token")
+    _validate_public_token(event_id, token)
     
     reader = get_db_reader()
     event = await reader.get_event(event_id)
@@ -636,9 +664,7 @@ async def public_create_incident_note(
     token: str = Query(..., description="Access token for public view")
 ) -> DBIncidentNote:
     """Add a note via public link with token validation."""
-    # Validate token
-    if not token or len(token) < 10:
-        raise HTTPException(status_code=401, detail="Invalid access token")
+    _validate_public_token(event_id, token)
     
     # Verify event exists first
     reader = get_db_reader()

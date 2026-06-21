@@ -83,7 +83,7 @@ class AlertWorker:
         # Must match CloudinaryUploader.upload_snapshot folder structure exactly
         return f"https://res.cloudinary.com/{self.config.cloudinary_cloud_name}/image/upload/visionguard/snapshots/{event_type}/snapshot_{event_id}.jpg"
 
-    def format_message(self, event: Dict[str, Any], snap_url: str, video_url: str, anonymize: bool = False) -> str:
+    def format_message(self, event: Dict[str, Any], snap_url: str, video_url: str, secure_token: str, anonymize: bool = False) -> str:
         """Format the alert message for SMS/WhatsApp."""
         severity = event.get('severity', 'UNKNOWN').upper()
         etype = event.get('event_type', 'Detection').replace('_', ' ').title()
@@ -105,10 +105,6 @@ class AlertWorker:
 
         dashboard_url = os.getenv(
             "FRONTEND_URL", "http://localhost:8080").rstrip("/")
-        # Generate simple token for public access (using event ID + timestamp)
-        token_payload = f"{event_id}{int(time.time())}"
-        secure_token = hashlib.sha256(token_payload.encode()).hexdigest()[:32]
-        # Note: contact name will be added in the main loop where contact is available
         public_url = f"{dashboard_url}/public-incident/{event_id}?token={secure_token}&from=whatsapp"
 
         return (
@@ -119,7 +115,7 @@ class AlertWorker:
             f"📸 Snapshot: {snap_url}\n"
             f"🎬 Clip: {video_url}\n\n"
             f"✅ [ Acknowledge ]:\n"
-            f"👉 {public_url}?action=acknowledge\n\n"
+            f"👉 {public_url}&action=acknowledge\n\n"
             f"🔍 [ View Details ]:\n"
             f"👉 {public_url}"
         )
@@ -148,10 +144,20 @@ class AlertWorker:
 
         dashboard_url = os.getenv(
             "FRONTEND_URL", "http://localhost:8080").rstrip("/")
-        token_payload = f"{event_id}{int(time.time())}"
+
+        # --- SECURE TOKEN GENERATION (1 per event, stored in Redis with 1-hour TTL) ---
+        token_payload = f"{event_id}:{os.getenv('SECRET_KEY', 'visionguard-secret')}"
         secure_token = hashlib.sha256(token_payload.encode()).hexdigest()[:32]
+        redis_key = f"vg:public_token:{event_id}"
+        try:
+            await self.redis.setex(redis_key, 3600, secure_token)  # 1-hour TTL
+            logger.info(f"Stored public token for event {event_id} (TTL: 1h)")
+        except Exception as e:
+            logger.warning(f"Failed to store token in Redis for event {event_id}: {e}")
+        # -------------------------------------------------------------------------------
+
         whatsapp_msg = self.format_message(
-            event, snap_url, video_url, anonymize=anonymize_data)
+            event, snap_url, video_url, secure_token, anonymize=anonymize_data)
 
         # Format timestamp for email template
         ts_val = event.get('timestamp')
@@ -214,10 +220,6 @@ class AlertWorker:
                 subject = f"⚠️ VisionGuard: {severity.upper()} {event_type.replace('_', ' ').title()}"
                 dashboard_url = os.getenv(
                     "FRONTEND_URL", "http://localhost:8080").rstrip("/")
-                # Generate simple token for public access (using event ID + timestamp)
-                token_payload = f"{event_id}{int(time.time())}"
-                secure_token = hashlib.sha256(
-                    token_payload.encode()).hexdigest()[:32]
                 contact_name = contact.get('name', 'Alert Contact')
                 public_url = f"{dashboard_url}/public-incident/{event_id}?token={secure_token}&from=email&contact={quote(contact_name)}"
 
