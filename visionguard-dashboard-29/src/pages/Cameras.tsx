@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -454,34 +454,80 @@ function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdi
   // Detect if this is a local file (not http/rtsp)
   const isLocalFile = camera.source && !camera.source.toLowerCase().match(/^(http|https|rtsp|rtmp):\/\//);
 
-  // When camera goes online, clear the initializing state
+  // Track whether we've already seen the camera come online after clicking Start.
+  // This prevents the "isStarting stuck forever" race condition.
+  const hasSeenOnline = useRef(false);
+
+  // When camera goes online while we're in the "starting" state, transition out
   useEffect(() => {
-    if (camera.status === 'online' && isStarting) {
+    if (!isStarting) {
+      hasSeenOnline.current = false;
+      return;
+    }
+
+    if (camera.status === 'online') {
+      hasSeenOnline.current = true;
       if (isLocalFile) {
-        // Force a 1-second delay for local files to ensure visual feedback
+        // Show "Initializing..." for exactly 1 second for visual feedback,
+        // then transition to AI Active.
         const timer = setTimeout(() => {
           setIsStarting(false);
           setStartCountdown(0);
         }, 1000);
         return () => clearTimeout(timer);
       } else {
+        // Network streams: clear immediately once online
         setIsStarting(false);
         setStartCountdown(0);
       }
     }
+
+    // SAFETY NET: If the camera goes BACK to offline while we're still starting
+    // (e.g., video ended before the 1-second timer fired, or connection failed),
+    // immediately clear the starting state so the UI doesn't get stuck.
+    if (camera.status === 'offline' && hasSeenOnline.current) {
+      setIsStarting(false);
+      setStartCountdown(0);
+    }
   }, [camera.status, isStarting, isLocalFile]);
+
+  // Additional safety: if countdown reaches 0 and we're still in isStarting,
+  // force-clear it. This prevents the UI from ever getting permanently stuck.
+  useEffect(() => {
+    if (isStarting && startCountdown === 0) {
+      const fallback = setTimeout(() => {
+        setIsStarting(false);
+      }, 2000); // 2-second grace period after countdown ends
+      return () => clearTimeout(fallback);
+    }
+  }, [isStarting, startCountdown]);
 
   const handleStart = () => {
     startMutation.mutate(camera.id);
+    hasSeenOnline.current = false;
+    setIsStarting(true);
+
     if (isLocalFile) {
-      // Show "Initializing..." state with countdown for local files
-      setIsStarting(true);
+      // Local files connect instantly, so use a short 3-second countdown
+      // just for visual feedback. The real transition happens via the
+      // useEffect above when camera.status becomes 'online'.
+      setStartCountdown(3);
+      const interval = setInterval(() => {
+        setStartCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(interval);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      // Network streams: show a longer countdown since connection takes time
       setStartCountdown(12);
       const interval = setInterval(() => {
         setStartCountdown((prev) => {
           if (prev <= 1) {
             clearInterval(interval);
-            setIsStarting(false);
             return 0;
           }
           return prev - 1;

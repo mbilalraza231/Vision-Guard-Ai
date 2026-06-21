@@ -162,6 +162,21 @@ class RTSPHandler:
     
     def _capture_loop(self) -> None:
         """Background thread to drain OpenCV buffer and keep latest frame."""
+        # Detect local files vs network streams
+        is_local = self.rtsp_url and not self.rtsp_url.lower().startswith(
+            ('http://', 'https://', 'rtsp://', 'rtmp://'))
+
+        # For local files, pace reads at the video's native FPS so the video
+        # plays in real-time instead of being consumed in milliseconds.
+        frame_interval = 0.001  # 1ms for network streams (drain buffer ASAP)
+        if is_local and self.capture:
+            native_fps = self.capture.get(cv2.CAP_PROP_FPS)
+            if native_fps and native_fps > 0:
+                frame_interval = 1.0 / native_fps
+                self.logger.info(
+                    f"Local video detected: pacing reads at {native_fps:.1f} FPS "
+                    f"(interval={frame_interval:.4f}s)")
+
         while not self._stop_event.is_set() and self.capture and self.capture.isOpened():
             try:
                 ret = self.capture.grab()
@@ -169,19 +184,13 @@ class RTSPHandler:
                     self.is_connected = False
                     break
                 
-                # We only retrieve when someone calls read_frame? 
-                # No, better retrieve here so we have the latest ready.
-                # But to save CPU, we only retrieve if we actually need it?
-                # Actually retrieve is fast enough.
                 ret, frame = self.capture.retrieve()
                 if ret and frame is not None:
                     with self._frame_lock:
                         self._latest_frame = frame
                         self._latest_ts = time.time()
                 
-                # Small sleep to prevent 100% CPU if stream is faster than logic
-                # But keep it very small (1ms) to ensure buffer remains empty
-                time.sleep(0.001)
+                time.sleep(frame_interval)
                 
             except Exception as e:
                 self.logger.error(f"Error in background capture loop: {e}")
