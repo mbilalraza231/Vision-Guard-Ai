@@ -292,11 +292,22 @@ class CameraProcess:
                 
                 if frame is None:
                     # Stream likely dropped mid-run.
-                    # If this is a local file, we just reached the end of the video. Break the loop.
+                    # If this is a local file, we just reached the end of the video. Break the loop and stop camera.
                     source_url = getattr(self.rtsp_handler, 'rtsp_url', '')
-                    is_local_file = source_url and not source_url.lower().startswith(('http://', 'https://', 'rtsp://'))
+                    is_local_file = source_url and not source_url.lower().startswith(('http://', 'https://', 'rtsp://', 'rtmp://'))
                     if is_local_file:
-                        self.logger.info("Local video file reached the end. Stopping capture.", extra={"camera_id": self.camera_id})
+                        self.logger.info("Local video file reached the end. Stopping capture and notifying backend.", extra={"camera_id": self.camera_config.camera_id})
+                        try:
+                            import urllib.request
+                            import os
+                            backend_host = os.getenv("BACKEND_HOST", "backend")
+                            backend_port = os.getenv("BACKEND_PORT", "8000")
+                            url = f"http://{backend_host}:{backend_port}/cameras/{self.camera_config.camera_id}/stop"
+                            req = urllib.request.Request(url, method="POST")
+                            urllib.request.urlopen(req, timeout=5.0)
+                            self.logger.info("Successfully notified backend to stop local video camera.")
+                        except Exception as e:
+                            self.logger.error(f"Failed to notify backend to stop camera: {e}")
                         self.stop_event.set()
                         break
 

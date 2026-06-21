@@ -166,14 +166,8 @@ class RTSPHandler:
             try:
                 ret = self.capture.grab()
                 if not ret:
-                    # Check if it's a local file (no network protocol). If so, loop it!
-                    if self.rtsp_url and not self.rtsp_url.lower().startswith(('http://', 'https://', 'rtsp://', 'rtmp://')):
-                        self.logger.info(f"Local video {self.rtsp_url} ended, looping back to start.")
-                        self.capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                        continue
-                    else:
-                        self.is_connected = False
-                        break
+                    self.is_connected = False
+                    break
                 
                 # We only retrieve when someone calls read_frame? 
                 # No, better retrieve here so we have the latest ready.
