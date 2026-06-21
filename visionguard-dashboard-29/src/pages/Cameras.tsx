@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Plus, Play, Square, Loader2, RefreshCw, Trash2, Pencil, MapPin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { API_ENDPOINTS } from '@/config/api';
+import { API_ENDPOINTS, API_CONFIG } from '@/config/api';
 import { apiService } from '@/services/api.service';
 import type { Camera, ZoneApiResponse } from '@/types';
 import {
@@ -85,7 +85,9 @@ export default function Cameras() {
 
   // Listen to SSE system stream for real-time camera status updates
   useEffect(() => {
-    const eventSource = new EventSource(`${apiService.getBaseUrl()}${API_ENDPOINTS.system.stream}`);
+    // Point directly at the FastAPI backend stream endpoint
+    const streamUrl = `${API_CONFIG.baseUrl}/api/v1/system/stream`;
+    const eventSource = new EventSource(streamUrl);
     
     eventSource.onmessage = (event) => {
       try {

@@ -88,6 +88,9 @@ class CameraManager:
         # Load from config if available (especially for Docker mode status reporting)
         self.load_from_config()
         
+        from .camera_orchestrator import get_orchestrator
+        self.orchestrator = get_orchestrator()
+        
         self._initialized = True
 
     def load_from_config(self) -> None:
@@ -253,47 +256,8 @@ class CameraManager:
                 "camera": camera.to_dict()
             }
         
-        try:
-            # Import camera_capture to start the camera
-            from camera_capture import start_cameras, CaptureConfig, CameraConfig
-            
-            # Create config for single camera
-            config = CaptureConfig(
-                cameras=[
-                    CameraConfig(
-                        camera_id=camera.camera_id,
-                        rtsp_url=camera.rtsp_url,
-                        fps=camera.fps,
-                        motion_threshold=camera.motion_threshold
-                    )
-                ]
-            )
-            
-            # Start camera process
-            # Note: This starts the camera in a subprocess
-            self._process_manager = start_cameras(config)
-            
-            camera.is_running = True
-            camera.started_at = datetime.now()
-            camera.last_error = None
-            
-            self.logger.info(f"Started camera: {camera_id}")
-            
-            return {
-                "success": True,
-                "message": f"Camera {camera_id} started",
-                "camera": camera.to_dict()
-            }
-            
-        except Exception as e:
-            camera.last_error = str(e)
-            self.logger.error(f"Failed to start camera {camera_id}: {e}")
-            
-            return {
-                "success": False,
-                "message": f"Failed to start camera: {e}",
-                "camera": camera.to_dict()
-            }
+        # Delegate start execution to the appropriate environment orchestrator
+        return await self.orchestrator.start_camera(self, camera)
     
     async def stop_camera(self, camera_id: str) -> Dict[str, Any]:
         """
@@ -328,34 +292,8 @@ class CameraManager:
                 "camera": camera.to_dict()
             }
         
-        try:
-            # Import camera_capture to stop
-            from camera_capture import stop_cameras
-            
-            if self._process_manager:
-                stop_cameras(self._process_manager, timeout=settings.camera_stop_timeout)
-                self._process_manager = None
-            
-            camera.is_running = False
-            camera.stopped_at = datetime.now()
-            
-            self.logger.info(f"Stopped camera: {camera_id}")
-            
-            return {
-                "success": True,
-                "message": f"Camera {camera_id} stopped",
-                "camera": camera.to_dict()
-            }
-            
-        except Exception as e:
-            camera.last_error = str(e)
-            self.logger.error(f"Failed to stop camera {camera_id}: {e}")
-            
-            return {
-                "success": False,
-                "message": f"Failed to stop camera: {e}",
-                "camera": camera.to_dict()
-            }
+        # Delegate stop execution to the appropriate environment orchestrator
+        return await self.orchestrator.stop_camera(self, camera)
     
     async def start_all(self) -> Dict[str, Any]:
         """Start all registered cameras."""

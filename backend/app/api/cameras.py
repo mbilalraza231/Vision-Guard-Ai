@@ -255,15 +255,6 @@ async def start_camera(
 
     result = await camera_manager.start_camera(camera_id)
 
-    # If starting via local processes is disabled (Docker mode), we return success anyway
-    # because we successfully enabled it in the configuration (cameras.json)
-    if not result["success"] and "disabled in docker" in result["message"].lower():
-        return CameraResponse(
-            success=True,
-            message=f"Camera {camera_id} enabled for Docker runtime. Restart the camera service to apply.",
-            camera={"id": camera_id, "enabled": True}
-        )
-
     if not result["success"]:
         raise HTTPException(
             status_code=500,
@@ -297,15 +288,6 @@ async def stop_camera(
         logger.error(f"Failed to disable camera in DB: {e}")
 
     result = await camera_manager.stop_camera(camera_id)
-
-    # If stopping via local processes is disabled (Docker mode), we return success anyway
-    # because we successfully disabled it in the configuration (cameras.json)
-    if not result["success"] and "disabled in docker" in result["message"].lower():
-        return CameraResponse(
-            success=True,
-            message=f"Camera {camera_id} disabled for Docker runtime. Restart the camera service to apply.",
-            camera={"id": camera_id, "enabled": False}
-        )
 
     if not result["success"]:
         raise HTTPException(
