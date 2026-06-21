@@ -61,6 +61,7 @@ class ApiService {
     // Apply request interceptors
     let config: RequestInit = {
       ...options,
+      cache: 'no-store', // Prevent aggressive browser caching of GET requests
       headers: {
         'Content-Type': 'application/json',
         ...options.headers,
