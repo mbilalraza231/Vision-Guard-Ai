@@ -5,6 +5,7 @@ Request/response models for /zones endpoints.
 """
 
 from typing import Optional, List
+from datetime import datetime
 from pydantic import BaseModel, Field
 
 
@@ -35,6 +36,8 @@ class ZoneUpdate(BaseModel):
 
 
 class ZoneResponse(BaseModel):
+    model_config = {"from_attributes": True}
+
     id: str
     name: str
     active_hours: str
@@ -43,7 +46,7 @@ class ZoneResponse(BaseModel):
     priority_weapon: str
     priority_fire: str
     priority_fall: str
-    created_at: float
+    created_at: Optional[datetime] = None
 
 
 class ZoneListResponse(BaseModel):

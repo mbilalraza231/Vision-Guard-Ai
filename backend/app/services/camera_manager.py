@@ -239,14 +239,7 @@ class CameraManager:
                 "message": f"Camera {camera_id} not found"
             }
 
-        settings = get_settings()
-        if not settings.allow_local_process_control:
-            return {
-                "success": False,
-                "message": self._runtime_block_message(),
-                "camera": self._cameras[camera_id].to_dict()
-            }
-        
+
         camera = self._cameras[camera_id]
         
         if camera.is_running:
@@ -275,14 +268,7 @@ class CameraManager:
                 "message": f"Camera {camera_id} not found"
             }
 
-        settings = get_settings()
-        if not settings.allow_local_process_control:
-            return {
-                "success": False,
-                "message": self._runtime_block_message(),
-                "camera": self._cameras[camera_id].to_dict()
-            }
-        
+
         camera = self._cameras[camera_id]
         
         if not camera.is_running:

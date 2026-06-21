@@ -1,6 +1,6 @@
 import json
 import uuid
-import time
+from datetime import datetime, timezone
 from typing import List
 from fastapi import APIRouter, HTTPException
 import redis as redis_lib
@@ -14,11 +14,20 @@ router = APIRouter(prefix="/api/v1/zones", tags=["Zones"])
 logger = get_logger(__name__)
 
 
+def _row_to_dict(row) -> dict:
+    """Convert an asyncpg Record row to a plain dict, casting UUID→str."""
+    d = dict(row)
+    # UUID columns come back as uuid.UUID — cast to str for Pydantic
+    if "id" in d and d["id"] is not None:
+        d["id"] = str(d["id"])
+    return d
+
+
 @router.get("", response_model=ZoneListResponse)
 async def list_zones():
     try:
         rows = await db.fetch_all("SELECT * FROM zones ORDER BY created_at DESC")
-        zones = [ZoneResponse(**row) for row in rows]
+        zones = [ZoneResponse(**_row_to_dict(row)) for row in rows]
         return ZoneListResponse(zones=zones, total=len(zones))
     except Exception as e:
         logger.error(f"Failed to list zones: {e}")
@@ -28,7 +37,7 @@ async def list_zones():
 @router.post("", response_model=ZoneResponse)
 async def create_zone(zone: ZoneCreate):
     zone_id = str(uuid.uuid4())
-    now = time.time()
+    now = datetime.now(timezone.utc)
     try:
         await db.execute(
             """
@@ -39,7 +48,8 @@ async def create_zone(zone: ZoneCreate):
             zone.priority_weapon, zone.priority_fire, zone.priority_fall, now
         )
         await _publish_zone_priorities()
-        return ZoneResponse(id=zone_id, created_at=now, **zone.model_dump())
+        row = await db.fetch_one("SELECT * FROM zones WHERE id = $1", zone_id)
+        return ZoneResponse(**_row_to_dict(row))
     except Exception as e:
         logger.error(f"Failed to create zone: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -60,7 +70,7 @@ async def update_zone(zone_id: str, patch: ZoneUpdate):
         i += 1
 
     if not updates:
-        return ZoneResponse(**existing)
+        return ZoneResponse(**_row_to_dict(existing))
 
     params.append(zone_id)
     query = f"UPDATE zones SET {', '.join(updates)} WHERE id = ${i} RETURNING *"
@@ -68,7 +78,7 @@ async def update_zone(zone_id: str, patch: ZoneUpdate):
     try:
         row = await db.fetch_one(query, *params)
         await _publish_zone_priorities()
-        return ZoneResponse(**row)
+        return ZoneResponse(**_row_to_dict(row))
     except Exception as e:
         logger.error(f"Failed to update zone {zone_id}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
