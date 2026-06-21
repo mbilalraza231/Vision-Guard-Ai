@@ -456,9 +456,9 @@ function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdi
   // Detect if this is a local file (not http/rtsp)
   const isLocalFile = camera.source && !camera.source.toLowerCase().match(/^(http|https|rtsp|rtmp):\/\//);
 
-  // When camera goes online or offline, clear the initializing state
+  // When camera goes online, clear the initializing state
   useEffect(() => {
-    if ((camera.status === 'online' || camera.status === 'offline') && isStarting) {
+    if (camera.status === 'online' && isStarting) {
       if (isLocalFile) {
         // Force a 1-second delay for local files to ensure visual feedback
         const timer = setTimeout(() => {
