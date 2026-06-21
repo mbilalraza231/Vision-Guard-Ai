@@ -432,6 +432,31 @@ else:
                   help="Camera FPS keys expire after 15s of inactivity")
     st.info("No active cameras — FPS keys (vg:metrics:camera:*:fps) expired or cameras not running.")
 
+# Preprocessing & Compression Settings
+with st.expander("⚙️ Preprocessing & Compression (live from vg:system_settings)", expanded=False):
+    pcol1, pcol2, pcol3 = st.columns(3)
+    
+    comp_enabled = cam_settings.get("enableFrameCompression", False)
+    comp_fmt = cam_settings.get("compressionFormat", "jpeg")
+    comp_qual = cam_settings.get("compressionQuality", 95)
+    
+    clahe = cam_settings.get("enableClahe", False)
+    denoise = cam_settings.get("enableDenoising", False)
+    dims = cam_settings.get("preResizeDimensions", "640,416")
+    
+    with pcol1:
+        st.markdown("**🖼️ Compression**")
+        st.text(f"  Enabled: {'✅ Yes' if comp_enabled else '❌ No'}")
+        st.text(f"  Format: {comp_fmt.upper()}")
+        st.text(f"  Quality: {comp_qual}")
+    with pcol2:
+        st.markdown("**✨ Enhancements**")
+        st.text(f"  CLAHE (Contrast): {'✅ Yes' if clahe else '❌ No'}")
+        st.text(f"  Denoising: {'✅ Yes' if denoise else '❌ No'}")
+    with pcol3:
+        st.markdown("**📐 Resizing**")
+        st.text(f"  Target Widths: {dims}")
+
 
 # ═══════════════════════════════════════════════════════════
 # SECTION 3: TASK QUEUES

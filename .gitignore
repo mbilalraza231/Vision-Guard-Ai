@@ -81,3 +81,6 @@ scratch/
 
 
 scripts/
+
+# Video files
+*.mp4
