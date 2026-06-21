@@ -267,7 +267,7 @@ export default function Cameras() {
                     <Label htmlFor="source">Source (RTSP / HTTP / Path)</Label>
                     <Input
                       id="source"
-                      placeholder="rtsp://... or /app/video.mp4"
+                      placeholder="rtsp://192.168.x.x/stream  or  /app/camera_capture/video.mp4"
                       value={source}
                       onChange={(e) => setSource(e.target.value)}
                       required
