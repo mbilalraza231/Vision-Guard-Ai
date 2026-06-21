@@ -124,11 +124,17 @@ def get_service_metrics(r):
     now = time.time()
     try:
         for key in r.keys("vg:metrics:*"):
+            # Skip per-camera FPS sub-keys like vg:metrics:camera:cam1:fps
+            if key.endswith(":fps"):
+                continue
             # key format: vg:metrics:{service}:{instance_id}
             parts = key.split(":")
-            if len(parts) >= 3:
-                # handle multi-part names like worker-weapon
+            if len(parts) >= 4:
+                # service name is everything between vg:metrics: and the last segment
                 service = ":".join(parts[2:-1])
+                # Only process keys that match known services
+                if service not in SERVICE_MAP:
+                    continue
                 raw = r.get(key)
                 if raw:
                     data = json.loads(raw)
