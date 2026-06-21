@@ -17,6 +17,7 @@ import { format } from 'date-fns';
 import { useQuery } from '@tanstack/react-query';
 import { useSettings } from '@/hooks/useSettings';
 import { formatTimeString } from '@/lib/utils';
+import { apiService } from '@/services/api.service';
 
 const eventConfigs: Record<string, { icon: any; color: string; label: string; bg: string; border: string }> = {
   fire: { icon: Flame, color: 'text-orange-500', label: 'Fire Detected', bg: 'bg-orange-500/10', border: 'border-orange-500/20' },
@@ -38,12 +39,14 @@ export function Header({ title, showDateNav = true }: HeaderProps) {
   const { data: settings } = useSettings();
   const timezone = settings?.general?.timezone || 'UTC';
 
-  // Passively read from the SSE cache populated by useGlobalSSE (DashboardLayout).
-  // Zero HTTP requests — the global SSE stream already pushes recentEvents every 1.5s.
-  const { data: sseRecentEvents } = useQuery<{ total: number; events: any[] }>(
-    { queryKey: ['active-alerts'], enabled: false }
-  );
-  const notificationData = sseRecentEvents;
+  // Fetch initially, then passively read from the SSE cache populated by useGlobalSSE.
+  // staleTime: Infinity ensures it never auto-refetches via HTTP after the first load,
+  // relying entirely on the 1.5s global SSE stream to push updates.
+  const { data: notificationData } = useQuery<{ total: number; events: any[] }>({
+    queryKey: ['active-alerts'],
+    queryFn: () => apiService.getData('/events?limit=5&status=active'),
+    staleTime: Infinity,
+  });
 
   // Filter to show only truly active events (exclude resolved/acknowledged)
   const activeOnlyEvents = notificationData?.events?.filter(
