@@ -28,12 +28,12 @@ def apply_enhancements(
     with cv2.imencode, cv2.imdecode, and the clip recorder.
 
     Args:
-        frame:            OpenCV BGR uint8 image.
-        enable_clahe:     Apply CLAHE contrast enhancement.
-        enable_denoising: Apply Gaussian blur denoising.
+        frame (np.ndarray): OpenCV BGR uint8 image.
+        enable_clahe (bool): Apply CLAHE contrast enhancement.
+        enable_denoising (bool): Apply Gaussian blur denoising.
 
     Returns:
-        Enhanced BGR uint8 image (same shape/dtype as input).
+        np.ndarray: Enhanced BGR uint8 image (same shape/dtype as input).
     """
     if enable_clahe:
         # Convert BGR → LAB, apply CLAHE to L channel only, convert back
@@ -56,12 +56,12 @@ def compress_frame(frame: np.ndarray, format: str = "jpeg", quality: int = 95) -
     Compress a numpy array frame to the specified format.
 
     Args:
-        frame:   OpenCV BGR image as numpy array.
-        format:  'jpeg' or 'webp'.
-        quality: Compression quality (1-100).
+        frame (np.ndarray): OpenCV BGR image as numpy array.
+        format (str): 'jpeg' or 'webp'.
+        quality (int): Compression quality (1-100).
 
     Returns:
-        Encoded bytes.
+        bytes: Encoded bytes.
     """
     if format.lower() == "jpeg":
         success, encoded = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
@@ -81,10 +81,10 @@ def is_compressed(data: bytes) -> bool:
     Check if the byte array is a compressed image by inspecting magic bytes.
 
     Args:
-        data: Raw bytes.
+        data (bytes): Raw bytes.
 
     Returns:
-        True if the data appears to be a compressed image (JPEG or WebP).
+        bool: True if the data appears to be a compressed image (JPEG or WebP).
     """
     if not data:
         return False
@@ -105,10 +105,10 @@ def decompress_frame(data: bytes) -> np.ndarray:
     Decompress image bytes back to a numpy array.
 
     Args:
-        data: Compressed image bytes.
+        data (bytes): Compressed image bytes.
 
     Returns:
-        OpenCV BGR image as numpy array.
+        np.ndarray: OpenCV BGR image as numpy array.
     """
     nparr = np.frombuffer(data, np.uint8)
     frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -135,15 +135,15 @@ def resize_and_compress_frame(
     size variants are generated.
 
     Args:
-        frame:            Original OpenCV BGR image as numpy array.
-        sizes:            List of target widths (e.g., [640, 416]).
-        format:           Compression format ('jpeg' or 'webp').
-        quality:          Compression quality (1-100).
-        enable_clahe:     Apply CLAHE contrast enhancement before resize.
-        enable_denoising: Apply Gaussian denoising before resize.
+        frame (np.ndarray): Original OpenCV BGR image as numpy array.
+        sizes (list[int]): List of target widths (e.g., [640, 416]).
+        format (str): Compression format ('jpeg' or 'webp').
+        quality (int): Compression quality (1-100).
+        enable_clahe (bool): Apply CLAHE contrast enhancement before resize.
+        enable_denoising (bool): Apply Gaussian denoising before resize.
 
     Returns:
-        Dictionary mapping size → compressed bytes.
+        dict[int, bytes]: Dictionary mapping size → compressed bytes.
     """
     # Apply enhancements once at full resolution before generating size variants
     if enable_clahe or enable_denoising:
