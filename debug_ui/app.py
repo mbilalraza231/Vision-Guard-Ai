@@ -299,8 +299,12 @@ with st.sidebar:
         st.markdown(f'<span class="status-healthy">● Detection Images ({img_count})</span>',
                     unsafe_allow_html=True)
     else:
-        st.markdown('<span class="status-warning">● No Detection Images Dir</span>',
+        st.markdown('<span class="status-warning">● No Detection Directory</span>',
                     unsafe_allow_html=True)
+                    
+    st.markdown("---")
+
+
 
     st.markdown("---")
     st.markdown("### Configuration")

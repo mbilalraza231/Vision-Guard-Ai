@@ -48,6 +48,8 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES_DB=${POSTGRES_DB:-visionguard}
+    ports:
+      - "5432:5432"
     volumes:
       - vg-db-data:/var/lib/postgresql/data
     healthcheck:

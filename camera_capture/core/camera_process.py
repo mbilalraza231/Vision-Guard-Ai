@@ -247,7 +247,21 @@ class CameraProcess:
                     source_url = getattr(self.rtsp_handler, 'rtsp_url', '')
                     is_local_file = source_url and not source_url.lower().startswith(('http://', 'https://', 'rtsp://', 'rtmp://'))
                     if is_local_file:
-                        self.logger.info("Local video file ended or not found. Stopping capture.", extra={"camera_id": self.camera_config.camera_id})
+                        self.logger.info("Local video file ended or not found. Stopping capture and notifying backend.", extra={"camera_id": self.camera_config.camera_id})
+                        
+                        # Notify backend to disable the camera so it doesn't auto-restart infinitely
+                        try:
+                            import urllib.request
+                            import os
+                            backend_host = os.getenv("BACKEND_HOST", "backend")
+                            backend_port = os.getenv("BACKEND_PORT", "8000")
+                            url = f"http://{backend_host}:{backend_port}/cameras/{self.camera_config.camera_id}/stop"
+                            req = urllib.request.Request(url, method="POST")
+                            urllib.request.urlopen(req, timeout=5.0)
+                            self.logger.info("Successfully notified backend to stop local video camera.")
+                        except Exception as e:
+                            self.logger.error(f"Failed to notify backend to stop camera: {e}")
+                            
                         self.stop_event.set()
                         break
 
