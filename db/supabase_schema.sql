@@ -44,7 +44,7 @@ BEGIN
     new.email, 
     COALESCE(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1)),
     COALESCE(new.raw_user_meta_data->>'role', 'viewer'),
-    'active'
+    'inactive'
   );
   RETURN new;
 END;
