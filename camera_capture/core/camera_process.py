@@ -368,23 +368,40 @@ class CameraProcess:
                     import os
                     # Ensure project root is in sys.path
                     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-                    from preprocessing.resize_and_compress import compress_frame, resize_and_compress_frame
-                    
-                    # 1. Compress base frame
-                    compressed_bytes = compress_frame(
-                        frame,
-                        format=getattr(self.camera_config, 'compression_format', 'jpeg'),
-                        quality=getattr(self.camera_config, 'compression_quality', 95)
+                    from preprocessing.resize_and_compress import (
+                        compress_frame, resize_and_compress_frame, apply_enhancements
                     )
-                    
-                    # 2. Generate pre-resized versions
+
+                    _enable_clahe = getattr(self.camera_config, 'enable_clahe', False)
+                    _enable_denoising = getattr(self.camera_config, 'enable_denoising', False)
+                    _fmt = getattr(self.camera_config, 'compression_format', 'jpeg')
+                    _quality = getattr(self.camera_config, 'compression_quality', 95)
+
+                    # Apply enhancements once at full resolution (if any are enabled)
+                    enhanced_frame = apply_enhancements(
+                        frame,
+                        enable_clahe=_enable_clahe,
+                        enable_denoising=_enable_denoising,
+                    ) if (_enable_clahe or _enable_denoising) else frame
+
+                    # 1. Compress base (enhanced) frame
+                    compressed_bytes = compress_frame(
+                        enhanced_frame,
+                        format=_fmt,
+                        quality=_quality,
+                    )
+
+                    # 2. Generate pre-resized variants — enhancements already applied,
+                    #    so we pass disable flags to avoid double-processing.
                     pre_resize_dims = getattr(self.camera_config, 'pre_resize_dimensions', [])
                     if pre_resize_dims:
                         pre_resize_dict = resize_and_compress_frame(
-                            frame,
+                            enhanced_frame,
                             sizes=pre_resize_dims,
-                            format=getattr(self.camera_config, 'compression_format', 'jpeg'),
-                            quality=getattr(self.camera_config, 'compression_quality', 95)
+                            format=_fmt,
+                            quality=_quality,
+                            enable_clahe=False,
+                            enable_denoising=False,
                         )
                 except ImportError as e:
                     self.logger.warning(f"preprocessing module not found, falling back to raw: {e}")

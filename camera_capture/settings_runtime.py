@@ -46,6 +46,8 @@ def load_camera_runtime_settings() -> Dict[str, Any]:
       - compression_quality: int
       - compression_format: str
       - pre_resize_dimensions: list[int]
+      - enable_clahe: bool       (from cameraCapture.enableClahe)
+      - enable_denoising: bool   (from cameraCapture.enableDenoising)
       - global_fps_target: int   (from cameras.globalFpsTarget)
       - max_queue_size: int      (from queueManagement.maxQueueSize)
       - task_ttl_seconds: int    (from queueManagement.taskTtlSeconds)
@@ -100,7 +102,21 @@ def load_camera_runtime_settings() -> Dict[str, Any]:
             pre_resize_dimensions = [int(x.strip()) for x in pre_resize_dimensions_str.split(',') if x.strip().isdigit()]
         except ValueError:
             pass
-            
+
+    enable_clahe = str(
+        camera_capture.get(
+            "enableClahe",
+            os.getenv("CAMERA_ENABLE_CLAHE", "False")
+        )
+    ).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+    enable_denoising = str(
+        camera_capture.get(
+            "enableDenoising",
+            os.getenv("CAMERA_ENABLE_DENOISING", "False")
+        )
+    ).strip().lower() in {"1", "true", "yes", "y", "on"}
+
     global_fps_target = int(
         cameras_section.get(
             "globalFpsTarget",
@@ -132,6 +148,8 @@ def load_camera_runtime_settings() -> Dict[str, Any]:
         "compression_quality": compression_quality,
         "compression_format": compression_format,
         "pre_resize_dimensions": pre_resize_dimensions,
+        "enable_clahe": enable_clahe,
+        "enable_denoising": enable_denoising,
         "global_fps_target": global_fps_target,
         "max_queue_size": max_queue_size,
         "task_ttl_seconds": task_ttl_seconds,

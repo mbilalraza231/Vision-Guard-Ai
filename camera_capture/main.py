@@ -155,11 +155,13 @@ def main():
             if cam.motion_threshold == 0.02:  # Only override if still at factory default
                 cam.motion_threshold = motion_threshold
                 
-            # Apply compression settings from Redis
+            # Apply compression and enhancement settings from Redis
             cam.enable_frame_compression = cam_runtime.get("enable_frame_compression", False)
             cam.compression_quality = cam_runtime.get("compression_quality", 95)
             cam.compression_format = cam_runtime.get("compression_format", "jpeg")
             cam.pre_resize_dimensions = cam_runtime.get("pre_resize_dimensions", [640, 416])
+            cam.enable_clahe = cam_runtime.get("enable_clahe", False)
+            cam.enable_denoising = cam_runtime.get("enable_denoising", False)
     except Exception as e:
         logger.warning(
             f"Could not apply Redis camera settings, using cameras.json values: {e}")
@@ -306,14 +308,19 @@ def main():
                                 if cam.motion_threshold == 0.02:
                                     cam.motion_threshold = new_motion_thresh
                                     
-                                # Apply compression settings from Redis
+                                # Apply compression and enhancement settings from Redis
                                 cam.enable_frame_compression = cam_runtime.get("enable_frame_compression", False)
                                 cam.compression_quality = cam_runtime.get("compression_quality", 95)
                                 cam.compression_format = cam_runtime.get("compression_format", "jpeg")
                                 cam.pre_resize_dimensions = cam_runtime.get("pre_resize_dimensions", [640, 416])
-                                
+                                cam.enable_clahe = cam_runtime.get("enable_clahe", False)
+                                cam.enable_denoising = cam_runtime.get("enable_denoising", False)
+
                             logger.info(
-                                f"Applied live Redis settings during hot-reload: fps={new_default_fps}, motion={new_motion_thresh}, compress={cam_runtime.get('enable_frame_compression', False)}")
+                                f"Applied live Redis settings during hot-reload: fps={new_default_fps}, motion={new_motion_thresh}, "
+                                f"compress={cam_runtime.get('enable_frame_compression', False)}, "
+                                f"clahe={cam_runtime.get('enable_clahe', False)}, "
+                                f"denoising={cam_runtime.get('enable_denoising', False)}")
                         except Exception as e:
                             logger.warning(
                                 f"Could not apply Redis settings during hot-reload: {e}")

@@ -247,6 +247,8 @@ export interface CameraCaptureSettings {
   compressionQuality?: number;
   compressionFormat?: string;
   preResizeDimensions?: string;
+  enableClahe?: boolean;
+  enableDenoising?: boolean;
 }
 
 export interface ClipSettings {

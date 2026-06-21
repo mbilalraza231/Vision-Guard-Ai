@@ -1596,11 +1596,12 @@ export default function Settings() {
                       Frame Preprocessing
                     </h2>
                     <p className="text-sm text-muted-foreground">
-                      Configure on-the-fly frame compression and resizing to save memory and CPU.
+                      Configure on-the-fly frame compression, resizing, and image enhancement to save memory and improve detection accuracy.
                     </p>
                   </div>
 
                   <div className="space-y-4 max-w-xl">
+                    {/* ── Compression Card ── */}
                     <div className="rounded-xl border border-white/5 bg-secondary/10 p-5 space-y-4">
                       <div className="flex items-center justify-between">
                         <div className="space-y-0.5">
@@ -1667,9 +1668,50 @@ export default function Settings() {
                         </div>
                       )}
                     </div>
+
+                    {/* ── CLAHE Card ── */}
+                    <div className="rounded-xl border border-white/5 bg-secondary/10 p-5">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <Label htmlFor="cameraEnableClahe" className="text-base font-semibold">
+                            CLAHE Contrast Enhancement
+                          </Label>
+                          <p className="text-xs text-muted-foreground">
+                            Improves detection in dark or unevenly-lit scenes by enhancing local contrast.
+                            Applied once in shared preprocessing — all AI models benefit automatically.
+                          </p>
+                        </div>
+                        <Switch
+                          id="cameraEnableClahe"
+                          checked={settings.cameraCapture?.enableClahe ?? false}
+                          onCheckedChange={(checked) => updateCameraCapture({ enableClahe: checked })}
+                        />
+                      </div>
+                    </div>
+
+                    {/* ── Denoising Card ── */}
+                    <div className="rounded-xl border border-white/5 bg-secondary/10 p-5">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <Label htmlFor="cameraEnableDenoising" className="text-base font-semibold">
+                            Gaussian Denoising
+                          </Label>
+                          <p className="text-xs text-muted-foreground">
+                            Reduces sensor noise and grain from cameras using a fast Gaussian blur.
+                            Helpful for cheap or grainy camera feeds. Applied once before all workers.
+                          </p>
+                        </div>
+                        <Switch
+                          id="cameraEnableDenoising"
+                          checked={settings.cameraCapture?.enableDenoising ?? false}
+                          onCheckedChange={(checked) => updateCameraCapture({ enableDenoising: checked })}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
+
 
               {activeTab === 'performance' && (
                 <div className="animate-fade-in space-y-6">
