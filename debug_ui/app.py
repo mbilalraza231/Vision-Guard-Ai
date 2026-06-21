@@ -794,7 +794,7 @@ if db:
         with st.expander("🔍 Duplicate Event Detection", expanded=False):
             try:
                 cursor.execute("""
-                    SELECT e1.event_type, ROUND(e1.confidence, 3),
+                    SELECT e1.event_type, ROUND(e1.confidence::numeric, 3),
                            e1.camera_id,
                            to_timestamp(e1.created_at),
                            to_timestamp(e2.created_at),
