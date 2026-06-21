@@ -450,6 +450,38 @@ interface CameraCardProps {
 
 function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdit }: CameraCardProps) {
   const { t } = useTranslation();
+  const [isStarting, setIsStarting] = useState(false);
+  const [startCountdown, setStartCountdown] = useState(0);
+
+  // Detect if this is a local file (not http/rtsp)
+  const isLocalFile = camera.source && !camera.source.toLowerCase().match(/^(http|https|rtsp|rtmp):\/\//);
+
+  // When camera goes online, clear the initializing state immediately
+  useEffect(() => {
+    if (camera.status === 'online' && isStarting) {
+      setIsStarting(false);
+      setStartCountdown(0);
+    }
+  }, [camera.status, isStarting]);
+
+  const handleStart = () => {
+    startMutation.mutate(camera.id);
+    if (isLocalFile) {
+      // Show "Initializing..." state with countdown for local files
+      setIsStarting(true);
+      setStartCountdown(12);
+      const interval = setInterval(() => {
+        setStartCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(interval);
+            setIsStarting(false);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+  };
 
   return (
     <div className="dashboard-card p-5 flex flex-col justify-between h-full min-h-[390px]">
@@ -514,7 +546,15 @@ function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdi
 
         {/* Status Badges */}
         <div className="flex flex-wrap items-center gap-1.5 mb-4">
-          {!camera.enabled ? (
+          {isStarting ? (
+            <Badge
+              variant="outline"
+              className="border-yellow-500/50 text-yellow-400 bg-yellow-500/10 text-[10px] font-semibold"
+            >
+              <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-yellow-400 animate-pulse" />
+              Initializing... {startCountdown}s
+            </Badge>
+          ) : !camera.enabled ? (
             <Badge
               variant="outline"
               className="border-muted-foreground/30 text-muted-foreground text-[10px]"
@@ -569,17 +609,15 @@ function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdi
               variant="outline"
               size="sm"
               className="gap-1.5 text-xs h-8 text-status-online border-status-online/30 hover:bg-status-online/10"
-              onClick={() => {
-                startMutation.mutate(camera.id);
-              }}
-              disabled={startMutation.isPending}
+              onClick={handleStart}
+              disabled={startMutation.isPending || isStarting}
             >
-              {startMutation.isPending ? (
+              {(startMutation.isPending || isStarting) ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
               ) : (
                 <Play className="h-3 w-3 fill-current" />
               )}
-              {t('cameras.start')}
+              {isStarting ? `Starting...` : t('cameras.start')}
             </Button>
           )}
         </div>
