@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Header } from '@/components/layout/Header';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -38,7 +38,13 @@ interface BackendCamera {
 
 // Map backend camera to frontend Camera type
 function adaptCamera(cam: BackendCamera): Camera & { enabled: boolean; source: string; priority: string; motionThreshold: number; fps: number; zone_id?: string | null } {
-  const isOnline = cam.enabled && (cam.status === 'running' || cam.status === 'online');
+  const isOnline = cam.status === 'running' || cam.status === 'online';
+  
+  // If it's a local video (source doesn't start with http/rtsp) and it's offline, 
+  // treat it as disabled so the toggle snaps back to 'Start' automatically!
+  const isLocal = cam.source && !cam.source.toLowerCase().match(/^(http|https|rtsp|rtmp):\/\//);
+  const effectiveEnabled = (isLocal && !isOnline) ? false : cam.enabled;
+
   return {
     id: cam.id,
     name: cam.name,
@@ -47,7 +53,7 @@ function adaptCamera(cam: BackendCamera): Camera & { enabled: boolean; source: s
     aiActive: isOnline,
     streamUrl: cam.source,
     lastActivity: cam.pid ? `PID: ${cam.pid}` : undefined,
-    enabled: cam.enabled,
+    enabled: effectiveEnabled,
     source: cam.source,
     priority: cam.priority,
     motionThreshold: cam.motion_threshold,
@@ -76,6 +82,29 @@ export default function Cameras() {
     queryKey: ['cameras-list'],
     queryFn: () => apiService.getData<BackendCamera[]>(API_ENDPOINTS.cameras.list),
   });
+
+  // Listen to SSE system stream for real-time camera status updates
+  useEffect(() => {
+    const eventSource = new EventSource(`${apiService.getBaseUrl()}${API_ENDPOINTS.system.stream}`);
+    
+    eventSource.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload?.metrics?.cameras) {
+          // Invalidate the cameras list silently in the background when we get a heartbeat 
+          // to ensure the UI stays perfectly in sync with the backend.
+          // We use refetch() instead of invalidateQueries to avoid full loading spinners.
+          refetch();
+        }
+      } catch (err) {
+        console.error("SSE parse error", err);
+      }
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, [refetch]);
 
   // Fetch zones for zone selection dropdown
   const { data: zonesData } = useQuery({
