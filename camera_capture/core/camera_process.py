@@ -267,8 +267,16 @@ class CameraProcess:
                 frame = self.rtsp_handler.read_frame()
                 
                 if frame is None:
-                    # Stream likely dropped mid-run. Mark disconnected and let
-                    # reconnect branch above handle recovery attempts.
+                    # Stream likely dropped mid-run.
+                    # If this is a local file, we just reached the end of the video. Break the loop.
+                    source_url = getattr(self.rtsp_handler, 'rtsp_url', '')
+                    is_local_file = source_url and not source_url.lower().startswith(('http://', 'https://', 'rtsp://'))
+                    if is_local_file:
+                        self.logger.info("Local video file reached the end. Stopping capture.", extra={"camera_id": self.camera_id})
+                        self.stop_event.set()
+                        break
+
+                    # Otherwise, mark disconnected and let reconnect branch handle recovery attempts.
                     consecutive_read_failures += 1
                     if consecutive_read_failures % 5 == 0:
                         self.logger.warning(
