@@ -128,7 +128,7 @@ const defaultSettings: SystemSettings = {
     postSeconds: 10,
     fps: 10,
     enableBackgroundBuffer: false,
-    maxBgBufferSeconds: 30,
+    maxBgBufferSeconds: 60,
   },
   system: {
     version: '-',
@@ -1153,9 +1153,9 @@ export default function Settings() {
                               type="number"
                               min={10}
                               max={300}
-                              value={settings.clips?.maxBgBufferSeconds ?? 30}
+                              value={settings.clips?.maxBgBufferSeconds ?? 60}
                               onChange={(e) =>
-                                updateClips({ maxBgBufferSeconds: Math.max(10, Math.min(300, Number(e.target.value) || 30)) })
+                                updateClips({ maxBgBufferSeconds: Math.max(10, Math.min(300, Number(e.target.value) || 60)) })
                               }
                               className="bg-background/50 font-mono text-sm w-40"
                             />

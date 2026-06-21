@@ -138,7 +138,7 @@ class ClipRecorder:
                 try:
                     settings = self._get_sync_clips_settings()
                     # User explicitly requested a dedicated max buffer setting instead of calculating it from pre+post
-                    max_bg_buffer = int(settings.get("maxBgBufferSeconds", 30))
+                    max_bg_buffer = int(settings.get("maxBgBufferSeconds", 60))
                     target_buffer_frames = self.config.camera_fps * max_bg_buffer
                 except Exception as e:
                     logger.debug(f"Failed to fetch dynamic RAM settings: {e}")
@@ -269,7 +269,7 @@ class ClipRecorder:
         defaults = {
             "preSeconds": int(float(os.getenv("CLIP_PRE_SECONDS", "5"))),
             "postSeconds": int(float(os.getenv("CLIP_POST_SECONDS", "10"))),
-            "maxBgBufferSeconds": 30,
+            "maxBgBufferSeconds": 60,
         }
         try:
             r = redis.Redis(
