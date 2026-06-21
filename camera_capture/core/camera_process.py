@@ -241,6 +241,16 @@ class CameraProcess:
                 # Keep camera process alive and continuously attempt reconnect
                 # when stream is unavailable.
                 if self.rtsp_handler and not self.rtsp_handler.is_connected:
+                    # Check if this is a local file. If it is, and we lost connection
+                    # (either reached the end, or file not found), we should stop gracefully 
+                    # instead of reconnecting infinitely.
+                    source_url = getattr(self.rtsp_handler, 'rtsp_url', '')
+                    is_local_file = source_url and not source_url.lower().startswith(('http://', 'https://', 'rtsp://', 'rtmp://'))
+                    if is_local_file:
+                        self.logger.info("Local video file ended or not found. Stopping capture.", extra={"camera_id": self.camera_config.camera_id})
+                        self.stop_event.set()
+                        break
+
                     if self.rtsp_handler.reconnect():
                         reconnect_attempts = 0
                         reconnect_backoff = self.retry_config.initial_backoff_seconds
