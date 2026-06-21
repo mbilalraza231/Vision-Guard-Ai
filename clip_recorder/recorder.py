@@ -724,8 +724,16 @@ class ClipRecorder:
             filename = f"{event_type}_{event_id}_{ts_str}.mp4"
             out_path = os.path.join(self.config.clip_dir, filename)
 
-            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+            # Use avc1 (H.264) directly — mp4v is not reliably supported in Linux containers
+            fourcc = cv2.VideoWriter_fourcc(*"avc1")
             writer = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
+            if not writer.isOpened():
+                # Fallback: write raw frames then transcode with ffmpeg
+                fourcc = cv2.VideoWriter_fourcc(*"XVID")
+                out_path_raw = out_path.replace(".mp4", ".avi")
+                writer = cv2.VideoWriter(out_path_raw, fourcc, fps, (width, height))
+            else:
+                out_path_raw = None
 
             logger.info(
                 f"Stitching {len(valid_frames)} buffered frames for clip "
@@ -738,10 +746,21 @@ class ClipRecorder:
                     frame = self._mask_faces(frame)
                 writer.write(frame)
             writer.release()
-            
-            if not self._transcode_to_h264(out_path):
-                return out_path, ClipError.TRANSCODE
-                
+
+            # If we wrote to a raw AVI, transcode it to mp4
+            if out_path_raw and os.path.exists(out_path_raw):
+                if not self._transcode_to_h264(out_path_raw):
+                    return None, ClipError.TRANSCODE
+                os.rename(out_path_raw.replace(".avi", ".avi"), out_path)
+
+            # Safety: verify the output file actually exists before returning
+            if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
+                logger.error(f"Output clip file missing or empty after write: {out_path}")
+                return None, ClipError.INTERNAL
+
+            if not self._transcode_to_h264(out_path) and out_path_raw is None:
+                return None, ClipError.TRANSCODE
+
             return out_path, None
             
         except Exception as e:
@@ -831,8 +850,14 @@ class ClipRecorder:
             effective_fps = max(1.0, frames_written / max(0.1, actual_duration))
 
             # Initialize VideoWriter with the effective FPS
-            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+            # Use avc1 (H.264) directly — mp4v is not reliably supported in Linux containers
+            fourcc = cv2.VideoWriter_fourcc(*"avc1")
             writer = cv2.VideoWriter(out_path, fourcc, effective_fps, (width, height))
+            if not writer.isOpened():
+                # Fallback to XVID .avi then transcode
+                fourcc = cv2.VideoWriter_fourcc(*"XVID")
+                out_path = out_path.replace(".mp4", ".avi")
+                writer = cv2.VideoWriter(out_path, fourcc, effective_fps, (width, height))
 
             for frame in captured_frames:
                 writer.write(frame)
@@ -856,9 +881,15 @@ class ClipRecorder:
             if cap:
                 cap.release()
                 cap = None
-                
+
+            # Safety: verify the output file actually exists before transcoding
+            if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
+                logger.error(f"Output clip file missing or empty after direct write: {out_path}")
+                return None, ClipError.INTERNAL
+
             if not self._transcode_to_h264(out_path):
-                return out_path, ClipError.TRANSCODE
+                # Transcode failed — return None so status becomes 'failed' not 'ready'
+                return None, ClipError.TRANSCODE
 
             return out_path, None
 
