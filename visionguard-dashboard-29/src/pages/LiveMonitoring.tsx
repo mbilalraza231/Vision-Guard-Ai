@@ -283,6 +283,7 @@ export default function LiveMonitoring() {
   const { t } = useTranslation();
   const [liveFeedState, setLiveFeedState] = useState<Record<string, boolean>>({});
   const [refreshKey, setRefreshKey] = useState(0);
+  const [isSpinning, setIsSpinning] = useState(false);
 
   // Fetch real camera list from backend
   const { data: cameras, isLoading, isFetching, error, refetch } = useQuery({
@@ -326,9 +327,11 @@ export default function LiveMonitoring() {
             onClick={() => {
               refetch();
               setRefreshKey(prev => prev + 1);
+              setIsSpinning(true);
+              setTimeout(() => setIsSpinning(false), 1000);
             }}
           >
-            <RefreshCw className={cn("h-3.5 w-3.5", (isLoading || isFetching) && "animate-spin")} />
+            <RefreshCw className={cn("h-3.5 w-3.5", (isLoading || isFetching || isSpinning) && "animate-spin")} />
             {t('monitoring.refresh')}
           </Button>
         </div>
