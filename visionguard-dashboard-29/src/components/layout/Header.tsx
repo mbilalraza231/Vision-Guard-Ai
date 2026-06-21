@@ -1,4 +1,4 @@
-import { Bell, ChevronLeft, ChevronRight, Flame, Shield, PersonStanding, AlertCircle } from 'lucide-react';
+import { Bell, Flame, Shield, PersonStanding, AlertCircle, CalendarDays } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -77,18 +77,13 @@ export function Header({ title, showDateNav = true }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-4">
-        {/* Date Navigation */}
+        {/* Date Display */}
         {showDateNav && (
           <div className="hidden items-center gap-2 rounded-lg bg-secondary/50 px-3 py-1.5 md:flex">
-            <Button variant="ghost" size="icon" className="h-6 w-6">
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
+            <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
             <span className="text-sm font-medium">
-              {t('header.today', 'Today')}, {format(today, 'MMM d')}
+              {format(today, 'EEEE, MMM d, yyyy')}
             </span>
-            <Button variant="ghost" size="icon" className="h-6 w-6">
-              <ChevronRight className="h-4 w-4" />
-            </Button>
           </div>
         )}
 
