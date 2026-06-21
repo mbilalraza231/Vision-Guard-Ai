@@ -103,9 +103,9 @@ class ClipRecorder:
         if camera_source in self._capture_threads:
             return
             
-        # Store ~60 seconds of video dynamically to handle processing lag
-        max_buffer_frames = self.config.camera_fps * 60 
-        self.frame_buffers[camera_source] = deque(maxlen=max_buffer_frames)
+        # We use a deque without maxlen, and manually truncate it dynamically in the capture loop
+        # based on real-time frontend settings.
+        self.frame_buffers[camera_source] = deque()
         self.buffer_locks[camera_source] = threading.Lock()
 
         t = threading.Thread(
@@ -125,8 +125,25 @@ class ClipRecorder:
         logger.info(f"Starting background ring buffer for {camera_source}")
         cap = None
         last_save_time = 0
+        last_settings_check = 0
+        
+        # Initial safe default (pre=5, post=10, safety=5)
+        target_buffer_frames = self.config.camera_fps * 20
         
         while not self._shutdown_event.is_set():
+            now = time.time()
+            
+            # Check settings dynamically every 10 seconds to scale RAM up or down
+            if now - last_settings_check > 10.0:
+                try:
+                    settings = self._get_sync_clips_settings()
+                    # User explicitly requested a dedicated max buffer setting instead of calculating it from pre+post
+                    max_bg_buffer = int(settings.get("maxBgBufferSeconds", 30))
+                    target_buffer_frames = self.config.camera_fps * max_bg_buffer
+                except Exception as e:
+                    logger.debug(f"Failed to fetch dynamic RAM settings: {e}")
+                last_settings_check = now
+                
             try:
                 if cap is None or not cap.isOpened():
                     cap = cv2.VideoCapture(camera_source)
@@ -146,12 +163,18 @@ class ClipRecorder:
                     continue
                 
                 # Only retrieve and store at the target FPS
-                now = time.time()
                 if now - last_save_time >= (1.0 / self.config.camera_fps):
                     ret, frame = cap.retrieve()
                     if ret and frame is not None:
                         with self.buffer_locks[camera_source]:
-                            self.frame_buffers[camera_source].append((now, frame))
+                            q = self.frame_buffers[camera_source]
+                            q.append((now, frame))
+                            
+                            # Dynamically enforce the RAM limit! 
+                            # If user lowers the slider, this instantly frees up RAM.
+                            while len(q) > target_buffer_frames:
+                                q.popleft()
+                                
                         last_save_time = now
                 
                 # Minimal sleep to prevent 100% CPU, but keep buffer drained
@@ -240,6 +263,32 @@ class ClipRecorder:
 
         # Final fallback: env default
         return os.getenv("PRIVACY_MASK_FACES", "false").strip().lower() in {"1", "true", "yes", "on"}
+
+    def _get_sync_clips_settings(self) -> dict:
+        """Synchronously check clip settings from Redis for dynamic RAM allocation."""
+        defaults = {
+            "preSeconds": int(float(os.getenv("CLIP_PRE_SECONDS", "5"))),
+            "postSeconds": int(float(os.getenv("CLIP_POST_SECONDS", "10"))),
+            "maxBgBufferSeconds": 30,
+        }
+        try:
+            r = redis.Redis(
+                host=os.getenv("REDIS_HOST", "redis"),
+                port=int(os.getenv("REDIS_PORT", "6379")),
+                socket_connect_timeout=1,
+            )
+            raw = r.get("vg:system_settings")
+            r.close()
+            if raw:
+                import json
+                data = json.loads(raw)
+                if isinstance(data, dict) and "clips" in data:
+                    merged = dict(defaults)
+                    merged.update(data["clips"])
+                    return merged
+        except Exception:
+            pass
+        return defaults
 
     async def get_system_settings(self) -> dict:
         """Fetch settings using Redis -> Postgres -> env defaults fallback."""

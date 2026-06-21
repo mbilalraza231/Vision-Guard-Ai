@@ -128,6 +128,7 @@ const defaultSettings: SystemSettings = {
     postSeconds: 10,
     fps: 10,
     enableBackgroundBuffer: false,
+    maxBgBufferSeconds: 30,
   },
   system: {
     version: '-',
@@ -1144,6 +1145,25 @@ export default function Settings() {
                             onCheckedChange={(checked) => updateClips({ enableBackgroundBuffer: checked })}
                           />
                         </div>
+                        {settings.clips?.enableBackgroundBuffer && (
+                          <div className="md:col-span-2 space-y-2 mt-2">
+                            <Label htmlFor="maxBgBufferSeconds">Max Background Buffer (Seconds)</Label>
+                            <Input
+                              id="maxBgBufferSeconds"
+                              type="number"
+                              min={10}
+                              max={300}
+                              value={settings.clips?.maxBgBufferSeconds ?? 30}
+                              onChange={(e) =>
+                                updateClips({ maxBgBufferSeconds: Math.max(10, Math.min(300, Number(e.target.value) || 30)) })
+                              }
+                              className="bg-background/50 font-mono text-sm w-40"
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Maximum amount of video history to store in server RAM for this camera.
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

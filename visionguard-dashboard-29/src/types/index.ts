@@ -256,6 +256,7 @@ export interface ClipSettings {
   postSeconds: number;
   fps: number;
   enableBackgroundBuffer: boolean;
+  maxBgBufferSeconds?: number;
 }
 
 export interface SystemOverrides {
