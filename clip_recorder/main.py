@@ -250,9 +250,10 @@ async def main() -> None:
 
                             if not camera_src:
                                 log.warning(
-                                    f"Clip request missing camera_source and no default configured, skipping: {fields}"
+                                    f"Clip request missing camera_source (camera may have stopped). Will attempt to upload snapshot, but clip recording will fail: {fields}"
                                 )
-                                continue
+                                # Don't continue; let recorder.py fetch the snapshot.
+                                # It will fail the clip part gracefully.
 
                             log.info(f"Processing clip request for event {event_id}")
 

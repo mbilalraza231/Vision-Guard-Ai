@@ -641,6 +641,10 @@ class ClipRecorder:
             Path to the saved .mp4 file, or None on failure
         """
         try:
+            if not camera_source:
+                logger.error(f"Cannot record latency-aware clip: camera_source is empty")
+                return None, ClipError.OFFLINE
+
             if pre_seconds is None: pre_seconds = self.config.clip_pre_seconds
             if post_seconds is None: post_seconds = self.config.clip_post_seconds
             if use_buffer is None: use_buffer = self.config.enable_background_buffer
@@ -782,6 +786,10 @@ class ClipRecorder:
         cap = None
         writer = None
         try:
+            if not camera_source:
+                logger.error(f"Cannot record clip: camera_source is empty")
+                return None, ClipError.OFFLINE
+
             cap = cv2.VideoCapture(camera_source)
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
