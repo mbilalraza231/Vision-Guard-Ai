@@ -210,6 +210,19 @@ class AIWorker:
             )
 
             self._apply_runtime_settings()
+            
+            # WARMUP PASS: Run a dummy frame to pay the ONNX/OpenVINO compile penalty 
+            # *before* we start consuming tasks. This prevents massive latency on the 
+            # very first real frame, which otherwise causes ECS to sweep the frame.
+            try:
+                import numpy as np
+                dummy_frame = np.zeros((self.config.input_height, self.config.input_width, 3), dtype=np.uint8)
+                input_tensor = self.preprocessor.preprocess(dummy_frame)
+                _ = self.inference_engine.run(input_tensor)
+                self.logger.info("AI Worker model warmup complete")
+            except Exception as e:
+                self.logger.warning(f"AI Worker model warmup failed (non-fatal): {e}")
+
             self.logger.info("AI Worker initialized successfully")
             return True
 

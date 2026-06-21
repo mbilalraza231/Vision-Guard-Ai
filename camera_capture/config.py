@@ -48,6 +48,14 @@ class CameraConfig(BaseModel):
         default_factory=lambda: [640, 416],
         description="Target dimensions to pre-resize and compress to"
     )
+    enable_clahe: bool = Field(
+        default=False,
+        description="Enable/disable CLAHE (Contrast Limited Adaptive Histogram Equalization)"
+    )
+    enable_denoising: bool = Field(
+        default=False,
+        description="Enable/disable Non-Local Means Denoising"
+    )
 
     @validator('rtsp_url')
     def validate_rtsp_url(cls, v):

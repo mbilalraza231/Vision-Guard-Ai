@@ -22,6 +22,7 @@ from datetime import datetime
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6380"))
 PG_HOST = os.getenv("VG_POSTGRES_HOST", "localhost")
+PG_PORT = int(os.getenv("VG_POSTGRES_PORT", "5432"))
 PG_USER = os.getenv("VG_POSTGRES_USER", "postgres")
 PG_DB = os.getenv("VG_POSTGRES_DB", "visionguard")
 
@@ -99,11 +100,12 @@ def get_db_connection():
     """Get PostgreSQL connection."""
     try:
         import psycopg2
-        return psycopg2.connect(host=PG_HOST, user=PG_USER,
+        return psycopg2.connect(host=PG_HOST, port=PG_PORT, user=PG_USER,
                                 password=os.getenv(
                                     "VG_POSTGRES_PASSWORD", "postgres"),
                                 dbname=PG_DB, connect_timeout=3)
-    except Exception:
+    except Exception as e:
+        st.session_state["db_error"] = str(e)
         return None
 
 
@@ -746,6 +748,7 @@ if db:
                 st.metric("Pending", alert_by_status.get("pending", 0))
             with acol3:
                 st.metric("Dispatched", alert_by_status.get("dispatched", 0))
+
             with acol4:
                 st.metric("Resolved", alert_by_status.get("resolved", 0))
         except Exception:
@@ -823,7 +826,8 @@ if db:
         st.error(f"Database error: {e}")
         db.close()
 else:
-    st.warning("PostgreSQL not available — check connection")
+    err = st.session_state.get("db_error", "Unknown error")
+    st.warning(f"PostgreSQL not available — check connection. Error: {err}")
 
 
 # ═══════════════════════════════════════════════════════════

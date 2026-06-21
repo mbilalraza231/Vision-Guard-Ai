@@ -162,8 +162,8 @@ async def register_camera(
             time.time()
         )
 
-        # Sync database to cameras.json
-        await camera_manager.sync_db_to_json()
+        # Publish reload signal to vg-camera container (replaces file-write)
+        await camera_manager.publish_camera_reload(action="register", camera_id=request.camera_id)
 
         # Rebuild zone priority mapping in Redis (zone_id may have changed)
         from .zones import _publish_zone_priorities
@@ -212,8 +212,8 @@ async def unregister_camera(
         from ..core.database import db
         await db.execute("DELETE FROM cameras WHERE id = $1", camera_id)
 
-        # Sync database to cameras.json
-        await camera_manager.sync_db_to_json()
+        # Publish reload signal so camera container picks up the deletion
+        await camera_manager.publish_camera_reload(action="delete", camera_id=camera_id)
 
         # Also unregister in-memory
         camera_manager.unregister(camera_id)
@@ -240,15 +240,17 @@ async def start_camera(
     """
     logger.info(f"Starting/Enabling camera: {camera_id}")
 
-    # Update enabled status in Postgres
+    # Update enabled status in Postgres, then signal camera container via pub/sub
     try:
         from ..core.database import db
         await db.execute("UPDATE cameras SET enabled = TRUE WHERE id = $1", camera_id)
-        await camera_manager.sync_db_to_json()
 
         # Also update in-memory state so metrics immediately reflect the change
         if camera_id in camera_manager._cameras:
             camera_manager._cameras[camera_id].enabled = True
+
+        # Publish instant reload signal to vg-camera container (replaces file-write)
+        await camera_manager.publish_camera_reload(action="start", camera_id=camera_id)
 
     except Exception as e:
         logger.error(f"Failed to enable camera in DB: {e}")
@@ -274,15 +276,17 @@ async def stop_camera(
     """
     logger.info(f"Stopping/Disabling camera: {camera_id}")
 
-    # Update enabled status in Postgres
+    # Update enabled status in Postgres, then signal camera container via pub/sub
     try:
         from ..core.database import db
         await db.execute("UPDATE cameras SET enabled = FALSE WHERE id = $1", camera_id)
-        await camera_manager.sync_db_to_json()
 
         # Also update in-memory state so metrics immediately reflect the change
         if camera_id in camera_manager._cameras:
             camera_manager._cameras[camera_id].enabled = False
+
+        # Publish instant reload signal to vg-camera container (replaces file-write)
+        await camera_manager.publish_camera_reload(action="stop", camera_id=camera_id)
 
     except Exception as e:
         logger.error(f"Failed to disable camera in DB: {e}")

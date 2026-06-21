@@ -379,6 +379,28 @@ class CameraManager:
             "service_alive": is_service_alive if settings.is_docker_runtime else None
         }
     
+    async def publish_camera_reload(self, action: str = "reload", camera_id: str = None) -> None:
+        """
+        Publish a reload signal to the vg-camera container via Redis pub/sub.
+        
+        The camera container subscribes to 'vg:config:cameras' and immediately
+        re-queries GET /cameras from the backend API when it receives this signal.
+        This replaces the old sync_db_to_json() file-write approach, eliminating
+        the 2-second file-poll delay and the associated race conditions.
+        """
+        try:
+            import json
+            from ..core.config import get_redis_config
+            import redis as redis_lib
+            r_config = get_redis_config()
+            r_client = redis_lib.Redis(**r_config)
+            payload = json.dumps({"action": action, "camera_id": camera_id})
+            r_client.publish("vg:config:cameras", payload)
+            r_client.close()
+            self.logger.info(f"Published camera reload signal: action={action}, camera_id={camera_id}")
+        except Exception as e:
+            self.logger.warning(f"Failed to publish camera reload signal: {e}")
+
     async def sync_db_to_json(self) -> None:
         """Write all cameras in the database to cameras.json to keep them in sync."""
         import json

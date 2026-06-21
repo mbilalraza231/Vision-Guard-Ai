@@ -302,12 +302,15 @@ services:
       - vg-logs:/var/log/visionguard
       - vg-frames:/shared-frames
       - ./test-video.mp4:/app/test-video.mp4:ro
-      - ./cameras.json:/app/cameras.json:rw
+      - ./cameras.json:/app/cameras.json:ro
       - ./camera_capture:/app/camera_capture:rw
       - ./preprocessing:/app/preprocessing:rw
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      # Backend API — camera container queries this for live config (PostgreSQL source of truth)
+      - BACKEND_HOST=backend
+      - BACKEND_PORT=8000
       - CAMERA_CONFIG_PATH=/app/cameras.json
       - CAMERA_RECONNECT_RETRIES=${CAMERA_RECONNECT_RETRIES:-5}
       - CAMERA_RECONNECT_DELAY_SEC=${CAMERA_RECONNECT_DELAY_SEC:-5}

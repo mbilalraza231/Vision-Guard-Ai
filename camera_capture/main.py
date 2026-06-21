@@ -113,6 +113,34 @@ def load_cameras_from_json(config_path: str) -> tuple[list, dict]:
     return cameras, global_config
 
 
+def load_cameras_from_api(backend_host: str, backend_port: str, config_path_fallback: str) -> tuple[list, dict]:
+    """Load enabled camera configs from the backend REST API (PostgreSQL single source of truth).
+    
+    Falls back to cameras.json only if the API is unreachable.
+    """
+    import urllib.request
+    backend_url = f"http://{backend_host}:{backend_port}"
+    try:
+        with urllib.request.urlopen(f"{backend_url}/cameras", timeout=10) as resp:
+            cameras_data = json.loads(resp.read())
+        cameras = []
+        for cam in cameras_data:
+            if not cam.get("enabled", False):
+                continue
+            cameras.append(CameraConfig(
+                camera_id=cam["id"],
+                rtsp_url=cam["source"],
+                fps=cam.get("fps", 5),
+                motion_threshold=cam.get("motion_threshold", 0.02),
+                motion_enabled=True,
+            ))
+        logger.info(f"Loaded {len(cameras)} cameras from backend API ({backend_url}/cameras)")
+        return cameras, {}
+    except Exception as e:
+        logger.warning(f"Failed to load cameras from backend API: {e}. Falling back to {config_path_fallback}")
+        return load_cameras_from_json(config_path_fallback)
+
+
 def main():
     """Main entry point for camera capture service."""
     logger.info("Starting Camera Capture Service...")
@@ -124,8 +152,11 @@ def main():
             config_path
         )
 
-    logger.info(f"Loading camera config from: {config_path}")
-    cameras, global_config = load_cameras_from_json(config_path)
+    backend_host = os.getenv("BACKEND_HOST", "backend")
+    backend_port = os.getenv("BACKEND_PORT", "8000")
+
+    logger.info(f"Loading camera config from backend API: http://{backend_host}:{backend_port}/cameras")
+    cameras, global_config = load_cameras_from_api(backend_host, backend_port, config_path)
 
     # Load live settings from Redis (Dashboard > Camera Rules) and apply them.
     # This ensures the user's settings survive container restarts.
@@ -229,28 +260,29 @@ def main():
     # Shared event: Pub/Sub listener sets this to trigger instant config reload
     reload_event = threading.Event()
 
-    # Start Pub/Sub Listener thread to instantly apply dashboard settings
+    # Subscribe to BOTH channels:
+    #   'vg:config:cameras'  — fired by backend on start/stop/register/delete (instant, replaces file-poll)
+    #   'vg:settings:updates' — fired by dashboard Settings panel for FPS/threshold changes
     try:
         r_client_pubsub = redis.Redis(host=os.getenv(
             "REDIS_HOST", "localhost"), port=int(os.getenv("REDIS_PORT", "6379")))
 
-        def _settings_listener():
+        def _combined_listener():
             pubsub = r_client_pubsub.pubsub()
             try:
-                pubsub.subscribe("vg:settings:updates")
+                pubsub.subscribe("vg:config:cameras", "vg:settings:updates")
                 for message in pubsub.listen():
                     if message["type"] == "message":
-                        # Signal the main loop to reload immediately
+                        channel = message.get("channel", b"").decode("utf-8", "ignore")
+                        data = message.get("data", b"").decode("utf-8", "ignore")
+                        logger.info(f"Pub/Sub signal received on '{channel}': {data}")
                         reload_event.set()
-                        # Also touch file as fallback (manual edits still work)
-                        if os.path.exists(config_path):
-                            os.utime(config_path, None)
             except Exception as e:
-                logger.warning(f"Settings Pub/Sub thread died: {e}")
+                logger.warning(f"Pub/Sub listener thread died: {e}")
 
-        t = threading.Thread(target=_settings_listener, daemon=True)
+        t = threading.Thread(target=_combined_listener, daemon=True)
         t.start()
-        logger.info("Settings Pub/Sub listener started")
+        logger.info("Pub/Sub listener started (channels: vg:config:cameras, vg:settings:updates)")
     except Exception as e:
         logger.warning(f"Failed to start Pub/Sub listener: {e}")
 
@@ -268,179 +300,168 @@ def main():
     try:
         manager = start_cameras(config)
         logger.info(
-            "Camera Capture Service running. Watching config file for changes...")
-
-        last_mtime = 0.0
-        if os.path.exists(config_path):
-            last_mtime = os.path.getmtime(config_path)
+            "Camera Capture Service running. Watching for API config changes via pub/sub...")
 
         while True:
-            # Wait up to 2s for Pub/Sub signal, or timeout for file polling fallback
-            pubsub_triggered = reload_event.wait(timeout=2)
+            # Wait up to 30s for a pub/sub signal; periodic full-sync as safety net
+            pubsub_triggered = reload_event.wait(timeout=30)
             reload_event.clear()
-            if os.path.exists(config_path):
+
+            if pubsub_triggered:
+                source = "Pub/Sub (instant)"
+            else:
+                source = "periodic full-sync (30s)"
+            logger.info(f"Config reload triggered via {source}. Re-querying backend API...")
+
+            try:
+                # Always load from the API (PostgreSQL) — never from the file
+                new_cameras, new_global_config = load_cameras_from_api(
+                    backend_host, backend_port, config_path)
+
+                # Apply live Redis settings (dashboard Camera Rules overrides)
                 try:
-                    mtime = os.path.getmtime(config_path)
-                except OSError:
-                    continue
+                    cam_runtime = load_camera_runtime_settings()
+                    new_default_fps = cam_runtime["default_fps"]
+                    new_motion_thresh = cam_runtime["motion_threshold"]
+                    for cam in new_cameras:
+                        if cam.fps == 5:  # Only override factory default
+                            cam.fps = new_default_fps
+                        if cam.motion_threshold == 0.02:
+                            cam.motion_threshold = new_motion_thresh
 
-                if mtime > last_mtime or pubsub_triggered:
-                    source = "Pub/Sub (instant)" if pubsub_triggered else "file poll"
+                        # Apply compression and enhancement settings from Redis
+                        cam.enable_frame_compression = cam_runtime.get("enable_frame_compression", False)
+                        cam.compression_quality = cam_runtime.get("compression_quality", 95)
+                        cam.compression_format = cam_runtime.get("compression_format", "jpeg")
+                        cam.pre_resize_dimensions = cam_runtime.get("pre_resize_dimensions", [640, 416])
+                        cam.enable_clahe = cam_runtime.get("enable_clahe", False)
+                        cam.enable_denoising = cam_runtime.get("enable_denoising", False)
+
                     logger.info(
-                        f"Config change detected via {source}. Reloading cameras...")
-                    last_mtime = mtime
+                        f"Applied live Redis settings: fps={new_default_fps}, motion={new_motion_thresh}, "
+                        f"compress={cam_runtime.get('enable_frame_compression', False)}, "
+                        f"clahe={cam_runtime.get('enable_clahe', False)}, "
+                        f"denoising={cam_runtime.get('enable_denoising', False)}")
+                except Exception as e:
+                    logger.warning(
+                        f"Could not apply Redis settings during reload: {e}")
 
-                    try:
-                        # Load new camera list from cameras.json
-                        new_cameras, new_global_config = load_cameras_from_json(
-                            config_path)
+                should_run_ids = {cam.camera_id for cam in new_cameras}
 
-                        # Apply live Redis settings again (so dashboard changes take effect on reload)
+                # 1. Stop any running cameras that are no longer enabled or removed
+                active_ids = list(manager.processes.keys())
+                for cam_id in active_ids:
+                    if cam_id not in should_run_ids:
+                        logger.info(
+                            f"Camera '{cam_id}' has been disabled or removed. Stopping stream...")
                         try:
-                            cam_runtime = load_camera_runtime_settings()
-                            new_default_fps = cam_runtime["default_fps"]
-                            new_motion_thresh = cam_runtime["motion_threshold"]
-                            new_json_default = new_global_config.get(
-                                "default_fps", 5)
-                            for cam in new_cameras:
-                                if cam.fps == new_json_default:
-                                    cam.fps = new_default_fps
-                                if cam.motion_threshold == 0.02:
-                                    cam.motion_threshold = new_motion_thresh
-                                    
-                                # Apply compression and enhancement settings from Redis
-                                cam.enable_frame_compression = cam_runtime.get("enable_frame_compression", False)
-                                cam.compression_quality = cam_runtime.get("compression_quality", 95)
-                                cam.compression_format = cam_runtime.get("compression_format", "jpeg")
-                                cam.pre_resize_dimensions = cam_runtime.get("pre_resize_dimensions", [640, 416])
-                                cam.enable_clahe = cam_runtime.get("enable_clahe", False)
-                                cam.enable_denoising = cam_runtime.get("enable_denoising", False)
+                            manager.processes[cam_id].stop(timeout=5.0)
+                            manager.status[cam_id] = "stopped"
+
+                            # Deregister from Redis sources hash
+                            try:
+                                _r = _redis.Redis(
+                                    host=os.getenv(
+                                        "REDIS_HOST", "localhost"),
+                                    port=int(
+                                        os.getenv("REDIS_PORT", "6379")),
+                                    decode_responses=True,
+                                )
+                                _r.hdel("vg:camera:sources", cam_id)
+                                _r.close()
+                            except Exception as redis_err:
+                                logger.warning(
+                                    f"Could not remove camera '{cam_id}' from Redis sources: {redis_err}")
+                        except Exception as err:
+                            logger.error(
+                                f"Failed to stop camera '{cam_id}': {err}")
+                        manager.processes.pop(cam_id, None)
+
+                # 2. Update config object in manager.config.cameras
+                manager.config.cameras = new_cameras
+
+                # 3. Start or update any enabled cameras
+                for camera_config in new_cameras:
+                    cam_id = camera_config.camera_id
+
+                    # Check if the camera is already running
+                    existing_process = manager.processes.get(cam_id)
+                    if existing_process and existing_process.is_alive():
+                        # Check if config actually changed (RTSP URL, FPS, etc.)
+                        curr_config = existing_process.camera_config
+                        if (curr_config.rtsp_url != camera_config.rtsp_url or
+                            curr_config.fps != camera_config.fps or
+                            curr_config.motion_threshold != camera_config.motion_threshold or
+                            curr_config.motion_enabled != camera_config.motion_enabled or
+                            getattr(curr_config, 'enable_frame_compression', False) != getattr(camera_config, 'enable_frame_compression', False) or
+                            getattr(curr_config, 'compression_quality', 95) != getattr(camera_config, 'compression_quality', 95) or
+                            getattr(curr_config, 'compression_format', 'jpeg') != getattr(camera_config, 'compression_format', 'jpeg') or
+                            getattr(curr_config, 'pre_resize_dimensions', [640, 416]) != getattr(camera_config, 'pre_resize_dimensions', [640, 416])):
 
                             logger.info(
-                                f"Applied live Redis settings during hot-reload: fps={new_default_fps}, motion={new_motion_thresh}, "
-                                f"compress={cam_runtime.get('enable_frame_compression', False)}, "
-                                f"clahe={cam_runtime.get('enable_clahe', False)}, "
-                                f"denoising={cam_runtime.get('enable_denoising', False)}")
-                        except Exception as e:
-                            logger.warning(
-                                f"Could not apply Redis settings during hot-reload: {e}")
+                                f"Camera '{cam_id}' configuration updated. Restarting process...")
+                            manager.restart_camera(cam_id)
 
-                        should_run_ids = {cam.camera_id for cam in new_cameras}
+                            # Update Redis source URL
+                            try:
+                                _r = _redis.Redis(
+                                    host=os.getenv(
+                                        "REDIS_HOST", "localhost"),
+                                    port=int(
+                                        os.getenv("REDIS_PORT", "6379")),
+                                    decode_responses=True,
+                                )
+                                _r.hset("vg:camera:sources",
+                                        cam_id, camera_config.rtsp_url)
+                                _r.close()
+                            except Exception as redis_err:
+                                logger.warning(
+                                    f"Could not update Redis source URL: {redis_err}")
+                    else:
+                        # Not running, start it
+                        logger.info(
+                            f"Camera '{cam_id}' is enabled but not running. Starting process...")
+                        try:
+                            # Create camera process
+                            from camera_capture.core.camera_process import CameraProcess
+                            process = CameraProcess(
+                                camera_config=camera_config,
+                                redis_config=manager.config.redis,
+                                buffer_config=manager.config.buffer,
+                                retry_config=manager.config.retry,
+                                shared_memory_config=manager.config.shared_memory,
+                                log_level=manager.config.logging.level,
+                                log_format=manager.config.logging.format
+                            )
+                            if process.start():
+                                manager.processes[cam_id] = process
+                                manager.status[cam_id] = "alive"
 
-                        # 1. Stop any running cameras that are no longer enabled or removed
-                        active_ids = list(manager.processes.keys())
-                        for cam_id in active_ids:
-                            if cam_id not in should_run_ids:
-                                logger.info(
-                                    f"Camera '{cam_id}' has been disabled or removed. Stopping stream...")
+                                # Register in Redis sources
                                 try:
-                                    manager.processes[cam_id].stop(timeout=5.0)
-                                    manager.status[cam_id] = "stopped"
-
-                                    # Deregister from Redis sources hash
-                                    try:
-                                        _r = _redis.Redis(
-                                            host=os.getenv(
-                                                "REDIS_HOST", "localhost"),
-                                            port=int(
-                                                os.getenv("REDIS_PORT", "6379")),
-                                            decode_responses=True,
-                                        )
-                                        _r.hdel("vg:camera:sources", cam_id)
-                                        _r.close()
-                                    except Exception as redis_err:
-                                        logger.warning(
-                                            f"Could not remove camera '{cam_id}' from Redis sources: {redis_err}")
-                                except Exception as err:
-                                    logger.error(
-                                        f"Failed to stop camera '{cam_id}': {err}")
-                                manager.processes.pop(cam_id, None)
-
-                        # 2. Update config object in manager.config.cameras
-                        manager.config.cameras = new_cameras
-
-                        # 3. Start or update any enabled cameras
-                        for camera_config in new_cameras:
-                            cam_id = camera_config.camera_id
-
-                            # Check if the camera is already running
-                            existing_process = manager.processes.get(cam_id)
-                            if existing_process and existing_process.is_alive():
-                                # Check if config actually changed (RTSP URL, FPS, etc.)
-                                curr_config = existing_process.camera_config
-                                if (curr_config.rtsp_url != camera_config.rtsp_url or
-                                    curr_config.fps != camera_config.fps or
-                                    curr_config.motion_threshold != camera_config.motion_threshold or
-                                    curr_config.motion_enabled != camera_config.motion_enabled or
-                                    getattr(curr_config, 'enable_frame_compression', False) != getattr(camera_config, 'enable_frame_compression', False) or
-                                    getattr(curr_config, 'compression_quality', 95) != getattr(camera_config, 'compression_quality', 95) or
-                                    getattr(curr_config, 'compression_format', 'jpeg') != getattr(camera_config, 'compression_format', 'jpeg') or
-                                    getattr(curr_config, 'pre_resize_dimensions', [640, 416]) != getattr(camera_config, 'pre_resize_dimensions', [640, 416])):
-
-                                    logger.info(
-                                        f"Camera '{cam_id}' configuration updated. Restarting process...")
-                                    manager.restart_camera(cam_id)
-
-                                    # Update Redis source URL
-                                    try:
-                                        _r = _redis.Redis(
-                                            host=os.getenv(
-                                                "REDIS_HOST", "localhost"),
-                                            port=int(
-                                                os.getenv("REDIS_PORT", "6379")),
-                                            decode_responses=True,
-                                        )
-                                        _r.hset("vg:camera:sources",
-                                                cam_id, camera_config.rtsp_url)
-                                        _r.close()
-                                    except Exception as redis_err:
-                                        logger.warning(
-                                            f"Could not update Redis source URL: {redis_err}")
-                            else:
-                                # Not running, start it
-                                logger.info(
-                                    f"Camera '{cam_id}' is enabled but not running. Starting process...")
-                                try:
-                                    # Create camera process
-                                    from camera_capture.core.camera_process import CameraProcess
-                                    process = CameraProcess(
-                                        camera_config=camera_config,
-                                        redis_config=manager.config.redis,
-                                        buffer_config=manager.config.buffer,
-                                        retry_config=manager.config.retry,
-                                        shared_memory_config=manager.config.shared_memory,
-                                        log_level=manager.config.logging.level,
-                                        log_format=manager.config.logging.format
+                                    _r = _redis.Redis(
+                                        host=os.getenv(
+                                            "REDIS_HOST", "localhost"),
+                                        port=int(
+                                            os.getenv("REDIS_PORT", "6379")),
+                                        decode_responses=True,
                                     )
-                                    if process.start():
-                                        manager.processes[cam_id] = process
-                                        manager.status[cam_id] = "alive"
+                                    _r.hset("vg:camera:sources",
+                                            cam_id, camera_config.rtsp_url)
+                                    _r.close()
+                                except Exception as redis_err:
+                                    logger.warning(
+                                        f"Could not register Redis source URL: {redis_err}")
+                            else:
+                                manager.status[cam_id] = "failed_to_start"
+                        except Exception as err:
+                            manager.status[cam_id] = "error"
+                            logger.error(
+                                f"Error starting camera process '{cam_id}': {err}")
 
-                                        # Register in Redis sources
-                                        try:
-                                            _r = _redis.Redis(
-                                                host=os.getenv(
-                                                    "REDIS_HOST", "localhost"),
-                                                port=int(
-                                                    os.getenv("REDIS_PORT", "6379")),
-                                                decode_responses=True,
-                                            )
-                                            _r.hset("vg:camera:sources",
-                                                    cam_id, camera_config.rtsp_url)
-                                            _r.close()
-                                        except Exception as redis_err:
-                                            logger.warning(
-                                                f"Could not register Redis source URL: {redis_err}")
-                                    else:
-                                        manager.status[cam_id] = "failed_to_start"
-                                except Exception as err:
-                                    manager.status[cam_id] = "error"
-                                    logger.error(
-                                        f"Error starting camera process '{cam_id}': {err}")
-
-                    except Exception as reload_err:
-                        logger.error(
-                            f"Failed to reload cameras config: {reload_err}")
+            except Exception as reload_err:
+                logger.error(
+                    f"Failed to reload cameras config: {reload_err}")
 
     except Exception as e:
         logger.error(f"Camera Capture failed: {e}")
