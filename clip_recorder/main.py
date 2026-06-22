@@ -138,7 +138,6 @@ async def main() -> None:
     try:
         raw_settings = await redis_client.get("vg:system_settings")
         if raw_settings:
-            import json
             sys_data = json.loads(raw_settings)
             enable_buffer = sys_data.get("clips", {}).get("enableBackgroundBuffer", enable_buffer)
             log.info(f"  Background buf (from Redis settings): {enable_buffer}")
@@ -171,7 +170,6 @@ async def main() -> None:
             async for message in pubsub.listen():
                 if message["type"] == "message":
                     try:
-                        import json
                         data = json.loads(message["data"])
                         new_state = data.get("clips", {}).get("enableBackgroundBuffer", current_buffer_state)
                         if new_state != current_buffer_state:
