@@ -17,7 +17,7 @@ import time
 import json
 import socket
 
-import redis.asyncio as redis
+from redis.asyncio import Redis
 import psutil
 
 from .config import ClipConfig, CLIP_REQUEST_STREAM
@@ -60,12 +60,16 @@ class MetricsReporter:
             try:
                 mem = p.memory_info().rss
                 for c in p.children(recursive=True):
-                    try: mem += c.memory_info().rss
-                    except: pass
+                    try:
+                        mem += c.memory_info().rss
+                    except Exception:
+                        pass
                 cpu = p.cpu_percent(interval=None) # Interval None for non-blocking
                 for c in p.children(recursive=True):
-                    try: cpu += c.cpu_percent(interval=None)
-                    except: pass
+                    try:
+                        cpu += c.cpu_percent(interval=None)
+                    except Exception:
+                        pass
                 
                 await self.r.setex(self.key, 15, json.dumps({
                     "cpu_percent": round(cpu, 2),
@@ -108,10 +112,10 @@ async def main() -> None:
     log.info(f"  Snapshot dir:  {config.snapshot_dir}")
 
     # --- Connect to Redis ---
-    redis_client: redis.Redis = None
+    redis_client: Redis | None = None
     while True:
         try:
-            redis_client = redis.Redis(
+            redis_client = Redis(
                 host=config.redis_host,
                 port=config.redis_port,
                 db=0,
@@ -124,6 +128,7 @@ async def main() -> None:
             log.warning(f"Redis not available, retrying in 5s: {e}")
             await asyncio.sleep(5)
 
+    assert redis_client is not None
     # --- Start metrics reporter ---
     reporter = MetricsReporter(redis_client, "clip-recorder")
     await reporter.start()
