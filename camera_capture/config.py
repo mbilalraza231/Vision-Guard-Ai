@@ -56,6 +56,10 @@ class CameraConfig(BaseModel):
         default=False,
         description="Enable/disable Non-Local Means Denoising"
     )
+    process_mode: str = Field(
+        default="live",
+        description="Processing mode for local files: 'live' (real-time paced) or 'batch' (as fast as possible)"
+    )
 
     @validator('rtsp_url')
     def validate_rtsp_url(cls, v):

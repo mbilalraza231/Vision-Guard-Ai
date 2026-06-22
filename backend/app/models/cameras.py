@@ -31,6 +31,10 @@ class CameraRegisterRequest(BaseModel):
         default=True,
         description="Whether the camera is enabled"
     )
+    process_mode: Optional[str] = Field(
+        default="live",
+        description="Processing mode for local files: 'live' or 'batch'"
+    )
     fps: Optional[int] = Field(
         default=5,
         ge=1, le=30,
@@ -83,6 +87,7 @@ class CameraStatusResponse(BaseModel):
     fps: int
     motion_threshold: float
     enabled: bool
+    process_mode: str = "live"
     is_running: bool
     registered_at: str
     started_at: Optional[str] = None

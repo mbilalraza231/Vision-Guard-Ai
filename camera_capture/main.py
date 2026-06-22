@@ -106,7 +106,8 @@ def load_cameras_from_json(config_path: str) -> tuple[list, dict]:
                 'rtsp_url')),  # Keep original robustness
             fps=cam_data.get('fps', 5),
             motion_threshold=cam_data.get('motion_threshold', 0.02),
-            motion_enabled=motion_enabled  # Add global motion detection setting
+            motion_enabled=motion_enabled,  # Add global motion detection setting
+            process_mode=cam_data.get('process_mode', 'live'),
         ))
 
     logger.info(f"Loaded {len(cameras)} cameras")
@@ -133,6 +134,7 @@ def load_cameras_from_api(backend_host: str, backend_port: str, config_path_fall
                 fps=cam.get("fps", 5),
                 motion_threshold=cam.get("motion_threshold", 0.02),
                 motion_enabled=True,
+                process_mode=cam.get("process_mode", "live"),
             ))
         logger.info(f"Loaded {len(cameras)} cameras from backend API ({backend_url}/cameras)")
         return cameras, {}

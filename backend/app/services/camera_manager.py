@@ -29,6 +29,7 @@ class CameraInfo:
     fps: int = 5
     motion_threshold: float = 0.02
     enabled: bool = True
+    process_mode: str = "live"
     is_running: bool = False
     registered_at: datetime = field(default_factory=datetime.now)
     started_at: Optional[datetime] = None
@@ -45,6 +46,7 @@ class CameraInfo:
             "fps": self.fps,
             "motion_threshold": self.motion_threshold,
             "enabled": self.enabled,
+            "process_mode": self.process_mode,
             "is_running": self.is_running,
             "registered_at": self.registered_at.isoformat(),
             "started_at": self.started_at.isoformat() if self.started_at else None,
@@ -134,7 +136,8 @@ class CameraManager:
                         rtsp_url=cam_data.get("source", ""),
                         fps=cam_data.get("fps", 5),
                         motion_threshold=cam_data.get("motion_threshold", 0.02),
-                        enabled=cam_data.get("enabled", True)
+                        enabled=cam_data.get("enabled", True),
+                        process_mode=cam_data.get("process_mode", "live")
                     )
                     # For status reporting, we assume it might be running if enabled in docker
                     # Real running status should ideally be verified via Redis heartbeats

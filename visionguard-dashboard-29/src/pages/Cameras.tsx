@@ -34,10 +34,11 @@ interface BackendCamera {
   status: 'running' | 'stopped' | 'unknown' | 'online' | 'offline';
   pid: number | null;
   zone_id?: string | null;
+  process_mode?: string;
 }
 
 // Map backend camera to frontend Camera type
-function adaptCamera(cam: BackendCamera): Camera & { enabled: boolean; source: string; priority: string; motionThreshold: number; fps: number; zone_id?: string | null } {
+function adaptCamera(cam: BackendCamera): Camera & { enabled: boolean; source: string; priority: string; motionThreshold: number; fps: number; zone_id?: string | null; processMode: string } {
   const isOnline = cam.status === 'running' || cam.status === 'online';
   
   // If it's a local video (source doesn't start with http/rtsp) and it's offline, 
@@ -59,6 +60,7 @@ function adaptCamera(cam: BackendCamera): Camera & { enabled: boolean; source: s
     motionThreshold: cam.motion_threshold,
     fps: cam.fps,
     zone_id: cam.zone_id,
+    processMode: cam.process_mode || 'live',
   };
 }
 
@@ -77,6 +79,10 @@ export default function Cameras() {
   const [motionThreshold, setMotionThreshold] = useState(0.02);
   const [enabled, setEnabled] = useState(false); // Default to false (stopped on add)
   const [zoneId, setZoneId] = useState<string>('');
+  const [processMode, setProcessMode] = useState<'live' | 'batch'>('live');
+
+  // Derived: detect if current source input is a local file path
+  const isLocalFileSource = source && !source.toLowerCase().match(/^(http|https|rtsp|rtmp):\/\//);
 
   const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ['cameras-list'],
@@ -125,6 +131,7 @@ export default function Cameras() {
       priority?: string;
       enabled?: boolean;
       zone_id?: string | null;
+      process_mode?: string;
     }) => apiService.postData(API_ENDPOINTS.cameras.register, newCam),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cameras-list'] });
@@ -144,6 +151,7 @@ export default function Cameras() {
       setMotionThreshold(0.02);
       setEnabled(false);
       setZoneId('');
+      setProcessMode('live');
     },
     onError: (err: any) => {
       toast.error(err.message || 'Failed to register camera');
@@ -265,6 +273,7 @@ export default function Cameras() {
                     priority,
                     enabled,
                     zone_id: zoneId || null,
+                    process_mode: isLocalFileSource ? processMode : 'live',
                   });
                 }}
                 className="flex-1 flex flex-col min-h-0 overflow-hidden"
@@ -374,6 +383,49 @@ export default function Cameras() {
                       ))}
                     </select>
                   </div>
+
+                  {/* Processing Mode Toggle — only visible for local file paths */}
+                  {isLocalFileSource && (
+                    <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3">
+                      <Label className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                        <svg className="h-3.5 w-3.5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        Local Video Processing Mode
+                      </Label>
+                      <p className="text-xs text-muted-foreground mb-2">
+                        A local file path was detected. Choose how to process this video.
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setProcessMode('live')}
+                          className={cn(
+                            "flex flex-col items-start gap-1 rounded-md border p-3 text-left text-xs transition-all",
+                            processMode === 'live'
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border text-muted-foreground hover:border-primary/50"
+                          )}
+                        >
+                          <span className="font-semibold">🎬 Simulate Live</span>
+                          <span className="text-[10px] leading-tight opacity-80">Plays at real-time speed (default). Best for testing the dashboard.</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setProcessMode('batch')}
+                          className={cn(
+                            "flex flex-col items-start gap-1 rounded-md border p-3 text-left text-xs transition-all",
+                            processMode === 'batch'
+                              ? "border-amber-500 bg-amber-500/10 text-amber-500"
+                              : "border-border text-muted-foreground hover:border-amber-500/50"
+                          )}
+                        >
+                          <span className="font-semibold">⚡ Fast Batch</span>
+                          <span className="text-[10px] leading-tight opacity-80">Scans as fast as possible. Best for historical footage analysis.</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 
                 {/* Fixed Footer */}
@@ -427,6 +479,7 @@ export default function Cameras() {
                   setMotionThreshold(cam.motionThreshold);
                   setEnabled(cam.enabled);
                   setZoneId(cam.zone_id || '');
+                  setProcessMode((cam.processMode as 'live' | 'batch') || 'live');
                   setIsOpen(true);
                 }}
               />
@@ -439,7 +492,7 @@ export default function Cameras() {
 }
 
 interface CameraCardProps {
-  camera: Camera & { enabled: boolean; source: string; priority: string; motionThreshold: number; fps: number };
+  camera: Camera & { enabled: boolean; source: string; priority: string; motionThreshold: number; fps: number; processMode?: string };
   startMutation: any;
   stopMutation: any;
   deleteMutation: any;
@@ -602,10 +655,18 @@ function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdi
           {isStarting ? (
             <Badge
               variant="outline"
-              className="border-yellow-500/50 text-yellow-400 bg-yellow-500/10 text-[10px] font-semibold"
+              className={cn(
+                "text-[10px] font-semibold",
+                (camera as any).processMode === 'batch'
+                  ? "border-amber-500/50 text-amber-400 bg-amber-500/10"
+                  : "border-yellow-500/50 text-yellow-400 bg-yellow-500/10"
+              )}
             >
-              <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-yellow-400 animate-pulse" />
-              Initializing... {startCountdown}s
+              <span className={cn(
+                "mr-1.5 h-1.5 w-1.5 rounded-full animate-pulse",
+                (camera as any).processMode === 'batch' ? "bg-amber-400" : "bg-yellow-400"
+              )} />
+              {(camera as any).processMode === 'batch' ? 'Processing Fast...' : `Initializing... ${startCountdown}s`}
             </Badge>
           ) : !camera.enabled ? (
             <Badge
@@ -634,6 +695,12 @@ function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdi
           {camera.aiActive && (
             <Badge variant="outline" className="border-primary/50 text-primary bg-primary/5 text-[10px] font-semibold">
               {t('monitoring.aiActive')}
+            </Badge>
+          )}
+          {/* Show Batch Mode indicator badge when camera is a local file in batch mode */}
+          {isLocalFile && (camera as any).processMode === 'batch' && !camera.enabled && !isStarting && (
+            <Badge variant="outline" className="border-amber-500/30 text-amber-500/70 text-[10px]">
+              ⚡ Batch
             </Badge>
           )}
         </div>

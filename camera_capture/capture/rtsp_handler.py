@@ -24,7 +24,8 @@ class RTSPHandler:
         self,
         rtsp_url: str,
         camera_id: str,
-        retry_config: Optional[RetryConfig] = None
+        retry_config: Optional[RetryConfig] = None,
+        process_mode: str = "live",
     ):
         """
         Initialize RTSP handler.
@@ -33,10 +34,12 @@ class RTSPHandler:
             rtsp_url: RTSP stream URL
             camera_id: Unique camera identifier
             retry_config: Retry configuration (optional)
+            process_mode: 'live' (real-time paced) or 'batch' (as fast as possible)
         """
         self.rtsp_url = rtsp_url
         self.camera_id = camera_id
         self.retry_config = retry_config or RetryConfig()
+        self.process_mode = process_mode
         self.logger = logging.getLogger(__name__)
         
         self.capture: Optional[cv2.VideoCapture] = None
@@ -166,16 +169,19 @@ class RTSPHandler:
         is_local = self.rtsp_url and not self.rtsp_url.lower().startswith(
             ('http://', 'https://', 'rtsp://', 'rtmp://'))
 
-        # For local files, pace reads at the video's native FPS so the video
-        # plays in real-time instead of being consumed in milliseconds.
-        frame_interval = 0.001  # 1ms for network streams (drain buffer ASAP)
-        if is_local and self.capture:
+        # For local files in LIVE mode: pace reads at native FPS so the video
+        # plays in real-time. In BATCH mode (or for network streams): use 1ms
+        # to process as fast as possible.
+        frame_interval = 0.001  # default: flat-out speed for network/batch
+        if is_local and self.process_mode == "live" and self.capture:
             native_fps = self.capture.get(cv2.CAP_PROP_FPS)
             if native_fps and native_fps > 0:
                 frame_interval = 1.0 / native_fps
                 self.logger.info(
-                    f"Local video detected: pacing reads at {native_fps:.1f} FPS "
+                    f"[Live mode] Local video paced at {native_fps:.1f} FPS "
                     f"(interval={frame_interval:.4f}s)")
+        elif is_local and self.process_mode == "batch":
+            self.logger.info("[Batch mode] Local video: processing as fast as possible (no pacing)")
 
         while not self._stop_event.is_set() and self.capture and self.capture.isOpened():
             try:

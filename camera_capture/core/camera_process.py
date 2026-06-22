@@ -172,7 +172,8 @@ class CameraProcess:
             self.rtsp_handler = RTSPHandler(
                 rtsp_url=self.camera_config.rtsp_url,
                 camera_id=self.camera_config.camera_id,
-                retry_config=self.retry_config
+                retry_config=self.retry_config,
+                process_mode=getattr(self.camera_config, 'process_mode', 'live'),
             )
             
             # Initial RTSP connect (non-fatal).

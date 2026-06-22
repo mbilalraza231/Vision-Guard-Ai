@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS cameras (
     motion_threshold DOUBLE PRECISION NOT NULL DEFAULT 0.02,
     priority TEXT NOT NULL DEFAULT 'medium',
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    process_mode TEXT NOT NULL DEFAULT 'live',   -- live | batch
     zone_id TEXT,                        -- FK to zones
     created_at DOUBLE PRECISION NOT NULL
 );

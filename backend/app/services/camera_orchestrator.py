@@ -66,7 +66,8 @@ class LocalCameraOrchestrator(CameraOrchestrator):
                         camera_id=camera.camera_id,
                         rtsp_url=camera.rtsp_url,
                         fps=camera.fps,
-                        motion_threshold=camera.motion_threshold
+                        motion_threshold=camera.motion_threshold,
+                        process_mode=getattr(camera, 'process_mode', 'live'),
                     )
                 ]
             )
