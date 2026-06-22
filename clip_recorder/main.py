@@ -121,7 +121,7 @@ async def main() -> None:
                 db=0,
                 decode_responses=True,
             )
-            await redis_client.ping()
+            await redis_client.ping()  # type: ignore
             log.info("Connected to Redis")
             break
         except Exception as e:
@@ -154,7 +154,7 @@ async def main() -> None:
     if enable_buffer:
         try:
             # Fetch all cameras from the registry
-            camera_sources = await redis_client.hvals("vg:camera:sources")
+            camera_sources = await redis_client.hvals("vg:camera:sources")  # type: ignore
             if camera_sources:
                 recorder.start_dashcam_buffers(camera_sources)
                 log.info(f"  Pre-started background buffers for {len(camera_sources)} camera(s)")
@@ -181,7 +181,7 @@ async def main() -> None:
                             log.info(f"Background Buffer toggled in Dashboard: {current_buffer_state} -> {new_state}")
                             current_buffer_state = new_state
                             if new_state:
-                                sources = await redis_client.hvals("vg:camera:sources")
+                                sources = await redis_client.hvals("vg:camera:sources")  # type: ignore
                                 recorder.start_dashcam_buffers(sources)
                             else:
                                 recorder.stop_dashcam_buffers()
