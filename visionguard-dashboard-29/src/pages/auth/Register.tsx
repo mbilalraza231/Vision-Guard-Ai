@@ -103,7 +103,7 @@ export default function Register() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
         <div className="space-y-2">
           <Label htmlFor="name">Full Name</Label>
           <Input
@@ -126,6 +126,7 @@ export default function Register() {
             value={formData.email}
             onChange={(e) => setFormData({ ...formData, email: e.target.value })}
             required
+            autoComplete="off"
             className="bg-secondary/50"
           />
         </div>
@@ -158,6 +159,7 @@ export default function Register() {
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               required
+              autoComplete="new-password"
               className="bg-secondary/50 pr-10"
             />
             <Button
@@ -185,6 +187,7 @@ export default function Register() {
             value={formData.confirmPassword}
             onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
             required
+            autoComplete="new-password"
             className="bg-secondary/50"
           />
         </div>
