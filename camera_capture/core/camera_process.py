@@ -234,8 +234,11 @@ class CameraProcess:
         
         while not self.stop_event.is_set():
             try:
-                # Check if we should capture this frame (FPS throttling)
-                if not self.frame_grabber.should_capture():
+                # Check if we should capture this frame (FPS throttling).
+                # In BATCH mode for local files: bypass throttle and process every frame
+                # so the AI workers receive the full video content.
+                is_batch = getattr(self.camera_config, 'process_mode', 'live') == 'batch'
+                if not is_batch and not self.frame_grabber.should_capture():
                     time.sleep(0.01)  # Small sleep to prevent busy waiting
                     continue
 
@@ -250,6 +253,10 @@ class CameraProcess:
                     if is_local_file:
                         self.logger.info("Local video file ended or not found. Stopping capture and notifying backend.", extra={"camera_id": self.camera_config.camera_id})
                         
+                        # Wait for AI workers to drain the Redis queues before stopping.
+                        # Batch mode sends many frames instantly; workers need time to classify them.
+                        self._wait_for_queue_drain(frames_processed)
+
                         # Notify backend to disable the camera so it doesn't auto-restart infinitely
                         try:
                             import urllib.request
@@ -298,6 +305,11 @@ class CameraProcess:
                     is_local_file = source_url and not source_url.lower().startswith(('http://', 'https://', 'rtsp://', 'rtmp://'))
                     if is_local_file:
                         self.logger.info("Local video file reached the end. Stopping capture and notifying backend.", extra={"camera_id": self.camera_config.camera_id})
+
+                        # Wait for AI workers to drain the Redis queues before stopping.
+                        # Batch mode sends many frames instantly; workers need time to classify them.
+                        self._wait_for_queue_drain(frames_processed)
+
                         try:
                             import urllib.request
                             import os
@@ -391,7 +403,62 @@ class CameraProcess:
                 time.sleep(sleep_seconds)
         
         self.logger.info(f"Capture loop ended after {frames_processed} frames")
-    
+
+    def _wait_for_queue_drain(self, frames_sent: int) -> None:
+        """
+        Wait for AI worker Redis queues to drain before notifying the backend to stop.
+        
+        In batch mode, all frames are sent to Redis almost instantly. The AI workers
+        need time to pull and classify them. Without this wait, the process exits and
+        the UI resets before any events are produced.
+        
+        Args:
+            frames_sent: Number of frames that were sent to the queues
+        """
+        is_batch = getattr(self.camera_config, 'process_mode', 'live') == 'batch'
+        
+        # How long to wait: batch mode needs more time as many frames were queued at once
+        max_wait = 30.0 if is_batch else 5.0
+        poll_interval = 0.5
+
+        self.logger.info(
+            f"Waiting up to {max_wait}s for AI workers to process {frames_sent} queued frames "
+            f"(mode={getattr(self.camera_config, 'process_mode', 'live')})"
+        )
+
+        try:
+            if self.redis_producer and self.redis_producer.client:
+                queues = [
+                    "vg:frames:weapon",
+                    "vg:frames:fire",
+                    "vg:frames:fall",
+                    "vg:frames:all",
+                ]
+                deadline = time.time() + max_wait
+                while time.time() < deadline:
+                    total_pending = 0
+                    for q in queues:
+                        try:
+                            length = self.redis_producer.client.llen(q)
+                            total_pending += (length or 0)
+                        except Exception:
+                            pass
+                    
+                    if total_pending == 0:
+                        self.logger.info("All AI worker queues are empty — safe to stop.")
+                        break
+                    
+                    self.logger.debug(f"Waiting for queues to drain: {total_pending} frames still pending")
+                    time.sleep(poll_interval)
+                else:
+                    self.logger.warning(f"Queue drain timeout after {max_wait}s — stopping anyway.")
+            else:
+                # No Redis client available, fall back to a simple fixed wait
+                self.logger.info(f"No Redis client — waiting {max_wait}s as fallback drain wait.")
+                time.sleep(max_wait)
+        except Exception as e:
+            self.logger.warning(f"Queue drain wait failed: {e} — stopping immediately.")
+
     def _process_frame(self, frame) -> None:
         """
         Process frame with motion detected.
