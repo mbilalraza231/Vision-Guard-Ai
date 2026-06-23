@@ -212,17 +212,18 @@ async def get_event_evidence(
         )
 
         # Translate local paths to API URLs
-        if snapshot_url and snapshot_url.startswith("/data/visionguard/detections/"):
+        if snapshot_url and not snapshot_url.startswith("http"):
             if os.path.exists(snapshot_url):
-                filename = os.path.basename(snapshot_url)
+                filename = os.path.basename(snapshot_url.replace("\\", "/"))
                 snapshot_url = f"/detections/images/{filename}"
             else:
                 logger.warning(
                     f"Local snapshot file missing from disk: {snapshot_url}")
-                snapshot_url = None
+                filename = os.path.basename(snapshot_url.replace("\\", "/"))
+                snapshot_url = f"/detections/images/{filename}"
 
-        if clip_url and clip_url.startswith("/data/visionguard/clips/"):
-            filename = os.path.basename(clip_url)
+        if clip_url and not clip_url.startswith("http"):
+            filename = os.path.basename(clip_url.replace("\\", "/"))
             clip_url = f"/detections/clips/{filename}"
 
         clip_status = "pending"

@@ -130,13 +130,13 @@ class DatabaseReader:
 
                 # Translate local paths to API URLs
                 snap_url = ev.get("snapshot_url")
-                if snap_url and snap_url.startswith("/data/visionguard/detections/"):
-                    filename = os.path.basename(snap_url)
+                if snap_url and not snap_url.startswith("http"):
+                    filename = os.path.basename(snap_url.replace("\\", "/"))
                     ev["snapshot_url"] = f"/detections/images/{filename}"
 
                 c_url = ev.get("clip_url")
-                if c_url and c_url.startswith("/data/visionguard/clips/"):
-                    filename = os.path.basename(c_url)
+                if c_url and not c_url.startswith("http"):
+                    filename = os.path.basename(c_url.replace("\\", "/"))
                     ev["clip_url"] = f"/detections/clips/{filename}"
 
                 events.append(ev)
@@ -183,13 +183,13 @@ class DatabaseReader:
 
             # Translate local paths to API URLs
             snap_url = ev.get("snapshot_url")
-            if snap_url and snap_url.startswith("/data/visionguard/detections/"):
-                filename = os.path.basename(snap_url)
+            if snap_url and not snap_url.startswith("http"):
+                filename = os.path.basename(snap_url.replace("\\", "/"))
                 ev["snapshot_url"] = f"/detections/images/{filename}"
 
             c_url = ev.get("clip_url")
-            if c_url and c_url.startswith("/data/visionguard/clips/"):
-                filename = os.path.basename(c_url)
+            if c_url and not c_url.startswith("http"):
+                filename = os.path.basename(c_url.replace("\\", "/"))
                 ev["clip_url"] = f"/detections/clips/{filename}"
 
             return ev
