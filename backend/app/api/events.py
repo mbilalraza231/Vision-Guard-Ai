@@ -452,6 +452,8 @@ async def acknowledge_incident(
     )
 
     updated_event = await reader.get_event(event_id)
+    if not updated_event:
+        raise HTTPException(status_code=404, detail=f"Incident {event_id} not found after update")
     return DBEvent(**updated_event)
 
 
@@ -510,6 +512,8 @@ async def resolve_incident(
     )
 
     updated_event = await reader.get_event(event_id)
+    if not updated_event:
+        raise HTTPException(status_code=404, detail=f"Incident {event_id} not found after update")
     return DBEvent(**updated_event)
 
 
@@ -594,6 +598,8 @@ async def public_acknowledge_incident(
     )
 
     updated_event = await reader.get_event(event_id)
+    if not updated_event:
+        raise HTTPException(status_code=404, detail=f"Incident {event_id} not found after update")
     return DBEvent(**updated_event)
 
 
@@ -655,6 +661,8 @@ async def public_resolve_incident(
     )
 
     updated_event = await reader.get_event(event_id)
+    if not updated_event:
+        raise HTTPException(status_code=404, detail=f"Incident {event_id} not found after update")
     return DBEvent(**updated_event)
 
 
