@@ -192,9 +192,11 @@ export function Header({ title, showDateNav = true }: HeaderProps) {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => navigate('/settings')}>
-              {t('header.settingsMenu', 'Settings')}
-            </DropdownMenuItem>
+            {user.role === 'admin' && (
+              <DropdownMenuItem onClick={() => navigate('/settings')}>
+                {t('header.settingsMenu', 'Settings')}
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={() => navigate('/profile')}>
               {t('header.profile', 'Profile')}
             </DropdownMenuItem>

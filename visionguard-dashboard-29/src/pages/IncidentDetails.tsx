@@ -359,19 +359,22 @@ export default function IncidentDetails() {
           </Button>
 
           <div className="flex items-center gap-2">
-            <Button variant="outline" className="gap-2" onClick={handleDownloadEvidence}>
-              <Download className="h-4 w-4" />
-              Download Evidence
-            </Button>
-            <Button variant="outline" className="gap-2" onClick={handleShare}>
-              <Share2 className="h-4 w-4" />
-              Share
-            </Button>
-            {incident.status === 'resolved' && (
+            {profile?.role !== 'viewer' && (
+              <>
+                <Button variant="outline" className="gap-2" onClick={handleDownloadEvidence}>
+                  <Download className="h-4 w-4" />
+                  Download Evidence
+                </Button>
+                <Button variant="outline" className="gap-2" onClick={handleShare}>
+                  <Share2 className="h-4 w-4" />
+                  Share
+                </Button>
+              </>
+            )}
+            {incident.status === 'resolved' && profile?.role !== 'viewer' && (
               <Button
                 className="gap-2"
                 onClick={() => setIsNoteModalOpen(true)}
-                disabled={profile?.role === 'viewer'}
               >
                 <MessageSquare className="h-4 w-4" />
                 Add Follow-up Note
