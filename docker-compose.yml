@@ -192,7 +192,7 @@ services:
   # Event Classification Service
   # ============================================================
   ecs:
-    image: visionguard-ecs:latest
+    image: visionguardai-ecs:latest
     build:
       context: .
       dockerfile: docker/Dockerfile.ecs
@@ -435,7 +435,7 @@ services:
           memory: 1G
 
   worker-fall:
-    image: visionguard-worker-fall:latest
+    image: visionguardai-worker-fall:latest
     build:
       context: .
       dockerfile: docker/Dockerfile.worker

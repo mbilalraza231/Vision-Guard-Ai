@@ -1,13 +1,13 @@
 # ============================================================
 # VisionGuard AI - Clip Recorder Dockerfile
 # ============================================================
-# Uses existing visionguardaiantigravity-ecs as base to avoid
+# Uses existing visionguardai-ecs as base to avoid
 # pulling python:3.11-slim from Docker Hub (already cached locally).
 # ECS image already contains: python 3.11, redis, opencv, numpy.
 # We only need to add cloudinary on top.
 # ============================================================
 
-FROM visionguardaiantigravity-ecs:latest
+FROM visionguardai-ecs:latest
 
 # Switch to root to install additional deps and create dirs
 USER root

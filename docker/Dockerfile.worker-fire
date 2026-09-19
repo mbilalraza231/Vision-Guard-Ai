@@ -1,14 +1,14 @@
 # ============================================================
 # VisionGuard AI - Fire Worker Dockerfile (OpenVINO)
 # ============================================================
-# Uses existing visionguardaiantigravity-worker-fall as base to avoid
+# Uses existing visionguardai-worker-fall as base to avoid
 # pulling python:3.11-slim from Docker Hub (DNS issues on this machine).
 # The base image already has: Python 3.11, supervisor, libgl, onnxruntime,
 # opencv-python-headless, numpy, redis, pydantic.
 # We add only: openvino>=2023.3.0
 # ============================================================
 
-FROM visionguardaiantigravity-worker-fall:latest
+FROM visionguardai-worker-fall:latest
 
 LABEL description="Fire Detection Worker (OpenVINO INT8)"
 LABEL version="2.0.0"
