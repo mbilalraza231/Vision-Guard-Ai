@@ -63,20 +63,17 @@ class AIWorkerMetricsBridge:
         self._last_detection_count = 0
     
     def start(self):
-        # Pre-initialize counters so metrics endpoint immediately serves zero series
+        # Pre-initialize counters and histogram buckets on startup
         try:
             INFERS_TOTAL.labels(model_type=self.model_type, status="completed").inc(0)
             DETECTIONS_TOTAL.labels(model_type=self.model_type, label=self.model_type).inc(0)
-        except Exception:
-            pass
+            INFERENCE_LATENCY.labels(model_type=self.model_type).observe(0.001)
+        except Exception as e:
+            logger.warning(f"Error pre-initializing metrics: {e}")
             
         self._thread = threading.Thread(target=self._run, daemon=True, name="ai-prom-bridge")
         self._thread.start()
         logger.info(f"AI worker Prometheus bridge started for {self.model_type}")
-        try:
-            INFERENCE_LATENCY.labels(model_type=self.model_type).observe(0.001)
-        except Exception:
-            pass
     
     def _get_redis(self):
         if self._client is None:
@@ -111,9 +108,13 @@ class AIWorkerMetricsBridge:
                 current_count = data.get("publish_count", 0)
                 current_detections = data.get("detections", 0)
                 
+                latency_ms = data.get("latency_ms", 0.0)
                 if current_count > self._last_publish_count:
                     diff = current_count - self._last_publish_count
                     INFERS_TOTAL.labels(model_type=self.model_type, status="completed").inc(diff)
+                    if latency_ms > 0:
+                        for _ in range(min(diff, 5)):
+                            INFERENCE_LATENCY.labels(model_type=self.model_type).observe(latency_ms / 1000.0)
                     self._last_publish_count = current_count
                 
                 if current_detections > self._last_detection_count:

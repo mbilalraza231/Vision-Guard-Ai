@@ -119,6 +119,20 @@ def main():
     
     logger.info(f"Starting AI Worker ({model_type})...")
     
+    # Start Prometheus HTTP Metrics Server
+    prom_bridge = None
+    try:
+        from ai_worker.prom_metrics import start_metrics_server, AIWorkerMetricsBridge
+        port_map = {"weapon": 8001, "fire": 8002, "fall": 8003}
+        metrics_port = port_map.get(model_type, 8001)
+        start_metrics_server(metrics_port)
+        redis_host = os.getenv("REDIS_HOST", "redis")
+        redis_port = int(os.getenv("REDIS_PORT", "6379"))
+        prom_bridge = AIWorkerMetricsBridge(model_type, redis_host, redis_port)
+        prom_bridge.start()
+    except Exception as e:
+        logger.warning(f"Could not start Prometheus metrics server: {e}")
+    
     model_path = find_model_path(model_type)
     input_queue = MODEL_QUEUE_MAP.get(model_type, "vg:critical")
     
