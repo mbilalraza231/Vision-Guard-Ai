@@ -45,7 +45,7 @@ export function Header({ title, showDateNav = true }: HeaderProps) {
   const { data: notificationData } = useQuery<{ total: number; events: any[] }>({
     queryKey: ['active-alerts'],
     queryFn: () => apiService.getData('/events?limit=5&status=active'),
-    staleTime: Infinity,
+    refetchInterval: 3000,
   });
 
   // Filter to show only truly active events (exclude resolved/acknowledged)

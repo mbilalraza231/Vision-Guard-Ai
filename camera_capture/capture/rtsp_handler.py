@@ -187,8 +187,13 @@ class RTSPHandler:
             try:
                 ret = self.capture.grab()
                 if not ret:
-                    self.is_connected = False
-                    break
+                    if is_local:
+                        # Loop local test videos continuously for live surveillance stream
+                        self.capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                        continue
+                    else:
+                        self.is_connected = False
+                        break
                 
                 ret, frame = self.capture.retrieve()
                 if ret and frame is not None:
