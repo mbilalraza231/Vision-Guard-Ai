@@ -1,0 +1,38 @@
+groups:
+  - name: visionguard_alerts
+    rules:
+      - alert: CameraStreamStopped
+        expr: time() - vg_camera_last_frame_timestamp_seconds > 60
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Camera stream {{ $labels.camera_id }} stopped receiving frames"
+          description: "No new frames have been ingested from camera {{ $labels.camera_id }} for over 60 seconds."
+
+      - alert: AIWorkerStalled
+        expr: rate(vg_ai_inferences_total[5m]) == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "AI worker {{ $labels.model_type }} is stalled"
+          description: "AI Worker {{ $labels.model_type }} has completed 0 inferences in the last 5 minutes."
+
+      - alert: HighInferenceLatency
+        expr: histogram_quantile(0.95, sum by (le, model_type) (rate(vg_ai_inference_duration_seconds_bucket[5m]))) > 0.5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High P95 inference latency for model {{ $labels.model_type }}"
+          description: "P95 inference latency for {{ $labels.model_type }} exceeded 500ms."
+
+      - alert: QueueBacklogHigh
+        expr: sum(vg_ai_queue_depth) > 50
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High frame task queue backlog in Redis"
+          description: "Redis queue depth exceeded 50 frames for 3 consecutive minutes."

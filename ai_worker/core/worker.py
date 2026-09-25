@@ -414,6 +414,11 @@ class AIWorker:
                     result = {"confidence": 0.0, "bbox": []}
 
                 result["inference_latency_ms"] = inference_latency_ms
+                try:
+                    from ai_worker.prom_metrics import INFERENCE_LATENCY
+                    INFERENCE_LATENCY.labels(model_type=self.config.model_type).observe(inference_latency_ms / 1000.0)
+                except Exception:
+                    pass
 
                 # Save JPEGs at a threshold aligned with ECS (often ~0.30), not only at the
                 # worker's high inference gate — otherwise events accumulate from weaker frames
