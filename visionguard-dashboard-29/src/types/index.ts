@@ -129,6 +129,11 @@ export interface SystemMetrics {
   incidentsStored: number;
   isOperational: boolean;
   lastUpdated: string;
+  components?: {
+    ecs?: { status: string; details?: any };
+    redis?: { status: string; details?: any };
+    cameras?: { status: string; details?: any };
+  };
 }
 
 export interface DashboardStats {

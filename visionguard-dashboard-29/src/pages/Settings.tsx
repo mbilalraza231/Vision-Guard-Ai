@@ -731,7 +731,18 @@ export default function Settings() {
                           {metrics?.workers?.map((w) => (
                             <div key={w.name + w.instance} className="rounded-xl border border-white/5 bg-secondary/20 p-4">
                               <div className="flex items-center justify-between mb-3">
-                                <span className="font-bold capitalize">{w.name.replace('_', ' ')}</span>
+                                <span className="font-bold">
+  {w.name === 'backend' ? 'Backend Supervisor' :
+   w.name === 'alert-worker' ? 'Alert Dispatcher' :
+   w.name === 'camera' ? 'Camera Capture Pipeline' :
+   w.name === 'ecs' ? 'ECS Classification Engine' :
+   w.name === 'redis' ? 'Redis Message Bus' :
+   w.name === 'worker-weapon' ? 'Weapon Detection Worker' :
+   w.name === 'worker-fire' ? 'Fire Detection Worker' :
+   w.name === 'worker-fall' ? 'Fall Detection Worker' :
+   w.name === 'clip-recorder' ? 'Clip Recorder & Cloud Storage' :
+   w.name.replace(/[-_]/g, ' ').toUpperCase()}
+</span>
                                 <div className={cn(
                                   "flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase",
                                   w.status === 'online' ? "bg-status-online/10 text-status-online" : "bg-severity-critical/10 text-severity-critical"

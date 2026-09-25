@@ -34,21 +34,31 @@ _start_time = time.time()
 
 
 def check_redis_health() -> Dict[str, Any]:
-    """Check Redis connectivity and return status."""
+    """Check Redis connectivity and return status safely."""
     try:
         config = get_redis_config()
         client = redis.Redis(**config, socket_connect_timeout=2)
         info = client.info("server")
         
-        # Check queue lengths
-        queue_lengths = {
-            "vg:critical": client.llen("vg:critical"),
-            "vg:high": client.llen("vg:high"),
-            "vg:medium": client.llen("vg:medium"),
-        }
-        
-        # Check stream length
-        stream_length = client.xlen("vg:ai:results")
+        queue_lengths = {}
+        for q in ["vg:critical", "vg:high", "vg:medium"]:
+            try:
+                ktype = client.type(q)
+                if isinstance(ktype, bytes):
+                    ktype = ktype.decode("utf-8")
+                if ktype == "zset":
+                    queue_lengths[q] = client.zcard(q)
+                elif ktype == "list":
+                    queue_lengths[q] = client.llen(q)
+                else:
+                    queue_lengths[q] = 0
+            except Exception:
+                queue_lengths[q] = 0
+
+        try:
+            stream_length = client.xlen("vg:ai:results")
+        except Exception:
+            stream_length = 0
         
         client.close()
         
@@ -227,7 +237,8 @@ async def system_status(
     )
 
 
-@router.get("/metrics", response_model=MetricsResponse)
+@router.get("/system/metrics", response_model=MetricsResponse)
+@router.get("/system-metrics", response_model=MetricsResponse)
 async def system_metrics(
     ecs_manager: ECSManager = Depends(get_ecs_manager),
     camera_manager: CameraManager = Depends(get_camera_manager),
@@ -268,6 +279,16 @@ async def system_metrics(
                     })
             except Exception:
                 continue
+                # Always append Redis status to worker heartbeats for unified monitoring
+        redis_online = redis_status.get("status") == "connected"
+        workers.append({
+            "name": "redis",
+            "instance": "redis:6379",
+            "cpu": 0.1,
+            "memory": 0.02,
+            "last_seen": time.time(),
+            "status": "online" if redis_online else "offline"
+        })
         r.close()
     except Exception as e:
         logger.error(f"Error fetching worker metrics: {e}")

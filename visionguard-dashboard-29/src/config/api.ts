@@ -2,11 +2,11 @@
 // Backend URL: FastAPI at localhost:8000
 
 export const API_CONFIG = {
-  // Base URL for the REST API — direct to FastAPI backend
-  baseUrl: 'http://localhost:8000',
+  // Base URL for the REST API - direct to FastAPI backend
+  baseUrl: import.meta.env.VITE_API_URL || 'http://localhost:8000',
 
   // WebSocket URL derived from the same backend origin
-  wsUrl: 'ws://localhost:8000',
+  wsUrl: import.meta.env.VITE_WS_URL || 'ws://localhost:8000',
 
   // Request timeout in milliseconds
   timeout: 30000,
@@ -18,7 +18,7 @@ export const API_CONFIG = {
   },
 };
 
-// API Endpoints — mapped to real FastAPI backend
+// API Endpoints - mapped to real FastAPI backend
 export const API_ENDPOINTS = {
   // Health
   health: '/health',
@@ -39,6 +39,8 @@ export const API_ENDPOINTS = {
     notes: (id: string) => `/events/${id}/notes`,
     acknowledge: (id: string) => `/events/${id}/acknowledge`,
     resolve: (id: string) => `/events/${id}/resolve`,
+    update: (id: string) => `/events/${id}`,
+    export: '/events',
   },
 
   // Cameras endpoints
@@ -56,7 +58,6 @@ export const API_ENDPOINTS = {
     stop: '/ecs/stop',
     status: '/ecs/status',
   },
-
 
   alerts: {
     list: '/alerts',
@@ -84,7 +85,7 @@ export const API_ENDPOINTS = {
   },
 };
 
-// Build full API URL — no version prefix
+// Build full API URL - no version prefix
 export function buildApiUrl(endpoint: string): string {
   return `${API_CONFIG.baseUrl}${endpoint}`;
 }

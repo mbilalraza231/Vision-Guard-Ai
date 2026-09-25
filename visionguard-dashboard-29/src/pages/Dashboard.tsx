@@ -153,6 +153,7 @@ export default function Dashboard() {
     storageTotal: systemStatus?.storage_total_mb ?? 0,
     incidentsStored: stats?.total_events ?? 0,
     isOperational: systemStatus?.status === 'healthy',
+    components: systemStatus?.components,
     lastUpdated: systemStatus
       ? `Uptime: ${Math.floor((systemStatus.uptime_seconds ?? 0) / 60)}m`
       : '-',
