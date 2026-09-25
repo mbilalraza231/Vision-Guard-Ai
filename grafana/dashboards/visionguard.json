@@ -124,6 +124,7 @@
         "defaults": {
           "unit": "s",
           "min": 0,
+          "max": 1,
           "custom": {
             "drawStyle": "line",
             "lineInterpolation": "smooth",
@@ -146,11 +147,22 @@
       },
       "targets": [
         {
-          "expr": "vg_ai_queue_depth",
+          "expr": "sum by (queue_name) (vg_ai_queue_depth) or vector(0)",
           "legendFormat": "{{queue_name}}",
           "refId": "A"
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 15
+          }
+        }
+      }
     }
   ],
   "schemaVersion": 38,
