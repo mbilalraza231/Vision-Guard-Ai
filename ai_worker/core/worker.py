@@ -444,7 +444,26 @@ class AIWorker:
                     model_type=self.config.model_type
                 )
 
+                try:
+                    from ai_worker.prom_metrics import INFERS_TOTAL, INFERENCE_LATENCY
+                    INFERS_TOTAL.labels(model_type=self.config.model_type, status="completed").inc()
+                    if inference_latency_ms > 0:
+                        INFERENCE_LATENCY.labels(model_type=self.config.model_type).observe(inference_latency_ms / 1000.0)
+                except Exception:
+                    pass
+
                 if result.get("confidence", 0) >= self.config.confidence_threshold:
+                    try:
+                        if hasattr(self.result_publisher, 'client') and self.result_publisher.client:
+                            self.result_publisher.client.incr(f"vg:metrics:worker:{self.config.model_type}:detections")
+                    except Exception:
+                        pass
+                    try:
+                        from ai_worker.prom_metrics import DETECTIONS_TOTAL, LAST_DETECTION_TIMESTAMP
+                        DETECTIONS_TOTAL.labels(model_type=self.config.model_type, label=self.config.model_type).inc()
+                        LAST_DETECTION_TIMESTAMP.labels(model_type=self.config.model_type).set_to_current_time()
+                    except Exception:
+                        pass
                     base_logger.info(
                         f"DETECTION {task.frame_id} confidence={result.get('confidence', 0):.3f}",
                         extra={

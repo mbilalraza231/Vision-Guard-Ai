@@ -110,22 +110,10 @@ class AIWorkerMetricsBridge:
     def _update_from_redis(self, r):
         """Read worker stats from Redis and update Prometheus."""
         try:
-            stats_key = f"vg:metrics:worker:{self.model_type}:stats"
-            val = r.get(stats_key)
+            det_key = f"vg:metrics:worker:{self.model_type}:detections"
+            val = r.get(det_key)
             if val:
-                data = json.loads(val)
-                current_count = data.get("publish_count", 0)
-                current_detections = data.get("detections", 0)
-                
-                latency_ms = data.get("latency_ms", 0.0)
-                if current_count > self._last_publish_count:
-                    diff = current_count - self._last_publish_count
-                    INFERS_TOTAL.labels(model_type=self.model_type, status="completed").inc(diff)
-                    if latency_ms > 0:
-                        for _ in range(min(diff, 5)):
-                            INFERENCE_LATENCY.labels(model_type=self.model_type).observe(latency_ms / 1000.0)
-                    self._last_publish_count = current_count
-                
+                current_detections = int(val)
                 if current_detections > self._last_detection_count:
                     det_diff = current_detections - self._last_detection_count
                     DETECTIONS_TOTAL.labels(model_type=self.model_type, label=self.model_type).inc(det_diff)
@@ -133,7 +121,6 @@ class AIWorkerMetricsBridge:
                     self._last_detection_count = current_detections
         except Exception as e:
             logger.warning(f"Error in metrics bridge update: {e}")
-
     def _update_queue_depths(self, r):
         """Monitor input queue depths."""
         try:
