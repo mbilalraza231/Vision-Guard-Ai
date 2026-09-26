@@ -1,4 +1,4 @@
-﻿"""
+"""
 VisionGuard AI - Camera Capture Entry Point
 
 Standalone entry point for Docker container.
@@ -250,7 +250,7 @@ def main():
 
     # Start Prometheus HTTP metrics server (port 8004/metrics)
     try:
-        from camera_capture.prom_metrics import start_metrics_server
+        from camera_capture.prom_metrics import start_metrics_server, PrometheusMetricsBridge as CameraMetricsBridge
         start_metrics_server(8004)
         prom_bridge = CameraMetricsBridge(os.getenv("REDIS_HOST", "redis"), int(os.getenv("REDIS_PORT", "6379")))
         prom_bridge.start()

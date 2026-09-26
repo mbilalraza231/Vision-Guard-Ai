@@ -6,6 +6,7 @@ Runs in dedicated OS process for isolation and stability.
 """
 
 import time
+import json
 import signal
 import logging
 from multiprocessing import Process, Event
@@ -355,6 +356,11 @@ class CameraProcess:
                             # Key format: vg:metrics:camera:{camera_id}:fps
                             fps_key = f"vg:metrics:camera:{self.camera_config.camera_id}:fps"
                             self.redis_producer.client.setex(fps_key, 15, str(actual_fps))
+
+                            # Key format: vg:metrics:camera:{camera_id}:frames
+                            frames_key = f"vg:metrics:camera:{self.camera_config.camera_id}:frames"
+                            frames_data = json.dumps({"camera_id": self.camera_config.camera_id, "frames_processed": frames_processed, "timestamp": now})
+                            self.redis_producer.client.setex(frames_key, 15, frames_data)
                         except Exception:
                             pass
                             
