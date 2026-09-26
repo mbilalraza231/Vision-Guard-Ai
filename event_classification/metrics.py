@@ -48,15 +48,5 @@ def start_metrics_server(port: int = 8005):
         logger.info(f"Prometheus metrics server started for ECS on port {port}")
         
         # Start continuous active latency observation thread
-        def _sim_loop():
-            import random, time
-            while True:
-                sample_lat = random.uniform(0.120, 0.280)
-                if random.random() < 0.15:
-                    sample_lat = random.uniform(0.350, 0.520)
-                END_TO_END_LATENCY.observe(sample_lat)
-                time.sleep(2.0)
-        import threading
-        threading.Thread(target=_sim_loop, daemon=True, name="ecs-lat-sim").start()
     except Exception as e:
         logger.error(f"Failed to start ECS Prometheus server on port {port}: {e}")

@@ -92,10 +92,6 @@ class AIWorkerMetricsBridge:
         while not self._stop.is_set():
             try:
                 # Observe live active inference latency samples (50ms - 150ms with P95 spikes up to 300ms)
-                sample_lat = random.uniform(0.045, 0.120)
-                if random.random() < 0.15:
-                    sample_lat = random.uniform(0.220, 0.350)
-                INFERENCE_LATENCY.labels(model_type=self.model_type).observe(sample_lat)
             except Exception:
                 pass
             try:
