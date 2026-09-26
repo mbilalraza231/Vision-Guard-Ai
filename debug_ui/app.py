@@ -85,28 +85,56 @@ st.markdown("""
 
 @st.cache_resource
 def get_redis():
-    """Create Redis connection (cached)."""
-    try:
-        r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT,
-                        decode_responses=True,
-                        socket_connect_timeout=3, socket_timeout=5)
-        r.ping()
-        return r
-    except Exception:
-        return None
+    """Create Redis connection with automatic IPv4/Docker fallback."""
+    candidates = [
+        (REDIS_HOST, REDIS_PORT),
+        ("127.0.0.1", 6380),
+        ("127.0.0.1", 6379),
+        ("localhost", 6380),
+        ("localhost", 6379),
+        ("redis", 6379),
+    ]
+    seen = set()
+    for h, p in candidates:
+        if (h, p) in seen:
+            continue
+        seen.add((h, p))
+        try:
+            r = redis.Redis(host=h, port=p, decode_responses=True, socket_connect_timeout=2, socket_timeout=3)
+            r.ping()
+            st.session_state["redis_endpoint"] = f"{h}:{p}"
+            return r
+        except Exception:
+            continue
+    return None
 
 
 def get_db_connection():
-    """Get PostgreSQL connection."""
-    try:
-        import psycopg2
-        return psycopg2.connect(host=PG_HOST, port=PG_PORT, user=PG_USER,
-                                password=os.getenv(
-                                    "VG_POSTGRES_PASSWORD", "postgres"),
-                                dbname=PG_DB, connect_timeout=3)
-    except Exception as e:
-        st.session_state["db_error"] = str(e)
-        return None
+    """Get PostgreSQL connection with IPv4/Docker fallback."""
+    import psycopg2
+    candidates = [
+        (PG_HOST, PG_PORT),
+        ("127.0.0.1", 5432),
+        ("localhost", 5432),
+        ("postgres", 5432),
+    ]
+    seen = set()
+    for h, p in candidates:
+        if (h, p) in seen:
+            continue
+        seen.add((h, p))
+        try:
+            conn = psycopg2.connect(
+                host=h, port=p, user=PG_USER,
+                password=os.getenv("VG_POSTGRES_PASSWORD", "postgres"),
+                dbname=PG_DB, connect_timeout=2
+            )
+            st.session_state["db_endpoint"] = f"{h}:{p}"
+            return conn
+        except Exception as e:
+            st.session_state["db_error"] = str(e)
+            continue
+    return None
 
 
 def get_system_settings(r):
