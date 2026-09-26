@@ -90,10 +90,7 @@ class AIWorkerMetricsBridge:
     def _run(self):
         import random
         while not self._stop.is_set():
-            try:
-                # Observe live active inference latency samples (50ms - 150ms with P95 spikes up to 300ms)
-            except Exception:
-                pass
+
             try:
                 r = self._get_redis()
                 if r:
