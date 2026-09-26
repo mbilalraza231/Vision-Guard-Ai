@@ -46,6 +46,30 @@ def start_metrics_server(port: int = 8005):
     try:
         start_http_server(port)
         logger.info(f"Prometheus metrics server started for ECS on port {port}")
+
+        import threading, os, time, redis
+        def _ecs_bridge_loop():
+            r = None
+            while True:
+                try:
+                    if r is None:
+                        r = redis.Redis(
+                            host=os.getenv("REDIS_HOST", "redis"),
+                            port=int(os.getenv("REDIS_PORT", "6379")),
+                            decode_responses=True,
+                            socket_timeout=2
+                        )
+                        r.ping()
+                    val = r.get("vg:metrics:ecs:e2e_latency")
+                    if val:
+                        lat_s = float(val)
+                        if 0 < lat_s < 60.0:
+                            END_TO_END_LATENCY.observe(lat_s)
+                except Exception:
+                    r = None
+                time.sleep(1.0)
+
+        threading.Thread(target=_ecs_bridge_loop, daemon=True, name="ecs-metrics-bridge").start()
         
         # Start continuous active latency observation thread
     except Exception as e:

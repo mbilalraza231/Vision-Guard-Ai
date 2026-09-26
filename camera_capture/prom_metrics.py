@@ -125,6 +125,14 @@ class PrometheusMetricsBridge:
                             FRAMES_TOTAL.labels(camera_id=cam_id, status="ingested").inc(diff)
                             LAST_FRAME_TIMESTAMP.labels(camera_id=cam_id).set_to_current_time()
                             self._last_frames[cam_id] = current
+                        elif current < last:
+                            FRAMES_TOTAL.labels(camera_id=cam_id, status="ingested").inc(current)
+                            LAST_FRAME_TIMESTAMP.labels(camera_id=cam_id).set_to_current_time()
+                            self._last_frames[cam_id] = current
+                        elif current < last:
+                            FRAMES_TOTAL.labels(camera_id=cam_id, status="ingested").inc(current)
+                            LAST_FRAME_TIMESTAMP.labels(camera_id=cam_id).set_to_current_time()
+                            self._last_frames[cam_id] = current
                 except Exception:
                     pass
         except Exception:

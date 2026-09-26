@@ -427,11 +427,9 @@ class ECSService:
                     should_classify = False
 
                     try:
-                        from event_classification.metrics import END_TO_END_LATENCY, REDIS_READS_TOTAL
-                        REDIS_READS_TOTAL.labels(status='success').inc()
                         e2e_sec = time.time() - msg.timestamp
-                        if 0 < e2e_sec < 60.0:
-                            END_TO_END_LATENCY.observe(e2e_sec)
+                        if 0 < e2e_sec < 60.0 and self._clip_redis:
+                            self._clip_redis.setex("vg:metrics:ecs:e2e_latency", 10, str(round(e2e_sec, 3)))
                     except Exception:
                         pass
 
