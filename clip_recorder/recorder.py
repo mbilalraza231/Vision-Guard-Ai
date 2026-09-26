@@ -855,7 +855,7 @@ class ClipRecorder:
 
             # Compute effective framerate so the output video duration still matches real-world time as best as possible
             # But the primary driver for loop exit was reaching total_frames
-            effective_fps = max(1.0, frames_written / max(0.1, actual_duration))
+            effective_fps = float(round(max(1.0, min(60.0, float(target_fps or self.config.camera_fps or 15)))))
 
             # Initialize VideoWriter with the effective FPS
             # Use avc1 (H.264) directly — mp4v is not reliably supported in Linux containers
