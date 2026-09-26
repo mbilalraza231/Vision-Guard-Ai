@@ -124,7 +124,6 @@
         "defaults": {
           "unit": "s",
           "min": 0,
-          "max": 1,
           "custom": {
             "drawStyle": "line",
             "lineInterpolation": "smooth",
