@@ -1,4 +1,4 @@
-﻿"""
+"""
 VisionGuard AI - Clip Recorder Entry Point
 
 Standalone service that subscribes to the vg:events:finalized Redis stream
@@ -78,6 +78,13 @@ class MetricsReporter:
                 }))
             except Exception as e:
                 logging.getLogger("clip_recorder.metrics").debug(f"Metrics error: {e}")
+            
+            try:
+                import gc, ctypes
+                gc.collect()
+                ctypes.CDLL("libc.so.6").malloc_trim(0)
+            except Exception:
+                pass
             
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=5)

@@ -160,6 +160,17 @@ class ClipRecorder:
                     logger.warning(f"Failed to grab frame from {camera_source}, reconnecting...")
                     cap.release()
                     cap = None
+                    if camera_source in self.frame_buffers:
+                        with self.buffer_locks[camera_source]:
+                            self.frame_buffers[camera_source].clear()
+                    import gc
+                    gc.collect()
+                    try:
+                        import ctypes
+                        ctypes.CDLL("libc.so.6").malloc_trim(0)
+                    except Exception:
+                        pass
+                    time.sleep(2.0)
                     continue
                 
                 # Only retrieve and store at the target FPS
@@ -905,10 +916,19 @@ class ClipRecorder:
             logger.error(f"Error in direct clip recording: {e}", exc_info=True)
             return None, ClipError.INTERNAL
         finally:
+            if 'captured_frames' in locals() and captured_frames:
+                captured_frames.clear()
             if writer:
                 writer.release()
             if cap:
                 cap.release()
+            import gc
+            gc.collect()
+            try:
+                import ctypes
+                ctypes.CDLL("libc.so.6").malloc_trim(0)
+            except Exception:
+                pass
 
     async def _event_exists(self, event_id: str) -> bool:
         """Check if an event exists in the events table."""
