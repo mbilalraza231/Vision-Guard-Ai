@@ -206,6 +206,8 @@ services:
       - vg-logs:/var/log/visionguard
       - vg-frames:/shared-frames
       - ./camera_capture:/app/camera_capture:ro
+      - ./event_classification:/app/event_classification:rw
+      - ./ai_worker:/app/ai_worker:rw
     environment:
       - ECS_REDIS_HOST=redis
       - ECS_REDIS_PORT=6379
@@ -356,6 +358,7 @@ services:
       - vg-frames:/shared-frames
       - ./preprocessing:/app/preprocessing:rw
       - ./camera_capture:/app/camera_capture:ro
+      - ./ai_worker:/app/ai_worker:rw
     tmpfs:
       - /tmp:size=100M
     environment:
@@ -401,6 +404,7 @@ services:
       - vg-frames:/shared-frames
       - ./preprocessing:/app/preprocessing:rw
       - ./camera_capture:/app/camera_capture:ro
+      - ./ai_worker:/app/ai_worker:rw
     tmpfs:
       - /tmp:size=100M
     environment:
@@ -450,6 +454,7 @@ services:
       - vg-frames:/shared-frames
       - ./preprocessing:/app/preprocessing:rw
       - ./camera_capture:/app/camera_capture:ro
+      - ./ai_worker:/app/ai_worker:rw
     tmpfs:
       - /tmp:size=100M
     environment:

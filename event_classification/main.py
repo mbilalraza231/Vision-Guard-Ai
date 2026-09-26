@@ -29,6 +29,13 @@ def main():
     """Main entry point for ECS."""
     logger.info("Starting Event Classification Service (SINGLETON)...")
     
+    # Start Prometheus HTTP Metrics Server
+    try:
+        from event_classification.metrics import start_metrics_server
+        start_metrics_server(8005)
+    except Exception as e:
+        logger.warning(f"Could not start ECS metrics server: {e}")
+    
     # Load config from environment
     config_kwargs = {
         "redis_host": os.getenv("ECS_REDIS_HOST", "localhost"),
