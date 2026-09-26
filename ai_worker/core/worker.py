@@ -438,6 +438,12 @@ class AIWorker:
                     if detection_image_path:
                         result["detection_image"] = detection_image_path
 
+                try:
+                    if hasattr(self.result_publisher, 'client') and self.result_publisher.client:
+                        self.result_publisher.client.setex(f"vg:metrics:worker:{self.config.model_type}:latency", 10, str(round(inference_latency_ms, 2)))
+                except Exception:
+                    pass
+
                 self.result_publisher.publish(
                     task=task,
                     result=result,

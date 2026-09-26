@@ -426,6 +426,15 @@ class ECSService:
                     # Weapon short-circuits correlation window
                     should_classify = False
 
+                    try:
+                        from event_classification.metrics import END_TO_END_LATENCY, REDIS_READS_TOTAL
+                        REDIS_READS_TOTAL.labels(status='success').inc()
+                        e2e_sec = time.time() - msg.timestamp
+                        if 0 < e2e_sec < 60.0:
+                            END_TO_END_LATENCY.observe(e2e_sec)
+                    except Exception:
+                        pass
+
                     if self.rule_engine.should_classify_immediately(frame_state):
                         should_classify = True
                         self.logger.debug(

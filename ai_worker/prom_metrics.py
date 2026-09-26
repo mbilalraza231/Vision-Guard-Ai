@@ -104,6 +104,16 @@ class AIWorkerMetricsBridge:
         """Read worker stats from Redis and update Prometheus."""
         try:
             det_key = f"vg:metrics:worker:{self.model_type}:detections"
+            lat_key = f"vg:metrics:worker:{self.model_type}:latency"
+            lat_val = r.get(lat_key)
+            if lat_val:
+                try:
+                    lat_ms = float(lat_val)
+                    if lat_ms > 0:
+                        INFERENCE_LATENCY.labels(model_type=self.model_type).observe(lat_ms / 1000.0)
+                        INFERS_TOTAL.labels(model_type=self.model_type, status="completed").inc()
+                except Exception:
+                    pass
             val = r.get(det_key)
             if val:
                 current_detections = int(val)
