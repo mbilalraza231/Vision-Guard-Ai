@@ -57,7 +57,7 @@
       },
       "targets": [
         {
-          "expr": "rate(vg_camera_frames_total{status=\"ingested\"}[1m])",
+          "expr": "rate(vg_camera_frames_total{status=\"ingested\"}[1m]) or vector(0)",
           "legendFormat": "{{camera_id}}",
           "refId": "A"
         }
@@ -75,7 +75,7 @@
       },
       "targets": [
         {
-          "expr": "sum(vg_camera_active_streams{job=\"vg-camera\"})",
+          "expr": "sum(vg_camera_active_streams{job=\"vg-camera\"}) or vector(0)",
           "refId": "A"
         }
       ]

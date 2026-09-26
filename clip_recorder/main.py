@@ -1,4 +1,4 @@
-"""
+﻿"""
 VisionGuard AI - Clip Recorder Entry Point
 
 Standalone service that subscribes to the vg:events:finalized Redis stream
@@ -129,6 +129,14 @@ async def main() -> None:
             await asyncio.sleep(5)
 
     assert redis_client is not None
+    # --- Start Prometheus HTTP metrics server (port 8007/metrics) ---
+    try:
+        from clip_recorder.metrics import start_metrics_server as start_clip_metrics
+        start_clip_metrics(8007)
+        log.info("Clip Recorder Prometheus metrics server started on port 8007")
+    except Exception as e:
+        log.warning(f"Could not start Prometheus metrics server: {e}")
+
     # --- Start metrics reporter ---
     reporter = MetricsReporter(redis_client, "clip-recorder")
     await reporter.start()
@@ -159,7 +167,7 @@ async def main() -> None:
                 recorder.start_dashcam_buffers(camera_sources)
                 log.info(f"  Pre-started background buffers for {len(camera_sources)} camera(s)")
             else:
-                log.warning("No camera sources found in Redis registry (vg:camera:sources) — buffers will start on first event")
+                log.warning("No camera sources found in Redis registry (vg:camera:sources) â€” buffers will start on first event")
         except Exception as e:
             log.warning(f"Failed to auto-start dashcam buffers: {e}")
 
@@ -295,3 +303,4 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         pass
+

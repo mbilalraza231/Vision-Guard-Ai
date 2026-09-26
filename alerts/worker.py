@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import hashlib
 import json
 import logging
@@ -108,23 +108,23 @@ class AlertWorker:
         public_url = f"{dashboard_url}/public-incident/{event_id}?token={secure_token}&from=whatsapp"
 
         return (
-            f"🚨 {severity} ALERT: {etype} 🚨\n"
+            f"ðŸš¨ {severity} ALERT: {etype} ðŸš¨\n"
             f"Camera: {cam_id}\n"
             f"Time: {ts_str}\n"
             f"Confidence: {float(event.get('confidence', 0))*100:.1f}%\n"
-            f"📸 Snapshot: {snap_url}\n"
-            f"🎬 Clip: {video_url}\n\n"
-            f"✅ [ Acknowledge ]:\n"
-            f"👉 {public_url}&action=acknowledge\n\n"
-            f"🔍 [ View Details ]:\n"
-            f"👉 {public_url}"
+            f"ðŸ“¸ Snapshot: {snap_url}\n"
+            f"ðŸŽ¬ Clip: {video_url}\n\n"
+            f"âœ… [ Acknowledge ]:\n"
+            f"ðŸ‘‰ {public_url}&action=acknowledge\n\n"
+            f"ðŸ” [ View Details ]:\n"
+            f"ðŸ‘‰ {public_url}"
         )
 
     def get_predictable_video_url(self, event_id: str, event_type: str) -> str:
         """Construct the predictable Cloudinary Video URL."""
         return f"https://res.cloudinary.com/{self.config.cloudinary_cloud_name}/video/upload/visionguard/clips/{event_type}/clip_{event_id}.mp4"
 
-    # Note: No media_url polling needed — we embed URLs directly in the message text.
+    # Note: No media_url polling needed â€” we embed URLs directly in the message text.
 
     async def process_event(self, event: Dict[str, Any]):
         """Evaluate event and dispatch notifications to matched contacts."""
@@ -197,7 +197,7 @@ class AlertWorker:
             if event_rank < rank.get(min_sev, 0):
                 continue
 
-            # Send WhatsApp — plain text with URLs embedded in body (no MediaUrl attachment).
+            # Send WhatsApp â€” plain text with URLs embedded in body (no MediaUrl attachment).
             # This avoids the race condition where Twilio tries to download the Cloudinary
             # image before the clip recorder has finished uploading it (error 63019).
             # Send WhatsApp (Push Notification toggle)
@@ -217,7 +217,7 @@ class AlertWorker:
             # Send Premium Email
             if email_enabled and contact.get('email') and contact.get('email_alert'):
                 color = "#ff4b2b" if severity == "critical" else "#ffa502" if severity == "high" else "#2ed573"
-                subject = f"⚠️ VisionGuard: {severity.upper()} {event_type.replace('_', ' ').title()}"
+                subject = f"âš ï¸ VisionGuard: {severity.upper()} {event_type.replace('_', ' ').title()}"
                 dashboard_url = os.getenv(
                     "FRONTEND_URL", "http://localhost:8080").rstrip("/")
                 contact_name = contact.get('name', 'Alert Contact')
@@ -264,9 +264,9 @@ class AlertWorker:
                     </div>
 
                     <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 24px;">
-                        <a href="{public_url}?action=acknowledge" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 16px 32px; text-decoration: none; border-radius: 10px; font-weight: 700; display: block; text-align: center; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); transition: transform 0.2s, box-shadow 0.2s;">✅ Acknowledge Alert</a>
-                        <a href="{public_url}" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; padding: 16px 32px; text-decoration: none; border-radius: 10px; font-weight: 700; display: block; text-align: center; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); transition: transform 0.2s, box-shadow 0.2s;">🔍 View Full Details</a>
-                        <a href="{video_url}" style="background-color: transparent; color: #94a3b8; padding: 16px 32px; text-decoration: none; border-radius: 10px; font-weight: 600; border: 2px solid #334155; display: block; text-align: center; transition: all 0.2s;">▶ Watch Video Clip</a>
+                        <a href="{public_url}?action=acknowledge" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 16px 32px; text-decoration: none; border-radius: 10px; font-weight: 700; display: block; text-align: center; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); transition: transform 0.2s, box-shadow 0.2s;">âœ… Acknowledge Alert</a>
+                        <a href="{public_url}" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; padding: 16px 32px; text-decoration: none; border-radius: 10px; font-weight: 700; display: block; text-align: center; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); transition: transform 0.2s, box-shadow 0.2s;">ðŸ” View Full Details</a>
+                        <a href="{video_url}" style="background-color: transparent; color: #94a3b8; padding: 16px 32px; text-decoration: none; border-radius: 10px; font-weight: 600; border: 2px solid #334155; display: block; text-align: center; transition: all 0.2s;">â–¶ Watch Video Clip</a>
                     </div>
 
                     <div style="margin-top: 40px; text-align: center; border-top: 1px solid #334155; padding-top: 24px;">
@@ -342,7 +342,7 @@ class AlertWorker:
 
         When the alert-worker was stopped, events may have accumulated in the
         consumer group as unACK'd pending messages.  We intentionally do NOT
-        re-send alerts for those old events — the operator disabled alerts
+        re-send alerts for those old events â€” the operator disabled alerts
         on purpose.  We simply ACK them so the pending list stays clean.
         """
         try:
@@ -400,7 +400,7 @@ class AlertWorker:
             await self.redis.xgroup_create(self.stream_key, self.group_name, id="$", mkstream=True)
         except Exception as e:
             if "BUSYGROUP" in str(e):
-                pass  # Group already exists — that's fine
+                pass  # Group already exists â€” that's fine
             else:
                 logger.warning(
                     f"Consumer group not available, falling back to plain XREAD: {e}")
@@ -454,6 +454,14 @@ async def main():
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
     )
 
+    # Start Prometheus HTTP metrics server (port 8006/metrics)
+    try:
+        from prometheus_client import start_http_server
+        start_http_server(8006)
+        logging.getLogger(__name__).info("Alert Worker Prometheus metrics server started on port 8006")
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"Could not start Prometheus metrics server: {e}")
+
     config = AlertConfig()
     worker = AlertWorker(config)
 
@@ -464,3 +472,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+

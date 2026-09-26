@@ -1,4 +1,4 @@
-"""
+﻿"""
 VisionGuard AI - Camera Capture Entry Point
 
 Standalone entry point for Docker container.
@@ -248,6 +248,16 @@ def main():
     manager = None
     reporter = None
 
+    # Start Prometheus HTTP metrics server (port 8004/metrics)
+    try:
+        from camera_capture.prom_metrics import start_metrics_server
+        start_metrics_server(8004)
+        prom_bridge = CameraMetricsBridge(os.getenv("REDIS_HOST", "redis"), int(os.getenv("REDIS_PORT", "6379")))
+        prom_bridge.start()
+        logger.info("Camera Prometheus metrics server started on port 8004")
+    except Exception as e:
+        logger.warning(f"Could not start Prometheus metrics server: {e}")
+
     # Start metrics reporter
     try:
         r_host = os.getenv("REDIS_HOST", "localhost")
@@ -263,8 +273,8 @@ def main():
     reload_event = threading.Event()
 
     # Subscribe to BOTH channels:
-    #   'vg:config:cameras'  — fired by backend on start/stop/register/delete (instant, replaces file-poll)
-    #   'vg:settings:updates' — fired by dashboard Settings panel for FPS/threshold changes
+    #   'vg:config:cameras'  â€” fired by backend on start/stop/register/delete (instant, replaces file-poll)
+    #   'vg:settings:updates' â€” fired by dashboard Settings panel for FPS/threshold changes
     try:
         r_client_pubsub = redis.Redis(host=os.getenv(
             "REDIS_HOST", "localhost"), port=int(os.getenv("REDIS_PORT", "6379")))
@@ -316,7 +326,7 @@ def main():
             logger.info(f"Config reload triggered via {source}. Re-querying backend API...")
 
             try:
-                # Always load from the API (PostgreSQL) — never from the file
+                # Always load from the API (PostgreSQL) â€” never from the file
                 new_cameras, new_global_config = load_cameras_from_api(
                     backend_host, backend_port, config_path)
 
@@ -472,3 +482,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
