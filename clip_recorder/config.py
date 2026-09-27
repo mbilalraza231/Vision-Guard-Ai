@@ -21,8 +21,10 @@ class ClipConfig:
     """Configuration for the clip recorder service."""
 
     # Redis
-    redis_host: str = field(default_factory=lambda: os.getenv("REDIS_HOST", "redis"))
-    redis_port: int = field(default_factory=lambda: int(os.getenv("REDIS_PORT", "6379")))
+    redis_host: str = field(
+        default_factory=lambda: os.getenv("REDIS_HOST", "redis"))
+    redis_port: int = field(default_factory=lambda: int(
+        os.getenv("REDIS_PORT", "6379")))
 
     # Cloudinary credentials
     cloudinary_cloud_name: str = field(
@@ -48,23 +50,32 @@ class ClipConfig:
 
     # Directories
     clip_dir: str = field(
-        default_factory=lambda: os.getenv("CLIP_DIR", "/data/visionguard/clips")
+        default_factory=lambda: os.getenv(
+            "CLIP_DIR", "/data/visionguard/clips")
     )
     snapshot_dir: str = field(
-        default_factory=lambda: os.getenv("SNAPSHOT_DIR", "/data/visionguard/detections")
+        default_factory=lambda: os.getenv(
+            "SNAPSHOT_DIR", "/data/visionguard/detections")
     )
 
     # Database (PostgreSQL)
-    postgres_user: str = field(default_factory=lambda: os.getenv("VG_POSTGRES_USER", "postgres"))
-    postgres_password: str = field(default_factory=lambda: os.getenv("VG_POSTGRES_PASSWORD", "postgres"))
-    postgres_db: str = field(default_factory=lambda: os.getenv("VG_POSTGRES_DB", "visionguard"))
-    postgres_host: str = field(default_factory=lambda: os.getenv("VG_POSTGRES_HOST", "postgres"))
-    postgres_port: int = field(default_factory=lambda: int(os.getenv("VG_POSTGRES_PORT", "5432")))
-    database_url: str = field(default_factory=lambda: os.getenv("VG_DATABASE_URL", ""))
+    postgres_user: str = field(
+        default_factory=lambda: os.getenv("VG_POSTGRES_USER", "postgres"))
+    postgres_password: str = field(
+        default_factory=lambda: os.getenv("VG_POSTGRES_PASSWORD", "postgres"))
+    postgres_db: str = field(default_factory=lambda: os.getenv(
+        "VG_POSTGRES_DB", "visionguard"))
+    postgres_host: str = field(
+        default_factory=lambda: os.getenv("VG_POSTGRES_HOST", "postgres"))
+    postgres_port: int = field(default_factory=lambda: int(
+        os.getenv("VG_POSTGRES_PORT", "5432")))
+    database_url: str = field(
+        default_factory=lambda: os.getenv("VG_DATABASE_URL", ""))
 
     # Legacy Database (SQLite)
     db_path: str = field(
-        default_factory=lambda: os.getenv("VG_DB_PATH", "/data/visionguard/events.db")
+        default_factory=lambda: os.getenv(
+            "VG_DB_PATH", "/data/visionguard/events.db")
     )
 
     @property
@@ -80,7 +91,8 @@ class ClipConfig:
 
     # Connection strategy
     enable_background_buffer: bool = field(
-        default_factory=lambda: os.getenv("CLIP_ENABLE_BACKGROUND_BUFFER", "false").lower() == "true"
+        default_factory=lambda: os.getenv(
+            "CLIP_ENABLE_BACKGROUND_BUFFER", "false").lower() == "true"
     )
 
     # Log level
@@ -90,7 +102,22 @@ class ClipConfig:
 
     # Backend URL for local evidence serving
     backend_url: str = field(
-        default_factory=lambda: os.getenv("BACKEND_URL", "http://localhost:8000")
+        default_factory=lambda: os.getenv(
+            "BACKEND_URL", "http://localhost:8000")
+    )
+
+    # Evidence-insert retry window.
+    # On a cold start ("first run") the events row may not be committed to Postgres
+    # yet when the clip recorder tries to write the snapshot/clip evidence, causing a
+    # transient foreign-key miss. A generous retry window lets the recorder wait for
+    # the event row to appear instead of permanently dropping the evidence.
+    evidence_max_retries: int = field(
+        default_factory=lambda: int(
+            os.getenv("CLIP_EVIDENCE_MAX_RETRIES", "10"))
+    )
+    evidence_retry_interval_seconds: int = field(
+        default_factory=lambda: int(
+            os.getenv("CLIP_EVIDENCE_RETRY_INTERVAL", "3"))
     )
 
     @property
@@ -101,4 +128,3 @@ class ClipConfig:
             and self.cloudinary_api_key
             and self.cloudinary_api_secret
         )
-

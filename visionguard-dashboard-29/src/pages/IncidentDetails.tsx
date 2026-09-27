@@ -190,6 +190,14 @@ export default function IncidentDetails() {
     queryKey: ['evidence', id],
     queryFn: () => apiService.getData<EvidenceResponse>(API_ENDPOINTS.incidents.evidence(id!)),
     enabled: !!id && !!incident,
+    // Poll while the clip is still being produced so the video appears automatically
+    refetchInterval: (query) => {
+      const d = query.state.data;
+      if (!d) return false;
+      if (d.clip_url) return false;
+      if (d.clip_status === 'failed') return false;
+      return 3_000;
+    },
   });
 
   useEffect(() => {
@@ -405,8 +413,17 @@ export default function IncidentDetails() {
                   />
                 ) : (
                   <div className="text-center text-muted-foreground">
-                    <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-primary" />
-                    <p>Loading video evidence...</p>
+                    {evidence?.clip_status === 'failed' ? (
+                      <>
+                        <AlertTriangle className="h-8 w-8 mx-auto mb-2 text-severity-critical opacity-80" />
+                        <p>Clip generation failed{evidence?.clip_error ? ` (${evidence.clip_error})` : ''}</p>
+                      </>
+                    ) : (
+                      <>
+                        <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-primary" />
+                        <p>Processing video evidence...</p>
+                      </>
+                    )}
                   </div>
                 )}
               </div>

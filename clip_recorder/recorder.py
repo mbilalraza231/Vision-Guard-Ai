@@ -85,15 +85,16 @@ class ClipRecorder:
         # Dictionary of camera_source -> deque of (timestamp, cv2.Mat)
         self.frame_buffers: Dict[str, deque] = {}
         self.buffer_locks: Dict[str, threading.Lock] = {}
-        
+
         # New: Auto-start buffers for Dashcam mode
         if self.config.enable_background_buffer:
-            logger.info("CLIP_ENABLE_BACKGROUND_BUFFER=true. Dashcam mode active.")
-        
+            logger.info(
+                "CLIP_ENABLE_BACKGROUND_BUFFER=true. Dashcam mode active.")
+
         # We start the background capture threads here
         self._shutdown_event = threading.Event()
         self._capture_threads: Dict[str, threading.Thread] = {}
-        
+
         # Optional: start persistent background buffer only when explicitly enabled
         if self.config.enable_background_buffer and self.config.camera_source:
             self._start_camera_buffer(self.config.camera_source)
@@ -102,7 +103,7 @@ class ClipRecorder:
         """Starts a background thread to maintain a rolling buffer for a camera source."""
         if camera_source in self._capture_threads:
             return
-            
+
         # We use a deque without maxlen, and manually truncate it dynamically in the capture loop
         # based on real-time frontend settings.
         self.frame_buffers[camera_source] = deque()
@@ -116,7 +117,7 @@ class ClipRecorder:
         )
         self._capture_threads[camera_source] = t
         t.start()
-        
+
     def _camera_capture_loop(self, camera_source: str):
         """
         Continuously reads from RTSP into the ring buffer.
@@ -126,13 +127,13 @@ class ClipRecorder:
         cap = None
         last_save_time = 0
         last_settings_check = 0
-        
+
         # Initial safe default (pre=5, post=10, safety=5)
         target_buffer_frames = self.config.camera_fps * 20
-        
+
         while not self._shutdown_event.is_set():
             now = time.time()
-            
+
             # Check settings dynamically every 10 seconds to scale RAM up or down
             if now - last_settings_check > 10.0:
                 try:
@@ -143,21 +144,23 @@ class ClipRecorder:
                 except Exception as e:
                     logger.debug(f"Failed to fetch dynamic RAM settings: {e}")
                 last_settings_check = now
-                
+
             try:
                 if cap is None or not cap.isOpened():
                     cap = cv2.VideoCapture(camera_source)
                     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
                     if not cap.isOpened():
-                        logger.warning(f"ClipRecorder buffer failed to connect to {camera_source}")
+                        logger.warning(
+                            f"ClipRecorder buffer failed to connect to {camera_source}")
                         cap = None
                         time.sleep(2.0)
                         continue
-                
+
                 # Drain the buffer: grab frames as fast as possible
                 ret = cap.grab()
                 if not ret:
-                    logger.warning(f"Failed to grab frame from {camera_source}, reconnecting...")
+                    logger.warning(
+                        f"Failed to grab frame from {camera_source}, reconnecting...")
                     cap.release()
                     cap = None
                     if camera_source in self.frame_buffers:
@@ -172,7 +175,7 @@ class ClipRecorder:
                         pass
                     time.sleep(2.0)
                     continue
-                
+
                 # Only retrieve and store at the target FPS
                 if now - last_save_time >= (1.0 / self.config.camera_fps):
                     ret, frame = cap.retrieve()
@@ -180,27 +183,28 @@ class ClipRecorder:
                         with self.buffer_locks[camera_source]:
                             q = self.frame_buffers[camera_source]
                             q.append((now, frame))
-                            
-                            # Dynamically enforce the RAM limit! 
+
+                            # Dynamically enforce the RAM limit!
                             # If user lowers the slider, this instantly frees up RAM.
                             while len(q) > target_buffer_frames:
                                 q.popleft()
-                                
+
                         last_save_time = now
-                
+
                 # Minimal sleep to prevent 100% CPU, but keep buffer drained
                 time.sleep(0.001)
-                
+
             except Exception as e:
-                logger.error(f"Error in ring buffer capture for {camera_source}: {e}")
+                logger.error(
+                    f"Error in ring buffer capture for {camera_source}: {e}")
                 if cap:
                     cap.release()
                     cap = None
                 time.sleep(2.0)
-                
+
         if cap:
             cap.release()
-            
+
     def shutdown(self):
         """Stops the background capture threads."""
         self._shutdown_event.set()
@@ -213,8 +217,9 @@ class ClipRecorder:
         This ensures history is available BEFORE the first incident happens.
         """
         # Caller (main.py) already checks if buffer is enabled via Redis or .env
-            
-        logger.info(f"Initializing dashcam buffers for {len(camera_sources)} cameras")
+
+        logger.info(
+            f"Initializing dashcam buffers for {len(camera_sources)} cameras")
         for source in camera_sources:
             if source:
                 self._start_camera_buffer(source)
@@ -228,11 +233,11 @@ class ClipRecorder:
         self._shutdown_event.set()
         for t in list(self._capture_threads.values()):
             t.join(timeout=2.0)
-            
+
         self._capture_threads.clear()
         self.frame_buffers.clear()
         self.buffer_locks.clear()
-        
+
         # Reset the event so they can be restarted later if toggled back on
         self._shutdown_event.clear()
         logger.info("All background dashcam buffers stopped.")
@@ -253,7 +258,8 @@ class ClipRecorder:
                 if isinstance(data, dict):
                     return bool(data.get("privacy", {}).get("maskFaces", False))
         except Exception as e:
-            logger.debug(f"Redis mask_faces lookup failed in clip recorder: {e}")
+            logger.debug(
+                f"Redis mask_faces lookup failed in clip recorder: {e}")
 
         try:
             import json
@@ -261,7 +267,8 @@ class ClipRecorder:
             db_url = self.db.url
             conn = psycopg2.connect(db_url, connect_timeout=2)
             cursor = conn.cursor()
-            cursor.execute("SELECT data FROM system_settings ORDER BY id DESC LIMIT 1")
+            cursor.execute(
+                "SELECT data FROM system_settings ORDER BY id DESC LIMIT 1")
             row = cursor.fetchone()
             conn.close()
             if row and row[0]:
@@ -270,7 +277,8 @@ class ClipRecorder:
                     stored = json.loads(stored)
                 return bool(stored.get("privacy", {}).get("maskFaces", False))
         except Exception as e:
-            logger.debug(f"Postgres mask_faces lookup failed in clip recorder: {e}")
+            logger.debug(
+                f"Postgres mask_faces lookup failed in clip recorder: {e}")
 
         # Final fallback: env default
         return os.getenv("PRIVACY_MASK_FACES", "false").strip().lower() in {"1", "true", "yes", "on"}
@@ -329,7 +337,8 @@ class ClipRecorder:
                     merged.update(data)
                     return merged
         except Exception as e:
-            logger.debug(f"Failed to fetch system settings from Redis in clip recorder: {e}")
+            logger.debug(
+                f"Failed to fetch system settings from Redis in clip recorder: {e}")
 
         try:
             row = await self.db.fetch_one("SELECT data FROM system_settings ORDER BY id DESC LIMIT 1")
@@ -343,16 +352,19 @@ class ClipRecorder:
                     merged.update(stored)
                     return merged
         except Exception as e:
-            logger.error(f"Failed to fetch system settings in clip recorder: {e}")
+            logger.error(
+                f"Failed to fetch system settings in clip recorder: {e}")
         return defaults
 
     def _mask_faces(self, frame: 'cv2.Mat') -> 'cv2.Mat':
         """Blur all detected faces in the frame using OpenCV Haar Cascade."""
         if not hasattr(self, "_face_cascade"):
             try:
-                self._face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+                self._face_cascade = cv2.CascadeClassifier(
+                    cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
             except Exception as e:
-                logger.error(f"Failed to load Haar Cascade face classifier in clip recorder: {e}")
+                logger.error(
+                    f"Failed to load Haar Cascade face classifier in clip recorder: {e}")
                 self._face_cascade = None
 
         if not self._face_cascade or self._face_cascade.empty():
@@ -360,7 +372,8 @@ class ClipRecorder:
 
         try:
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            faces = self._face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(20, 20))
+            faces = self._face_cascade.detectMultiScale(
+                gray, scaleFactor=1.1, minNeighbors=4, minSize=(20, 20))
             if len(faces) > 0:
                 frame_copy = frame.copy()
                 for (x, y, w, h) in faces:
@@ -415,21 +428,28 @@ class ClipRecorder:
             try:
                 await self._write_evidence(event_id, result)
             except Exception as e:
-                logger.warning(f"Could not write snapshot evidence yet for {event_id}: {e} — will retry with clip")
-                
+                logger.warning(
+                    f"Could not write snapshot evidence yet for {event_id}: {e} — will retry with clip")
+
             # Start Cloudinary upload of snapshot immediately, don't wait for clip!
             if self.config.cloudinary_configured:
-                asyncio.create_task(self._upload_single_snapshot_task(event_id, event_type, snapshot_path, result))
+                asyncio.create_task(self._upload_single_snapshot_task(
+                    event_id, event_type, snapshot_path, result))
         else:
             logger.warning(f"No matching snapshot found for event {event_id}")
 
         sys_settings = await self.get_system_settings()
-        pre_seconds = sys_settings.get("clips", {}).get("preSeconds", self.config.clip_pre_seconds)
-        post_seconds = sys_settings.get("clips", {}).get("postSeconds", self.config.clip_post_seconds)
-        target_fps = sys_settings.get("clips", {}).get("fps", self.config.camera_fps)
-        use_buffer = sys_settings.get("clips", {}).get("enableBackgroundBuffer", self.config.enable_background_buffer)
+        pre_seconds = sys_settings.get("clips", {}).get(
+            "preSeconds", self.config.clip_pre_seconds)
+        post_seconds = sys_settings.get("clips", {}).get(
+            "postSeconds", self.config.clip_post_seconds)
+        target_fps = sys_settings.get("clips", {}).get(
+            "fps", self.config.camera_fps)
+        use_buffer = sys_settings.get("clips", {}).get(
+            "enableBackgroundBuffer", self.config.enable_background_buffer)
 
-        logger.info(f"Clip Settings Read: pre={pre_seconds}, post={post_seconds}, fps={target_fps}, buffer={use_buffer}")
+        logger.info(
+            f"Clip Settings Read: pre={pre_seconds}, post={post_seconds}, fps={target_fps}, buffer={use_buffer}")
 
         # Step 2 — Record latency-aware post-event clip (This takes 10-15 seconds)
         # Recording uses OpenCV/FFMPEG, must be in a thread
@@ -437,26 +457,29 @@ class ClipRecorder:
             self._record_clip, event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds, use_buffer, target_fps
         )
         result["clip_local"] = clip_path
-        
+
         if clip_path:
             logger.info(f"Clip recorded: {clip_path}")
             # WRITE CLIP TO DB IMMEDIATELY (Available before Cloud upload)
             try:
                 await self._write_evidence(event_id, result)
             except Exception as e:
-                logger.error(f"Failed to write clip evidence for {event_id}: {e}")
+                logger.error(
+                    f"Failed to write clip evidence for {event_id}: {e}")
             await self._update_clip_status(event_id, "ready", None)
         else:
             # Use the intuitive error message from the recording attempt
             error_msg = error_msg or "Unknown Error"
             result["clip_error"] = error_msg
             await self._update_clip_status(event_id, "failed", error_msg)
-            logger.warning(f"Clip recording failed for event {event_id}: {error_msg}")
+            logger.warning(
+                f"Clip recording failed for event {event_id}: {error_msg}")
 
         # Step 3 — Start background task for Cloudinary upload
         if self.config.cloudinary_configured:
             # We use an async task instead of a thread
-            asyncio.create_task(self._upload_and_update_task(event_id, event_type, result))
+            asyncio.create_task(self._upload_and_update_task(
+                event_id, event_type, result))
             logger.info(f"Started background upload task for event {event_id}")
 
         logger.info(
@@ -473,17 +496,35 @@ class ClipRecorder:
         """Background task to upload the snapshot to Cloudinary immediately."""
         try:
             if os.path.exists(snapshot_path):
-                logger.info(f"Uploading snapshot to Cloudinary IMMEDIATELY: {snapshot_path}")
+                logger.info(
+                    f"Uploading snapshot to Cloudinary IMMEDIATELY: {snapshot_path}")
                 snapshot_url = await asyncio.to_thread(self.uploader.upload_snapshot, snapshot_path, event_id, event_type)
                 if snapshot_url:
                     result["snapshot_url"] = snapshot_url
-                    await self._write_evidence(event_id, result)  # Update DB with cloud URL
+                    # Update DB with cloud URL
+                    await self._write_evidence(event_id, result)
+                    # Cloud now holds the copy AND the DB points at it, so the
+                    # recorder's own secured temp file is redundant. The worker's
+                    # rolling buffer never trims 'snapshot_secured_*' files, so
+                    # removing it here prevents an unbounded local disk leak.
+                    # Only delete our own temp copy, never an original detection.
+                    if os.path.basename(snapshot_path).startswith(f"snapshot_secured_{event_id}"):
+                        try:
+                            os.remove(snapshot_path)
+                            logger.debug(
+                                f"Removed secured snapshot after cloud upload: {snapshot_path}")
+                        except OSError as rm_exc:
+                            logger.warning(
+                                f"Could not remove secured snapshot {snapshot_path}: {rm_exc}")
                 else:
-                    logger.warning(f"Cloudinary snapshot upload failed for {event_id}")
+                    logger.warning(
+                        f"Cloudinary snapshot upload failed for {event_id}")
             else:
-                logger.warning(f"Snapshot file MISSING before immediate upload: {snapshot_path}")
+                logger.warning(
+                    f"Snapshot file MISSING before immediate upload: {snapshot_path}")
         except Exception as e:
-            logger.error(f"Error in immediate snapshot upload task for {event_id}: {e}")
+            logger.error(
+                f"Error in immediate snapshot upload task for {event_id}: {e}")
 
     async def _upload_and_update_task(
         self,
@@ -499,13 +540,17 @@ class ClipRecorder:
                 clip_url = await asyncio.to_thread(self.uploader.upload_clip, clip_path, event_id, event_type)
                 if clip_url:
                     result["clip_url"] = clip_url
-                    await self._write_evidence(event_id, result)  # Update DB with cloud URL
-                    logger.info(f"Background upload successful for event {event_id}")
+                    # Update DB with cloud URL
+                    await self._write_evidence(event_id, result)
+                    logger.info(
+                        f"Background upload successful for event {event_id}")
                 else:
-                    logger.warning(f"Background clip upload failed for event {event_id}")
+                    logger.warning(
+                        f"Background clip upload failed for event {event_id}")
 
         except Exception as e:
-            logger.error(f"Error in background upload task for event {event_id}: {e}")
+            logger.error(
+                f"Error in background upload task for event {event_id}: {e}")
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -522,8 +567,9 @@ class ClipRecorder:
             ]
             process = subprocess.run(cmd, capture_output=True, text=True)
             if process.returncode != 0:
-                raise Exception(f"ffmpeg failed with exit code {process.returncode}. Stderr: {process.stderr}")
-            
+                raise Exception(
+                    f"ffmpeg failed with exit code {process.returncode}. Stderr: {process.stderr}")
+
             os.replace(temp_path, filepath)
             logger.info(f"Successfully transcoded {filepath} to H.264")
             return True
@@ -564,59 +610,74 @@ class ClipRecorder:
             model_type = event_type.replace('_detected', '')
             # Expected prefix: <model_type>_<camera_id>_
             prefix = f"{model_type}_{camera_id}_"
+            # Type-only prefix used as a fallback when the worker saved the snapshot
+            # under a different camera-name token than the finalized event carries
+            # (e.g. worker wrote 'fall_cma3_*.jpg' but the event reports camera 'cam1').
+            type_prefix = f"{model_type}_"
             detection_ts_ms = detection_ts * 1000
             tolerance_ms = 30 * 1000  # 30 seconds
+
+            def _scan(required_prefix: str) -> tuple[Optional[str], float]:
+                """Find the closest .jpg whose name starts with required_prefix
+                and whose millisecond timestamp is within tolerance."""
+                best: Optional[str] = None
+                best_diff = float("inf")
+                req_lower = required_prefix.lower()
+                alt_lower = req_lower.replace("_detected", "")
+                for f in snapshot_dir.iterdir():
+                    if not f.name.endswith(".jpg"):
+                        continue
+                    filename_lower = f.name.lower()
+                    # Never treat the recorder's own secured copies as originals
+                    if filename_lower.startswith("snapshot_secured_"):
+                        continue
+                    if not (filename_lower.startswith(req_lower)
+                            or filename_lower.startswith(alt_lower)):
+                        continue
+                    # Filename: <type>_<cam>_<ts_ms>.jpg -> extract trailing timestamp
+                    parts = f.stem.rsplit("_", 1)
+                    if len(parts) != 2:
+                        continue
+                    try:
+                        file_ts_ms = float(parts[1])
+                    except ValueError:
+                        continue
+                    diff = abs(file_ts_ms - detection_ts_ms)
+                    if diff <= tolerance_ms and diff < best_diff:
+                        best_diff = diff
+                        best = str(f)
+                return best, best_diff
 
             best_path: Optional[str] = None
             best_diff = float("inf")
 
-            match_attempts = 0
-            for f in snapshot_dir.iterdir():
-                if not f.name.endswith(".jpg"):
-                    continue
-                
-                match_attempts += 1
-                
-                # Flexible matching: handle fire vs fire_detected and case sensitivity
-                filename_lower = f.name.lower()
-                prefix_lower = prefix.lower()
-                alt_prefix_lower = prefix_lower.replace("_detected", "")
-                
-                is_match = filename_lower.startswith(prefix_lower) or filename_lower.startswith(alt_prefix_lower)
-                
-                if not is_match:
-                    if match_attempts <= 10:
-                        logger.debug(f"Snapshot mismatch: {f.name} doesn't match {prefix} or {alt_prefix_lower}")
-                    continue
-                
-                # Filename: <type>_<cam>_<ts_ms>.jpg
-                # Extract timestamp part
-                stem = f.stem  # e.g. weapon_cam1_1711000000123
-                parts = stem.rsplit("_", 1)
-                if len(parts) != 2:
-                    continue
-                try:
-                    file_ts_ms = float(parts[1])
-                except ValueError:
-                    continue
-
-                diff = abs(file_ts_ms - detection_ts_ms)
-                if diff <= tolerance_ms and diff < best_diff:
-                    best_diff = diff
-                    best_path = str(f)
+            # Pass 1: exact <type>_<camera>_ match (preferred, most correct).
+            best_path, best_diff = _scan(prefix)
+            # Pass 2: relax to type-only match so a camera-name mismatch between the
+            # AI worker and the event pipeline no longer silently drops the snapshot.
+            if best_path is None:
+                best_path, best_diff = _scan(type_prefix)
+                if best_path:
+                    logger.info(
+                        f"Camera-prefixed snapshot '{prefix}*' not found for {event_id}; "
+                        f"fell back to type-only match '{os.path.basename(best_path)}' "
+                        f"(diff: {best_diff/1000:.2f}s)")
 
             if best_path:
-                logger.info(f"Found best snapshot match for {event_id}: {os.path.basename(best_path)} (diff: {best_diff/1000:.2f}s)")
+                logger.info(
+                    f"Found best snapshot match for {event_id}: {os.path.basename(best_path)} (diff: {best_diff/1000:.2f}s)")
                 # Secure the snapshot from being deleted by the AI Worker's rolling buffer
                 try:
                     import shutil
-                    safe_path = os.path.join(str(snapshot_dir), f"snapshot_secured_{event_id}.jpg")
+                    safe_path = os.path.join(
+                        str(snapshot_dir), f"snapshot_secured_{event_id}.jpg")
                     shutil.copy2(best_path, safe_path)
                     best_path = safe_path
                 except Exception as e:
                     logger.error(f"Could not secure snapshot copy: {e}")
             else:
-                logger.warning(f"No snapshot found within {tolerance_ms/1000}s for {event_id}")
+                logger.warning(
+                    f"No snapshot found within {tolerance_ms/1000}s for {event_id}")
 
             return best_path
 
@@ -653,12 +714,16 @@ class ClipRecorder:
         """
         try:
             if not camera_source:
-                logger.error(f"Cannot record latency-aware clip: camera_source is empty")
+                logger.error(
+                    f"Cannot record latency-aware clip: camera_source is empty")
                 return None, ClipError.OFFLINE
 
-            if pre_seconds is None: pre_seconds = self.config.clip_pre_seconds
-            if post_seconds is None: post_seconds = self.config.clip_post_seconds
-            if use_buffer is None: use_buffer = self.config.enable_background_buffer
+            if pre_seconds is None:
+                pre_seconds = self.config.clip_pre_seconds
+            if post_seconds is None:
+                post_seconds = self.config.clip_post_seconds
+            if use_buffer is None:
+                use_buffer = self.config.enable_background_buffer
 
             if not use_buffer:
                 return self._record_clip_direct(event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds, target_fps)
@@ -669,51 +734,58 @@ class ClipRecorder:
             # FIX: Use the REAL shared lock, not a brand-new temporary one
             lock = self.buffer_locks.get(camera_source)
             if lock is None:
-                logger.warning(f"No buffer lock found for {camera_source} — falling back to direct recording")
+                logger.warning(
+                    f"No buffer lock found for {camera_source} — falling back to direct recording")
                 return self._record_clip_direct(event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds, target_fps)
 
             # IMPORTANT: Wait for post_seconds to actually pass!
-            # The event happened at `detection_ts`. The background buffer needs time 
+            # The event happened at `detection_ts`. The background buffer needs time
             # to actually record the future frames into the buffer.
             target_time = detection_ts + post_seconds
             now = time.time()
             if now < target_time:
                 wait_time = target_time - now
-                logger.info(f"Waiting {wait_time:.1f}s for post-event frames to enter the background buffer...")
+                logger.info(
+                    f"Waiting {wait_time:.1f}s for post-event frames to enter the background buffer...")
                 time.sleep(wait_time)
 
             with lock:
                 if camera_source not in self.frame_buffers:
-                    logger.warning(f"No frame buffer found for {camera_source} — falling back to direct recording")
+                    logger.warning(
+                        f"No frame buffer found for {camera_source} — falling back to direct recording")
                     return self._record_clip_direct(event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds, target_fps)
                 buffer_snapshot = list(self.frame_buffers[camera_source])
-                
+
             if not buffer_snapshot:
                 # Buffer was just started — give it a few seconds to warm up before giving up
-                logger.info(f"Ring buffer is empty for {camera_source} — waiting up to 3s for warm-up...")
+                logger.info(
+                    f"Ring buffer is empty for {camera_source} — waiting up to 3s for warm-up...")
                 warm_deadline = time.time() + 3.0
                 while time.time() < warm_deadline:
                     time.sleep(0.5)
                     with lock:
-                        buffer_snapshot = list(self.frame_buffers.get(camera_source, []))
+                        buffer_snapshot = list(
+                            self.frame_buffers.get(camera_source, []))
                     if buffer_snapshot:
-                        logger.info(f"Buffer warmed up with {len(buffer_snapshot)} frames for {camera_source}")
+                        logger.info(
+                            f"Buffer warmed up with {len(buffer_snapshot)} frames for {camera_source}")
                         break
-                
+
                 if not buffer_snapshot:
-                    logger.warning(f"Ring buffer still empty after warm-up for {camera_source} — falling back to direct recording")
+                    logger.warning(
+                        f"Ring buffer still empty after warm-up for {camera_source} — falling back to direct recording")
                     return self._record_clip_direct(event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds, target_fps)
-                
+
             # Define exact temporal window
             start_ts = detection_ts - pre_seconds
             end_ts = detection_ts + post_seconds
-            
+
             # Extract matching frames
             valid_frames = []
             for ts, frame in buffer_snapshot:
                 if start_ts <= ts <= end_ts:
                     valid_frames.append(frame)
-                    
+
             if not valid_frames:
                 logger.warning(
                     f"No frames matched time window [{start_ts:.1f}, {end_ts:.1f}] "
@@ -722,7 +794,7 @@ class ClipRecorder:
                 # If frames exist in buffer but none match, the event is likely a backlog catch-up
                 if len(buffer_snapshot) > 0:
                     return None, ClipError.TOO_OLD
-                
+
                 return self._record_clip_direct(event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds, target_fps)
 
             # Fetch settings to check if face masking is enabled
@@ -730,7 +802,8 @@ class ClipRecorder:
             try:
                 mask_faces = self._get_mask_faces_setting()
             except Exception as se:
-                logger.warning(f"Failed to check privacy settings in stitching: {se}")
+                logger.warning(
+                    f"Failed to check privacy settings in stitching: {se}")
 
             height, width = valid_frames[0].shape[:2]
             fps = self.config.camera_fps
@@ -746,7 +819,8 @@ class ClipRecorder:
                 # Fallback: write raw frames then transcode with ffmpeg
                 fourcc = cv2.VideoWriter_fourcc(*"XVID")
                 out_path_raw = out_path.replace(".mp4", ".avi")
-                writer = cv2.VideoWriter(out_path_raw, fourcc, fps, (width, height))
+                writer = cv2.VideoWriter(
+                    out_path_raw, fourcc, fps, (width, height))
             else:
                 out_path_raw = None
 
@@ -770,17 +844,20 @@ class ClipRecorder:
 
             # Safety: verify the output file actually exists before returning
             if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
-                logger.error(f"Output clip file missing or empty after write: {out_path}")
+                logger.error(
+                    f"Output clip file missing or empty after write: {out_path}")
                 return None, ClipError.INTERNAL
 
             if not self._transcode_to_h264(out_path) and out_path_raw is None:
                 return None, ClipError.TRANSCODE
 
             return out_path, None
-            
+
         except Exception as e:
-            logger.error(f"Error recording latency-aware clip: {e}", exc_info=True)
-            logger.warning(f"Falling back to direct recording after exception for event {event_id}")
+            logger.error(
+                f"Error recording latency-aware clip: {e}", exc_info=True)
+            logger.warning(
+                f"Falling back to direct recording after exception for event {event_id}")
             return self._record_clip_direct(event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds, target_fps)
 
     def _record_clip_direct(
@@ -805,12 +882,14 @@ class ClipRecorder:
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
             if not cap.isOpened():
-                logger.error(f"Direct clip capture failed to open source: {camera_source}")
+                logger.error(
+                    f"Direct clip capture failed to open source: {camera_source}")
                 return None, ClipError.OFFLINE
 
             ok, first_frame = cap.read()
             if not ok or first_frame is None:
-                logger.error(f"Direct clip capture could not read first frame: {camera_source}")
+                logger.error(
+                    f"Direct clip capture could not read first frame: {camera_source}")
                 return None, ClipError.NO_SIGNAL
 
             # Fetch settings to check if face masking is enabled
@@ -818,21 +897,25 @@ class ClipRecorder:
             try:
                 mask_faces = self._get_mask_faces_setting()
             except Exception as se:
-                logger.warning(f"Failed to check privacy settings in direct record: {se}")
+                logger.warning(
+                    f"Failed to check privacy settings in direct record: {se}")
 
-            if pre_seconds is None: pre_seconds = self.config.clip_pre_seconds
-            if post_seconds is None: post_seconds = self.config.clip_post_seconds
-            if target_fps is None: target_fps = self.config.camera_fps
+            if pre_seconds is None:
+                pre_seconds = self.config.clip_pre_seconds
+            if post_seconds is None:
+                post_seconds = self.config.clip_post_seconds
+            if target_fps is None:
+                target_fps = self.config.camera_fps
 
             height, width = first_frame.shape[:2]
-            
+
             # If buffer is off, we can't go back in time, but we should still record the requested total duration
             total_duration = pre_seconds + post_seconds
             if total_duration <= 0:
                 total_duration = self.config.clip_pre_seconds + self.config.clip_post_seconds
                 if total_duration <= 0:
                     total_duration = 10  # Ultimate safety fallback
-                    
+
             # Frame-based recording target
             total_frames = max(1, int(total_duration * target_fps))
 
@@ -842,18 +925,20 @@ class ClipRecorder:
 
             if mask_faces:
                 first_frame = self._mask_faces(first_frame)
-            
+
             captured_frames = [first_frame]
             start_time = time.time()
             frames_written = 1
-            max_wait_time = total_duration * 1.5 + 15  # Generous safety timeout for laggy IP cameras
+            # Generous safety timeout for laggy IP cameras
+            max_wait_time = total_duration * 1.5 + 15
 
             # Frame-Based Loop (with safety timeout)
             while frames_written < total_frames:
                 if time.time() - start_time > max_wait_time:
-                    logger.warning(f"Direct recording timed out after {max_wait_time}s. Captured {frames_written}/{total_frames} frames.")
+                    logger.warning(
+                        f"Direct recording timed out after {max_wait_time}s. Captured {frames_written}/{total_frames} frames.")
                     break
-                    
+
                 ok, frame = cap.read()
                 if not ok or frame is None:
                     break
@@ -866,17 +951,20 @@ class ClipRecorder:
 
             # Compute effective framerate so the output video duration still matches real-world time as best as possible
             # But the primary driver for loop exit was reaching total_frames
-            effective_fps = float(round(max(1.0, min(60.0, float(target_fps or self.config.camera_fps or 15)))))
+            effective_fps = float(
+                round(max(1.0, min(60.0, float(target_fps or self.config.camera_fps or 15)))))
 
             # Initialize VideoWriter with the effective FPS
             # Use avc1 (H.264) directly — mp4v is not reliably supported in Linux containers
             fourcc = cv2.VideoWriter_fourcc(*"avc1")
-            writer = cv2.VideoWriter(out_path, fourcc, effective_fps, (width, height))
+            writer = cv2.VideoWriter(
+                out_path, fourcc, effective_fps, (width, height))
             if not writer.isOpened():
                 # Fallback to XVID .avi then transcode
                 fourcc = cv2.VideoWriter_fourcc(*"XVID")
                 out_path = out_path.replace(".mp4", ".avi")
-                writer = cv2.VideoWriter(out_path, fourcc, effective_fps, (width, height))
+                writer = cv2.VideoWriter(
+                    out_path, fourcc, effective_fps, (width, height))
 
             for frame in captured_frames:
                 writer.write(frame)
@@ -893,7 +981,7 @@ class ClipRecorder:
                     "output": out_path,
                 },
             )
-            
+
             if writer:
                 writer.release()
                 writer = None
@@ -903,7 +991,8 @@ class ClipRecorder:
 
             # Safety: verify the output file actually exists before transcoding
             if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
-                logger.error(f"Output clip file missing or empty after direct write: {out_path}")
+                logger.error(
+                    f"Output clip file missing or empty after direct write: {out_path}")
                 return None, ClipError.INTERNAL
 
             if not self._transcode_to_h264(out_path):
@@ -942,12 +1031,22 @@ class ClipRecorder:
             logger.error(f"Error checking event existence: {e}")
             return False
 
-    async def _insert_evidence_with_retry(self, event_id: str, evidence_type: str, 
-                                         provider: str, url: str, max_retries: int = 3) -> bool:
+    async def _insert_evidence_with_retry(self, event_id: str, evidence_type: str,
+                                          provider: str, url: str, max_retries: int = None) -> bool:
         """
         Insert evidence with retry logic to handle foreign key constraints.
+
+        The retry window is intentionally long (default ~20 attempts x 3s = 60s) so that
+        a cold-start race — where the events row has not been committed to Postgres yet
+        when the finalized-event message arrives — resolves itself instead of the snapshot
+        / clip evidence being silently dropped (which caused the UI to show no evidence).
         Returns True if successful, False otherwise.
         """
+        if max_retries is None:
+            max_retries = getattr(self.config, "evidence_max_retries", 20)
+        retry_interval = getattr(
+            self.config, "evidence_retry_interval_seconds", 3)
+
         for attempt in range(max_retries):
             try:
                 # First check if event exists
@@ -955,9 +1054,9 @@ class ClipRecorder:
                     if attempt < max_retries - 1:
                         logger.warning(
                             f"Event {event_id} not found in database (attempt {attempt + 1}/{max_retries}), "
-                            f"retrying in 2 seconds..."
+                            f"retrying in {retry_interval}s..."
                         )
-                        await asyncio.sleep(2)
+                        await asyncio.sleep(retry_interval)
                         continue
                     else:
                         logger.error(
@@ -971,7 +1070,7 @@ class ClipRecorder:
                     "SELECT id FROM event_evidence WHERE event_id = $1 AND evidence_type = $2",
                     event_id, evidence_type
                 )
-                
+
                 if row:
                     # Update existing evidence
                     await self.db.execute(
@@ -986,20 +1085,21 @@ class ClipRecorder:
                             (id, event_id, evidence_type, storage_provider, public_url, created_at)
                         VALUES ($1, $2, $3, $4, $5, $6)
                         """,
-                        str(uuid.uuid4()), event_id, evidence_type, provider, url, time.time()
+                        str(uuid.uuid4()
+                            ), event_id, evidence_type, provider, url, time.time()
                     )
-                
+
                 return True
-                
+
             except Exception as e:
                 error_msg = str(e)
                 if "foreign key constraint" in error_msg.lower() or "fk_event" in error_msg.lower():
                     if attempt < max_retries - 1:
                         logger.warning(
                             f"Foreign key constraint violation for {evidence_type} evidence "
-                            f"(attempt {attempt + 1}/{max_retries}), retrying in 2 seconds..."
+                            f"(attempt {attempt + 1}/{max_retries}), retrying in {retry_interval}s..."
                         )
-                        await asyncio.sleep(2)
+                        await asyncio.sleep(retry_interval)
                         continue
                     else:
                         logger.error(
@@ -1008,9 +1108,10 @@ class ClipRecorder:
                         )
                         return False
                 else:
-                    logger.error(f"Unexpected error inserting {evidence_type} evidence: {e}")
+                    logger.error(
+                        f"Unexpected error inserting {evidence_type} evidence: {e}")
                     return False
-        
+
         return False
 
     async def _write_evidence(
@@ -1049,7 +1150,7 @@ class ClipRecorder:
             provider_clip = None
 
         now = time.time()
-        
+
         try:
             # Process Snapshot with retry logic
             if final_snapshot:
@@ -1057,7 +1158,8 @@ class ClipRecorder:
                     event_id, "snapshot", provider_snap, final_snapshot
                 )
                 if not success:
-                    logger.warning(f"Failed to write snapshot evidence for event {event_id}")
+                    logger.warning(
+                        f"Failed to write snapshot evidence for event {event_id}")
 
             # Process Clip with retry logic
             if final_clip:
@@ -1065,10 +1167,12 @@ class ClipRecorder:
                     event_id, "clip", provider_clip, final_clip
                 )
                 if not success:
-                    logger.warning(f"Failed to write clip evidence for event {event_id}")
-                    
+                    logger.warning(
+                        f"Failed to write clip evidence for event {event_id}")
+
         except Exception as e:
-            logger.error(f"Unexpected error writing evidence for event {event_id}: {e}")
+            logger.error(
+                f"Unexpected error writing evidence for event {event_id}: {e}")
             # Don't raise - allow clip pipeline to continue even if evidence writing fails
 
     async def _update_clip_status(
@@ -1088,4 +1192,5 @@ class ClipRecorder:
                 status, error, time.time(), event_id
             )
         except Exception as e:
-            logger.warning(f"Failed to update clip status for event {event_id}: {e}")
+            logger.warning(
+                f"Failed to update clip status for event {event_id}: {e}")

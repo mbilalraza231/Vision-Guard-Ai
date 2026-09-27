@@ -143,13 +143,22 @@ function EvidenceModal({ incident, onClose }: EvidenceModalProps) {
     queryFn: () =>
       apiService.getData<EvidenceResponse>(API_ENDPOINTS.incidents.evidence(incident!.id)),
     enabled: open,
-    staleTime: 30_000,
+    staleTime: 5_000,
+    // Poll while the clip is still being produced so the UI updates automatically
+    // once the clip recorder finishes (instead of staying stuck on "Processing clip…").
+    refetchInterval: (query) => {
+      const d = query.state.data;
+      if (!d) return false;
+      if (d.clip_url) return false;               // clip ready – stop polling
+      if (d.clip_status === 'failed') return false; // permanent failure – stop polling
+      return 3_000;                               // pending / still producing – poll every 3s
+    },
   });
 
-  // Check if event is recent (< 2 minutes)
-  const isRecent = incident
-    ? Date.now() - new Date(incident.createdAt).getTime() < 2 * 60 * 1000
-    : false;
+  // Only treat an event as "still processing" when the backend explicitly reports
+  // it as pending AND has not already failed. This prevents a stale/local clock
+  // mismatch from masking a real 'failed' status with a perpetual spinner.
+  const isProcessing = data?.clip_status === 'pending';
 
   // Severity colour helper
   const severityColor: Record<string, string> = {
@@ -262,11 +271,11 @@ function EvidenceModal({ incident, onClose }: EvidenceModalProps) {
                   ) : (
                     <div className="flex items-center justify-center rounded-lg border border-dashed border-white/20 bg-white/5 py-8 text-sm text-white/40">
                       <Loader2
-                        className={`mr-2 h-4 w-4 ${data.clip_status === 'pending' || isRecent ? 'animate-spin' : ''}`}
+                        className={`mr-2 h-4 w-4 ${data.clip_status === 'pending' || isProcessing ? 'animate-spin' : ''}`}
                       />
                       {data.clip_status === 'failed'
                         ? `Clip generation failed${data.clip_error ? ` (${data.clip_error})` : ''}`
-                        : data.clip_status === 'pending' || isRecent
+                        : data.clip_status === 'pending' || isProcessing
                           ? 'Processing clip…'
                           : 'Clip not available'}
                     </div>
