@@ -109,6 +109,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         """)
         logger.info("events table status columns verified")
 
+        # Migrate cameras table to add loop_video column if it does not exist
+        await db.execute("""
+            ALTER TABLE cameras ADD COLUMN IF NOT EXISTS loop_video BOOLEAN DEFAULT TRUE;
+        """)
+        logger.info("cameras table loop_video column verified")
+
         # Sync system settings to Redis on boot
         try:
             from ..api.settings import sync_settings_to_redis

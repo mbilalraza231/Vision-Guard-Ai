@@ -175,6 +175,7 @@ class CameraProcess:
                 camera_id=self.camera_config.camera_id,
                 retry_config=self.retry_config,
                 process_mode=getattr(self.camera_config, 'process_mode', 'live'),
+                loop_video=getattr(self.camera_config, 'loop_video', True),
             )
             
             # Initial RTSP connect (non-fatal).
@@ -251,7 +252,8 @@ class CameraProcess:
                     # instead of reconnecting infinitely.
                     source_url = getattr(self.rtsp_handler, 'rtsp_url', '')
                     is_local_file = source_url and not source_url.lower().startswith(('http://', 'https://', 'rtsp://', 'rtmp://'))
-                    if is_local_file:
+                    should_loop = getattr(self.camera_config, 'loop_video', True)
+                    if is_local_file and not should_loop:
                         self.logger.info("Local video file ended or not found. Stopping capture and notifying backend.", extra={"camera_id": self.camera_config.camera_id})
                         
                         # Wait for AI workers to drain the Redis queues before stopping.
@@ -304,7 +306,8 @@ class CameraProcess:
                     # If this is a local file, we just reached the end of the video. Break the loop and stop camera.
                     source_url = getattr(self.rtsp_handler, 'rtsp_url', '')
                     is_local_file = source_url and not source_url.lower().startswith(('http://', 'https://', 'rtsp://', 'rtmp://'))
-                    if is_local_file:
+                    should_loop = getattr(self.camera_config, 'loop_video', True)
+                    if is_local_file and not should_loop:
                         self.logger.info("Local video file reached the end. Stopping capture and notifying backend.", extra={"camera_id": self.camera_config.camera_id})
 
                         # Wait for AI workers to drain the Redis queues before stopping.

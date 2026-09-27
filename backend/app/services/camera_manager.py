@@ -413,7 +413,7 @@ class CameraManager:
             
         try:
             # Fetch all cameras from database
-            rows = await db.fetch_all("SELECT id, name, source, fps, motion_threshold, priority, enabled FROM cameras ORDER BY id ASC")
+            rows = await db.fetch_all("SELECT id, name, source, fps, motion_threshold, priority, enabled, COALESCE(loop_video, TRUE) as loop_video FROM cameras ORDER BY id ASC")
             cameras_list = []
             for r in rows:
                 cameras_list.append({
@@ -423,7 +423,8 @@ class CameraManager:
                     "fps": r["fps"],
                     "motion_threshold": r["motion_threshold"],
                     "priority": r["priority"],
-                    "enabled": r["enabled"]
+                    "enabled": r["enabled"],
+                    "loop_video": r["loop_video"]
                 })
             
             # Read current cameras.json to preserve global and ip_camera sections
@@ -480,8 +481,8 @@ class CameraManager:
                             continue
                         await db.execute(
                             """
-                            INSERT INTO cameras (id, name, source, fps, motion_threshold, priority, enabled, created_at)
-                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                            INSERT INTO cameras (id, name, source, fps, motion_threshold, priority, enabled, loop_video, created_at)
+                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                             ON CONFLICT (id) DO NOTHING
                             """,
                             cid,
@@ -491,6 +492,7 @@ class CameraManager:
                             c.get("motion_threshold", 0.02),
                             c.get("priority", "medium"),
                             c.get("enabled", True),
+                            c.get("loop_video", True),
                             time.time()
                         )
                 self.logger.info("Database seeding completed.")

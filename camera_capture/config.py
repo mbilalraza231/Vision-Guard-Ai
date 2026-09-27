@@ -60,6 +60,10 @@ class CameraConfig(BaseModel):
         default="live",
         description="Processing mode for local files: 'live' (real-time paced) or 'batch' (as fast as possible)"
     )
+    loop_video: bool = Field(
+        default=True,
+        description="Whether to loop local video file continuously when it ends"
+    )
 
     @validator('rtsp_url')
     def validate_rtsp_url(cls, v):

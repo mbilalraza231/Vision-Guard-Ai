@@ -49,7 +49,7 @@ async def list_cameras(
     cameras_config = []
     try:
         from ..core.database import db
-        cameras_config = await db.fetch_all("SELECT id, name, source, fps, priority, enabled, zone_id, process_mode FROM cameras ORDER BY id ASC")
+        cameras_config = await db.fetch_all("SELECT id, name, source, fps, priority, enabled, zone_id, process_mode, COALESCE(loop_video, TRUE) as loop_video FROM cameras ORDER BY id ASC")
     except Exception as e:
         logger.error(f"Failed to fetch cameras from database: {e}")
         # Fallback to loading from cameras.json
@@ -125,6 +125,7 @@ async def list_cameras(
             "pid": pid,
             "zone_id": cam.get("zone_id"),
             "process_mode": cam.get("process_mode", "live"),
+            "loop_video": cam.get("loop_video", True),
         })
 
     return result
@@ -145,8 +146,8 @@ async def register_camera(
         import time
         await db.execute(
             """
-            INSERT INTO cameras (id, name, source, fps, motion_threshold, priority, enabled, process_mode, zone_id, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            INSERT INTO cameras (id, name, source, fps, motion_threshold, priority, enabled, process_mode, zone_id, loop_video, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             ON CONFLICT (id) DO UPDATE 
             SET name = EXCLUDED.name, source = EXCLUDED.source, fps = EXCLUDED.fps, 
                 motion_threshold = EXCLUDED.motion_threshold, priority = EXCLUDED.priority, 
@@ -161,6 +162,7 @@ async def register_camera(
             request.enabled if request.enabled is not None else True,
             request.process_mode or "live",
             request.zone_id,
+            request.loop_video if request.loop_video is not None else True,
             time.time()
         )
 
@@ -189,7 +191,8 @@ async def register_camera(
                 "fps": request.fps or 5,
                 "motion_threshold": request.motion_threshold or 0.02,
                 "priority": request.priority or "medium",
-                "enabled": request.enabled if request.enabled is not None else True
+                "enabled": request.enabled if request.enabled is not None else True,
+                "loop_video": request.loop_video if request.loop_video is not None else True
             }
         )
     except Exception as e:

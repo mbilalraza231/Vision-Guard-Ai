@@ -35,6 +35,10 @@ class CameraRegisterRequest(BaseModel):
         default="live",
         description="Processing mode for local files: 'live' or 'batch'"
     )
+    loop_video: Optional[bool] = Field(
+        default=True,
+        description="Whether to loop local video file when it ends"
+    )
     fps: Optional[int] = Field(
         default=5,
         ge=1, le=30,
@@ -88,6 +92,7 @@ class CameraStatusResponse(BaseModel):
     motion_threshold: float
     enabled: bool
     process_mode: str = "live"
+    loop_video: bool = True
     is_running: bool
     registered_at: str
     started_at: Optional[str] = None

@@ -26,6 +26,7 @@ class RTSPHandler:
         camera_id: str,
         retry_config: Optional[RetryConfig] = None,
         process_mode: str = "live",
+        loop_video: bool = True,
     ):
         """
         Initialize RTSP handler.
@@ -40,6 +41,7 @@ class RTSPHandler:
         self.camera_id = camera_id
         self.retry_config = retry_config or RetryConfig()
         self.process_mode = process_mode
+        self.loop_video = loop_video
         self.logger = logging.getLogger(__name__)
         
         self.capture: Optional[cv2.VideoCapture] = None
@@ -187,11 +189,16 @@ class RTSPHandler:
             try:
                 ret = self.capture.grab()
                 if not ret:
-                    if is_local:
-                        # Loop local test videos continuously for live surveillance stream
+                    if is_local and self.loop_video:
+                        # Loop local test videos continuously
                         self.capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                        continue
-                    else:
+                        ret = self.capture.grab()
+                        if not ret:
+                            # Re-open capture object if rewind didn't succeed
+                            self.capture.release()
+                            self.capture = cv2.VideoCapture(self.rtsp_url)
+                            ret = self.capture.grab()
+                    if not ret:
                         self.is_connected = False
                         break
                 

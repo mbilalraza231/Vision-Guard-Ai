@@ -35,10 +35,11 @@ interface BackendCamera {
   pid: number | null;
   zone_id?: string | null;
   process_mode?: string;
+  loop_video?: boolean;
 }
 
 // Map backend camera to frontend Camera type
-function adaptCamera(cam: BackendCamera): Camera & { enabled: boolean; source: string; priority: string; motionThreshold: number; fps: number; zone_id?: string | null; processMode: string } {
+function adaptCamera(cam: BackendCamera): Camera & { enabled: boolean; source: string; priority: string; motionThreshold: number; fps: number; zone_id?: string | null; processMode: string; loopVideo: boolean } {
   const isOnline = cam.status === 'running' || cam.status === 'online';
   
   // If it's a local video (source doesn't start with http/rtsp) and it's offline, 
@@ -61,6 +62,7 @@ function adaptCamera(cam: BackendCamera): Camera & { enabled: boolean; source: s
     fps: cam.fps,
     zone_id: cam.zone_id,
     processMode: cam.process_mode || 'live',
+    loopVideo: cam.loop_video !== false,
   };
 }
 
@@ -80,6 +82,7 @@ export default function Cameras() {
   const [enabled, setEnabled] = useState(false); // Default to false (stopped on add)
   const [zoneId, setZoneId] = useState<string>('');
   const [processMode, setProcessMode] = useState<'live' | 'batch'>('live');
+  const [loopVideo, setLoopVideo] = useState<boolean>(true);
 
   // Derived: detect if current source input is a local file path
   const isLocalFileSource = source && !source.toLowerCase().match(/^(http|https|rtsp|rtmp):\/\//);
@@ -132,6 +135,7 @@ export default function Cameras() {
       enabled?: boolean;
       zone_id?: string | null;
       process_mode?: string;
+      loop_video?: boolean;
     }) => apiService.postData(API_ENDPOINTS.cameras.register, newCam),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cameras-list'] });
@@ -152,6 +156,7 @@ export default function Cameras() {
       setEnabled(false);
       setZoneId('');
       setProcessMode('live');
+      setLoopVideo(true);
     },
     onError: (err: any) => {
       toast.error(err.message || 'Failed to register camera');
@@ -396,7 +401,7 @@ export default function Cameras() {
                       <p className="text-xs text-muted-foreground mb-2">
                         A local file path was detected. Choose how to process this video.
                       </p>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-2 gap-2 mb-3">
                         <button
                           type="button"
                           onClick={() => setProcessMode('live')}
@@ -423,6 +428,47 @@ export default function Cameras() {
                           <span className="font-semibold">⚡ Fast Batch</span>
                           <span className="text-[10px] leading-tight opacity-80">Scans as fast as possible. Best for historical footage analysis.</span>
                         </button>
+                      </div>
+
+                      {/* Video Looping Control */}
+                      <div className="pt-2 border-t border-border/50">
+                        <Label className="flex items-center justify-between text-xs font-semibold text-foreground mb-1.5">
+                          <span className="flex items-center gap-1.5">
+                            <RefreshCw className="h-3.5 w-3.5 text-primary" />
+                            Playback Looping
+                          </span>
+                          <span className="text-[10px] text-muted-foreground font-normal">
+                            {loopVideo ? 'Loops video infinitely' : 'Stops at end of file'}
+                          </span>
+                        </Label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setLoopVideo(true)}
+                            className={cn(
+                              "flex items-center gap-2 rounded-md border p-2 text-xs font-semibold transition-all justify-center",
+                              loopVideo
+                                ? "border-primary bg-primary/10 text-primary"
+                                : "border-border text-muted-foreground hover:border-primary/50"
+                            )}
+                          >
+                            <span>🔁</span>
+                            <span>Loop Continuously</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setLoopVideo(false)}
+                            className={cn(
+                              "flex items-center gap-2 rounded-md border p-2 text-xs font-semibold transition-all justify-center",
+                              !loopVideo
+                                ? "border-amber-500 bg-amber-500/10 text-amber-500"
+                                : "border-border text-muted-foreground hover:border-amber-500/50"
+                            )}
+                          >
+                            <span>▶️</span>
+                            <span>Play Once</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}
