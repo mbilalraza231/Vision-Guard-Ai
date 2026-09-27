@@ -14,11 +14,12 @@ LABEL description="Fire Detection Worker (OpenVINO INT8)"
 LABEL version="2.0.0"
 LABEL model="YOLOv11n-Fire-OpenVINO"
 
-# Switch to root to install openvino (base image runs as vguser)
+# Switch to root to install deps (base image runs as vguser)
 USER root
 
-# Install OpenVINO Runtime on top of the cached base
+COPY ai_worker/requirements.txt /app/ai_worker/requirements.txt
 RUN pip install --no-cache-dir --timeout 300 --retries 5 \
+    -r /app/ai_worker/requirements.txt \
     "openvino>=2023.3.0"
 
 # ── Environment overrides for fire worker ────────────────────
