@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Header } from '@/components/layout/Header';
-import { useSettings } from '@/hooks/useSettings';
+import { useSettings, getCachedSettings } from '@/hooks/useSettings';
 import { cn } from '@/lib/utils';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -284,7 +284,7 @@ function formatDuration(seconds: number | undefined): string {
 export default function Settings() {
   const { t, i18n } = useTranslation();
   const [activeTab, setActiveTab] = useState<SettingsTab>('system');
-  const [settings, setSettings] = useState<SystemSettings>(defaultSettings);
+  const [settings, setSettings] = useState<SystemSettings>(() => getCachedSettings() ? mergeSettingsFromApi(getCachedSettings()!) : defaultSettings);
   const [saveMessage, setSaveMessage] = useState<string>('');
   const [settingsLoading, setSettingsLoading] = useState(true);
 
@@ -300,10 +300,12 @@ export default function Settings() {
       try {
         const data = await apiService.getData<SystemSettings>('/api/v1/settings');
         if (!cancelled) {
+          const merged = mergeSettingsFromApi(data);
           setSettings((prev: SystemSettings) => ({
-            ...mergeSettingsFromApi(data),
-            system: prev.system, // system info comes from /health, /status, /metrics
+            ...merged,
+            system: prev.system,
           }));
+          try { localStorage.setItem('vg:settings:cache', JSON.stringify(merged)); } catch {}
           // Sync i18n with loaded setting
           if (data?.general?.language) {
             i18n.changeLanguage(data.general.language);
@@ -453,16 +455,16 @@ export default function Settings() {
       } else return;
 
       const saved = await apiService.putData<SystemSettings>('/api/v1/settings', payload);
+      const merged = mergeSettingsFromApi(saved);
       setSettings((prev: SystemSettings) => ({
-        ...mergeSettingsFromApi(saved),
+        ...merged,
         system: prev.system,
       }));
       const tabName = activeTab.charAt(0).toUpperCase() + activeTab.slice(1);
       setSaveMessage(`Save ${tabName} settings Successful`);
-      i18n.changeLanguage(saved.general.language);
-      queryClient.setQueryData(['system-settings'], saved);
-      // Also persist to localStorage so timezone/siteName are instant on next render
-      try { localStorage.setItem('vg:settings:cache', JSON.stringify(saved)); } catch {}
+      i18n.changeLanguage(saved.general?.language || settings.general.language);
+      queryClient.setQueryData(['system-settings'], merged);
+      try { localStorage.setItem('vg:settings:cache', JSON.stringify(merged)); } catch {}
     } catch (err) {
       console.error('Failed to save settings', err);
       setSaveMessage('Failed to save settings');
