@@ -21,7 +21,7 @@ import redis
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ai_worker import start_worker, stop_worker, WorkerConfig
-from ai_worker.settings_runtime import load_worker_runtime_settings
+from ai_worker.settings_runtime import load_worker_runtime_settings, load_worker_onnx_threads
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -141,6 +141,8 @@ def main():
     
     runtime = load_worker_runtime_settings(model_type)
     fire_model = runtime.get("fire_model", {})
+    onnx_threads = load_worker_onnx_threads(model_type)
+    logger.info(f"[{model_type}] ONNX threads -> intra={onnx_threads['intra']}, inter={onnx_threads['inter']}")
     config = WorkerConfig(
         model_type=model_type,
         redis_input_queue=input_queue,
@@ -153,6 +155,8 @@ def main():
         allowed_class_ids=str(fire_model.get("allowedClassIds", os.getenv("WORKER_ALLOWED_CLASS_IDS", ""))),
         input_width=int(fire_model.get("inputWidth", os.getenv("WORKER_INPUT_WIDTH", "640"))),
         input_height=int(fire_model.get("inputHeight", os.getenv("WORKER_INPUT_HEIGHT", "640"))),
+        intra_op_num_threads=onnx_threads['intra'],
+        inter_op_num_threads=onnx_threads['inter'],
     )
     
     worker = None
