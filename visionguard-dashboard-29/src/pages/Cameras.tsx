@@ -763,7 +763,7 @@ function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdi
                 </Badge>
               ) : (
                 <Badge variant="outline" className="border-rose-500/40 text-rose-400 bg-rose-500/5 text-[10px] font-semibold">
-                  &#x2192; Once
+                  1&#xFE0F;&#x20E3; Once
                 </Badge>
               )}
             </>
