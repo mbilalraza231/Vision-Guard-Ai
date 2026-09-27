@@ -527,7 +527,7 @@ export default function Cameras() {
                   setEnabled(cam.enabled);
                   setZoneId(cam.zone_id || '');
                   setProcessMode((cam.processMode as 'live' | 'batch') || 'live');
-                  setLoopVideo((cam as any).loop_video !== false);
+                  setLoopVideo((cam as any).loopVideo !== false);
                   setIsOpen(true);
                 }}
               />
@@ -757,7 +757,7 @@ function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdi
                   &#x25B6; Live
                 </Badge>
               )}
-              {(camera as any).loop_video !== false ? (
+              {(camera as any).loopVideo !== false ? (
                 <Badge variant="outline" className="border-violet-500/40 text-violet-400 bg-violet-500/5 text-[10px] font-semibold">
                   &#x21BA; Loop
                 </Badge>
