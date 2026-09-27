@@ -12,16 +12,14 @@ FROM visionguardai-ecs:latest
 # Switch to root to install additional deps and create dirs
 USER root
 
-# Install only the additional package needed (cloudinary)
-# opencv-python-headless, redis, numpy already in base image
 # ffmpeg needed for VideoWriter mp4v codec
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
-    && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir --timeout 300 --retries 5 \
-    cloudinary>=1.36.0 \
-    python-dotenv>=1.0.0 \
-    asyncpg>=0.29.0
+    && rm -rf /var/lib/apt/lists/*
+
+COPY clip_recorder/requirements.txt /app/clip_recorder/requirements.txt
+RUN pip install --no-cache-dir --timeout 300 --retries 5 \
+    -r /app/clip_recorder/requirements.txt
 
 # Copy clip_recorder module into /app
 COPY clip_recorder/ /app/clip_recorder/
