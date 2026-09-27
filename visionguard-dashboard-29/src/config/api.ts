@@ -23,11 +23,20 @@ export const API_ENDPOINTS = {
   // Health
   health: '/health',
 
+  // Auth endpoints (legacy REST path; the live app currently authenticates via Supabase)
+  auth: {
+    login: '/auth/login',
+    logout: '/auth/logout',
+    refresh: '/auth/refresh',
+    me: '/auth/me',
+  },
+
   // Dashboard endpoints (mapped to real backend)
   dashboard: {
     stats: '/events/stats',
     systemMetrics: '/status',
     recentEvents: '/events',
+    recentIncidents: '/events',
   },
 
   // Events / Incidents endpoints
