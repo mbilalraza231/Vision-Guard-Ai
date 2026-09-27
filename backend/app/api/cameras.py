@@ -151,7 +151,8 @@ async def register_camera(
             ON CONFLICT (id) DO UPDATE 
             SET name = EXCLUDED.name, source = EXCLUDED.source, fps = EXCLUDED.fps, 
                 motion_threshold = EXCLUDED.motion_threshold, priority = EXCLUDED.priority, 
-                enabled = EXCLUDED.enabled, process_mode = EXCLUDED.process_mode, zone_id = EXCLUDED.zone_id
+                enabled = EXCLUDED.enabled, process_mode = EXCLUDED.process_mode, zone_id = EXCLUDED.zone_id,
+                loop_video = EXCLUDED.loop_video
             """,
             request.camera_id,
             request.name or request.camera_id,
