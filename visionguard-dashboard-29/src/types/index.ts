@@ -301,6 +301,7 @@ export interface StorageSettings {
   retentionDays: number;
   autoDelete: boolean;
   maxStorage: number;
+  maxSecuredSnapshotBuffer?: number;
 }
 
 export interface ModelSettings {

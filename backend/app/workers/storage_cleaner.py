@@ -36,7 +36,7 @@ class StorageCleaner:
         self.data_dir = data_dir
         self.clip_dir = os.path.join(data_dir, "clips")
         self.snapshot_dir = os.path.join(data_dir, "detections")
-        
+
         self._stop_event = asyncio.Event()
         self._task: asyncio.Task = None
 
@@ -44,7 +44,7 @@ class StorageCleaner:
         self.cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME", "")
         self.api_key = os.getenv("CLOUDINARY_API_KEY", "")
         self.api_secret = os.getenv("CLOUDINARY_API_SECRET", "")
-        
+
         if self.cloud_name and self.api_key and self.api_secret:
             cloudinary.config(
                 cloud_name=self.cloud_name,
@@ -66,7 +66,8 @@ class StorageCleaner:
             return
         self._stop_event.clear()
         self._task = asyncio.create_task(self._run(), name="storage-cleaner")
-        logger.info("StorageCleaner started (interval: %ds)", CLEANER_INTERVAL_SECONDS)
+        logger.info("StorageCleaner started (interval: %ds)",
+                    CLEANER_INTERVAL_SECONDS)
 
     async def stop(self):
         """Gracefully stop the background cleaner task."""
@@ -89,7 +90,8 @@ class StorageCleaner:
             try:
                 await self._run_cycle()
             except Exception as exc:
-                logger.error("StorageCleaner cycle failed: %s", exc, exc_info=True)
+                logger.error("StorageCleaner cycle failed: %s",
+                             exc, exc_info=True)
 
             try:
                 await asyncio.wait_for(
@@ -102,10 +104,10 @@ class StorageCleaner:
     async def _run_cycle(self):
         """Single cleanup cycle — reads settings and applies all rules."""
         full_settings = await self._fetch_full_settings()
-        
+
         storage_settings = full_settings.get("storage", {})
         privacy_settings = full_settings.get("privacy", {})
-        
+
         auto_delete = storage_settings.get("autoDelete", False)
         gdpr_compliant = privacy_settings.get("gdprCompliant", False)
 
@@ -119,11 +121,14 @@ class StorageCleaner:
 
         retention_days = int(storage_settings.get("retentionDays", 30))
         max_storage_gb = float(storage_settings.get("maxStorage", 50))
+        max_secured = int(storage_settings.get(
+            "maxSecuredSnapshotBuffer", 200))
 
         if gdpr_compliant:
             # Force GDPR strict retention limit (caps at 30 days maximum, or keeps user stricter choice if smaller)
             retention_days = min(30, retention_days)
-            logger.info("StorageCleaner GDPR Compliance Mode active: autoDelete is FORCED to ON, and retentionDays is capped at 30 days.")
+            logger.info(
+                "StorageCleaner GDPR Compliance Mode active: autoDelete is FORCED to ON, and retentionDays is capped at 30 days.")
 
         logger.info(
             "StorageCleaner cycle: retentionDays=%d, maxStorageGB=%.1f",
@@ -136,6 +141,11 @@ class StorageCleaner:
         # Enforce disk usage limit (Local Files only)
         await self._enforce_max_storage(max_storage_gb)
 
+        # Trim the recorder's transient 'snapshot_secured_*' copies to a bounded count.
+        # These are temporary copies made during Cloud upload; normally removed right
+        # after upload, but this caps orphans left by failed uploads / Cloudinary-off.
+        await self._trim_secured_snapshots(max_secured)
+
     # ------------------------------------------------------------------ #
     # Settings Fetch                                                        #
     # ------------------------------------------------------------------ #
@@ -146,7 +156,8 @@ class StorageCleaner:
             from backend.app.services.runtime_settings import resolve_runtime_settings
             return await resolve_runtime_settings()
         except Exception as exc:
-            logger.error("StorageCleaner: could not fetch full settings: %s", exc)
+            logger.error(
+                "StorageCleaner: could not fetch full settings: %s", exc)
         return {}
 
     # ------------------------------------------------------------------ #
@@ -193,10 +204,12 @@ class StorageCleaner:
             logger.info(
                 "StorageCleaner [retention]: removed events before %.0f (cutoff=%dd). "
                 "events_purged=%s, files_destroyed=%d/%d",
-                cutoff_ts, retention_days, deleted_events, deleted_files, len(evidence_rows)
+                cutoff_ts, retention_days, deleted_events, deleted_files, len(
+                    evidence_rows)
             )
         except Exception as exc:
-            logger.error("StorageCleaner retention enforcement failed: %s", exc)
+            logger.error(
+                "StorageCleaner retention enforcement failed: %s", exc)
 
     async def _destroy_evidence_file(self, provider: str, url: str, evidence_type: str) -> bool:
         """Destroy the actual media file based on its provider."""
@@ -207,7 +220,8 @@ class StorageCleaner:
                     return True
                 return False  # Already gone
             except OSError as e:
-                logger.warning("StorageCleaner: failed to remove local file %s: %s", url, e)
+                logger.warning(
+                    "StorageCleaner: failed to remove local file %s: %s", url, e)
                 return False
 
         elif provider == "cloudinary" and self.cloudinary_enabled:
@@ -217,7 +231,7 @@ class StorageCleaner:
                 # Extract everything after the version folder or 'upload/'
                 parsed = urllib.parse.urlparse(url)
                 path_parts = parsed.path.split('/')
-                
+
                 # Find 'visionguard' index to get the folder structure
                 try:
                     vg_idx = path_parts.index('visionguard')
@@ -230,23 +244,25 @@ class StorageCleaner:
                     public_id = os.path.splitext(filename)[0]
 
                 resource_type = "video" if evidence_type == "clip" else "image"
-                
+
                 # Cloudinary delete is blocking, use to_thread
                 result = await asyncio.to_thread(
                     cloudinary.uploader.destroy,
                     public_id,
                     resource_type=resource_type
                 )
-                
+
                 if result.get("result") == "ok":
                     return True
                 else:
-                    logger.warning("StorageCleaner: Cloudinary destroy returned %s for %s", result, public_id)
+                    logger.warning(
+                        "StorageCleaner: Cloudinary destroy returned %s for %s", result, public_id)
                     return False
             except Exception as e:
-                logger.warning("StorageCleaner: failed to destroy Cloudinary asset %s: %s", url, e)
+                logger.warning(
+                    "StorageCleaner: failed to destroy Cloudinary asset %s: %s", url, e)
                 return False
-                
+
         return False
 
     # ------------------------------------------------------------------ #
@@ -256,7 +272,7 @@ class StorageCleaner:
     async def _enforce_max_storage(self, max_storage_gb: float):
         """Delete the oldest local media files until disk usage is below max_storage_gb."""
         max_bytes = max_storage_gb * 1024 * 1024 * 1024
-        
+
         # We only care about the clips and detections folders
         clips_size = self._get_dir_size(self.clip_dir)
         snapshots_size = self._get_dir_size(self.snapshot_dir)
@@ -275,7 +291,8 @@ class StorageCleaner:
         )
 
         # Gather all media files from both directories, sorted oldest-first
-        media_files = self._collect_media_files([self.clip_dir, self.snapshot_dir])
+        media_files = self._collect_media_files(
+            [self.clip_dir, self.snapshot_dir])
 
         bytes_freed = 0
         deleted_count = 0
@@ -288,18 +305,21 @@ class StorageCleaner:
                 os.remove(file_path)
                 bytes_freed += file_size
                 deleted_count += 1
-                
+
                 # We must also clean up the database so the UI doesn't show broken links!
                 await db.execute(
                     "DELETE FROM event_evidence WHERE storage_provider = 'local' AND public_url = $1",
                     file_path
                 )
-                
-                logger.info("StorageCleaner: deleted %s (%.1f KB)", file_path, file_size / 1024)
+
+                logger.info("StorageCleaner: deleted %s (%.1f KB)",
+                            file_path, file_size / 1024)
             except OSError as exc:
-                logger.warning("StorageCleaner: could not delete %s: %s", file_path, exc)
+                logger.warning(
+                    "StorageCleaner: could not delete %s: %s", file_path, exc)
             except Exception as exc:
-                logger.warning("StorageCleaner: failed to clean DB for %s: %s", file_path, exc)
+                logger.warning(
+                    "StorageCleaner: failed to clean DB for %s: %s", file_path, exc)
 
         logger.info(
             "StorageCleaner [max storage]: freed %.2f MB across %d files",
@@ -309,6 +329,50 @@ class StorageCleaner:
     # ------------------------------------------------------------------ #
     # Helpers                                                               #
     # ------------------------------------------------------------------ #
+
+    async def _trim_secured_snapshots(self, max_secured: int):
+        """Keep only the newest `max_secured` 'snapshot_secured_*.jpg' temp files.
+
+        The clip recorder creates these transient copies (from a worker detection
+        image) and normally deletes them right after a successful Cloudinary upload.
+        Failed uploads or a Cloudinary-off setup can leave strays that the worker's
+        rolling buffer never trims (it only counts '<type>_*' files). This is that
+        safety net: it removes the OLDEST secured copies beyond the configured cap.
+        It only ever targets 'snapshot_secured_*' files — never originals, clips, or DB rows.
+        """
+        if max_secured <= 0:
+            return
+        try:
+            secured: List[tuple] = []
+            for dirpath, _, filenames in os.walk(self.snapshot_dir):
+                for fname in filenames:
+                    if fname.startswith("snapshot_secured_") and fname.lower().endswith(".jpg"):
+                        fpath = os.path.join(dirpath, fname)
+                        try:
+                            secured.append((fpath, os.stat(fpath).st_mtime))
+                        except OSError:
+                            pass
+
+            # Newest first
+            secured.sort(key=lambda x: x[1], reverse=True)
+            stale = secured[max_secured:]
+            if not stale:
+                return
+
+            removed = 0
+            for fpath, _ in stale:
+                try:
+                    os.remove(fpath)
+                    removed += 1
+                except OSError as exc:
+                    logger.warning(
+                        "StorageCleaner [secured cap]: could not delete %s: %s", fpath, exc)
+            logger.info(
+                "StorageCleaner [secured cap]: %d secured snapshots (cap=%d), removed %d oldest",
+                len(secured), max_secured, removed,
+            )
+        except Exception as exc:
+            logger.error("StorageCleaner [secured cap] failed: %s", exc)
 
     @staticmethod
     def _get_dir_size(directory: str) -> float:
@@ -345,12 +409,13 @@ class StorageCleaner:
                             fpath = os.path.join(dirpath, fname)
                             try:
                                 stat = os.stat(fpath)
-                                files.append((fpath, stat.st_size, stat.st_mtime))
+                                files.append(
+                                    (fpath, stat.st_size, stat.st_mtime))
                             except OSError:
                                 pass
             except Exception:
                 pass
-                
+
         # Sort oldest first (smallest mtime)
         files.sort(key=lambda x: x[2])
         # Return only (path, size) — drop mtime
@@ -365,6 +430,7 @@ def get_storage_cleaner(data_dir: str = None) -> StorageCleaner:
     global _cleaner
     if _cleaner is None:
         _cleaner = StorageCleaner(
-            data_dir=data_dir or os.environ.get("VG_DATA_DIR", "/data/visionguard")
+            data_dir=data_dir or os.environ.get(
+                "VG_DATA_DIR", "/data/visionguard")
         )
     return _cleaner

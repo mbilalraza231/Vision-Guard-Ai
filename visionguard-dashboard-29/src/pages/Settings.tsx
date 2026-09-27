@@ -36,6 +36,7 @@ import type {
   StorageSettings,
   SystemInfo,
   SystemSettings,
+  WorkerThreadsSettings,
 } from '@/types';
 
 type SettingsTab = 'general' | 'alerts' | 'cameras' | 'preprocessing' | 'performance' | 'storage' | 'models' | 'privacy' | 'system' | 'queue';
@@ -76,6 +77,7 @@ const defaultSettings: SystemSettings = {
     retentionDays: 30,
     autoDelete: false,
     maxStorage: 50,
+    maxSecuredSnapshotBuffer: 200,
   },
   models: {
     detectionModel: 'yolo-edge-v2',
@@ -1162,6 +1164,30 @@ export default function Settings() {
                         checked={settings.storage.autoDelete}
                         onCheckedChange={(checked) => updateStorage({ autoDelete: checked })}
                       />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="maxSecuredSnapshotBuffer">
+                        Max Secured Snapshots ({settings.storage.maxSecuredSnapshotBuffer ?? 200} files)
+                      </Label>
+                      <Input
+                        id="maxSecuredSnapshotBuffer"
+                        type="number"
+                        min={0}
+                        max={5000}
+                        value={settings.storage.maxSecuredSnapshotBuffer ?? 200}
+                        onChange={(e) =>
+                          updateStorage({
+                            maxSecuredSnapshotBuffer: Math.max(0, Math.min(5000, Number(e.target.value) || 0)),
+                          })
+                        }
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Safety cap for the recorder's temporary "secured" snapshot copies. They are normally deleted right after a
+                        successful cloud upload; the hourly cleanup keeps at most this many of the newest ones if uploads fail or
+                        Cloudinary is off. Only touches "snapshot_secured_*" files — never original detections or clips. Requires
+                        Scheduled Cleanup (above) to be ON.
+                      </p>
                     </div>
 
                     <div className="pt-6 border-t border-white/5">
