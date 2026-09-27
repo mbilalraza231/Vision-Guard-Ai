@@ -279,6 +279,7 @@ export default function Cameras() {
                     enabled,
                     zone_id: zoneId || null,
                     process_mode: isLocalFileSource ? processMode : 'live',
+                    loop_video: isLocalFileSource ? loopVideo : true,
                   });
                 }}
                 className="flex-1 flex flex-col min-h-0 overflow-hidden"
@@ -526,6 +527,7 @@ export default function Cameras() {
                   setEnabled(cam.enabled);
                   setZoneId(cam.zone_id || '');
                   setProcessMode((cam.processMode as 'live' | 'batch') || 'live');
+                  setLoopVideo(cam.loopVideo !== false);
                   setIsOpen(true);
                 }}
               />

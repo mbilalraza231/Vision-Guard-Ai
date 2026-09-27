@@ -10,6 +10,7 @@ import logging
 import os
 import cv2
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import Process, Event
 from typing import Optional, TYPE_CHECKING
 
@@ -238,6 +239,20 @@ class AIWorker:
         try:
             runtime = load_worker_runtime_settings(self.config.model_type)
             changed = False
+
+                        # Load privacy settings directly to avoid Redis call per frame
+            try:
+                import redis
+                import json
+                import os
+                r_cli = redis.Redis(host=os.getenv("REDIS_HOST", "redis"), port=int(os.getenv("REDIS_PORT", "6379")), decode_responses=True)
+                settings_data = r_cli.get("vg:settings")
+                if settings_data:
+                    settings_json = json.loads(settings_data)
+                    self._mask_faces_enabled = settings_json.get("privacy", {}).get("maskFaces", False)
+                r_cli.close()
+            except Exception:
+                pass
 
             new_thr = runtime["confidence_threshold"]
             if abs(new_thr - self.config.confidence_threshold) >= 1e-6:
@@ -664,6 +679,8 @@ class AIWorker:
         if self.task_consumer:
             self.task_consumer.close()
 
+        if hasattr(self, '_io_executor'):
+            self._io_executor.shutdown(wait=False)
         if self.result_publisher:
             self.result_publisher.close()
 

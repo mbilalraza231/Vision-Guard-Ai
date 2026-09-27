@@ -284,11 +284,24 @@ async def stop_camera(
     # Update enabled status in Postgres, then signal camera container via pub/sub
     try:
         from ..core.database import db
+        import redis
+        import os
         await db.execute("UPDATE cameras SET enabled = FALSE WHERE id = $1", camera_id)
 
         # Also update in-memory state so metrics immediately reflect the change
         if camera_id in camera_manager._cameras:
             camera_manager._cameras[camera_id].enabled = False
+
+        try:
+            r = redis.Redis(
+                host=os.getenv("REDIS_HOST", "redis"),
+                port=int(os.getenv("REDIS_PORT", "6379")),
+                decode_responses=True
+            )
+            r.hdel("vg:camera:sources", camera_id)
+            r.close()
+        except Exception as redis_err:
+            logger.warning(f"Failed to remove camera from Redis sources: {redis_err}")
 
         # Publish instant reload signal to vg-camera container (replaces file-write)
         await camera_manager.publish_camera_reload(action="stop", camera_id=camera_id)
