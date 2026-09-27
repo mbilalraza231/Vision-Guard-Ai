@@ -527,7 +527,7 @@ export default function Cameras() {
                   setEnabled(cam.enabled);
                   setZoneId(cam.zone_id || '');
                   setProcessMode((cam.processMode as 'live' | 'batch') || 'live');
-                  setLoopVideo(cam.loopVideo !== false);
+                  setLoopVideo((cam as any).loop_video !== false);
                   setIsOpen(true);
                 }}
               />
