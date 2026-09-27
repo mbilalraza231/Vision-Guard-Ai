@@ -745,11 +745,28 @@ function CameraCard({ camera, startMutation, stopMutation, deleteMutation, onEdi
               {t('monitoring.aiActive')}
             </Badge>
           )}
-          {/* Show Batch Mode indicator badge when camera is a local file in batch mode */}
-          {isLocalFile && (camera as any).processMode === 'batch' && !camera.enabled && !isStarting && (
-            <Badge variant="outline" className="border-amber-500/30 text-amber-500/70 text-[10px]">
-              ⚡ Batch
-            </Badge>
+          {/* Mode indicator badges - always show for local file cameras */}
+          {isLocalFile && !isStarting && (
+            <>
+              {(camera as any).processMode === 'batch' ? (
+                <Badge variant="outline" className="border-amber-500/40 text-amber-400 bg-amber-500/5 text-[10px] font-semibold">
+                  &#x26A1; Batch
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="border-sky-500/40 text-sky-400 bg-sky-500/5 text-[10px] font-semibold">
+                  &#x25B6; Live
+                </Badge>
+              )}
+              {(camera as any).loop_video !== false ? (
+                <Badge variant="outline" className="border-violet-500/40 text-violet-400 bg-violet-500/5 text-[10px] font-semibold">
+                  &#x21BA; Loop
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="border-rose-500/40 text-rose-400 bg-rose-500/5 text-[10px] font-semibold">
+                  &#x2192; Once
+                </Badge>
+              )}
+            </>
           )}
         </div>
       </div>
