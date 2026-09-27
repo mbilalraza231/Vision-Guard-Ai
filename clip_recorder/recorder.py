@@ -610,20 +610,28 @@ class ClipRecorder:
             model_type = event_type.replace('_detected', '')
             # Expected prefix: <model_type>_<camera_id>_
             prefix = f"{model_type}_{camera_id}_"
-            # Type-only prefix used as a fallback when the worker saved the snapshot
-            # under a different camera-name token than the finalized event carries
-            # (e.g. worker wrote 'fall_cma3_*.jpg' but the event reports camera 'cam1').
+            # Type-only prefix used ONLY as a safe fallback: we may borrow a same-type
+            # snapshot from another camera token ONLY when every candidate shares a single
+            # camera token (a genuine worker-wide naming mismatch). With two cameras
+            # producing this type, we must NEVER cross-match or we show the wrong image.
             type_prefix = f"{model_type}_"
             detection_ts_ms = detection_ts * 1000
             tolerance_ms = 30 * 1000  # 30 seconds
 
-            def _scan(required_prefix: str) -> tuple[Optional[str], float]:
-                """Find the closest .jpg whose name starts with required_prefix
-                and whose millisecond timestamp is within tolerance."""
+            def _scan(required_prefix: str,
+                      collect_tokens: bool = False):
+                """Return the closest .jpg matching required_prefix within tolerance.
+
+                If collect_tokens is True, also return the set of distinct camera
+                tokens seen in the candidate filenames (used to detect multi-camera
+                type-only matches and avoid cross-camera contamination).
+                """
                 best: Optional[str] = None
                 best_diff = float("inf")
+                tokens: set = set()
                 req_lower = required_prefix.lower()
                 alt_lower = req_lower.replace("_detected", "")
+                type_prefix_lower = type_prefix.lower()
                 for f in snapshot_dir.iterdir():
                     if not f.name.endswith(".jpg"):
                         continue
@@ -642,26 +650,48 @@ class ClipRecorder:
                         file_ts_ms = float(parts[1])
                     except ValueError:
                         continue
+                    if collect_tokens:
+                        # Everything between the type prefix and the trailing timestamp
+                        # is the camera token (e.g. 'fall_cma3_123.jpg' -> 'cma3').
+                        name_wo_ts = parts[0]
+                        if name_wo_ts.lower().startswith(type_prefix_lower):
+                            token = name_wo_ts[len(type_prefix):]
+                            if token:
+                                tokens.add(token.lower())
                     diff = abs(file_ts_ms - detection_ts_ms)
                     if diff <= tolerance_ms and diff < best_diff:
                         best_diff = diff
                         best = str(f)
+                if collect_tokens:
+                    return best, best_diff, tokens
                 return best, best_diff
 
             best_path: Optional[str] = None
             best_diff = float("inf")
 
-            # Pass 1: exact <type>_<camera>_ match (preferred, most correct).
+            # Pass 1: exact <type>_<camera>_ match (preferred, always correct).
             best_path, best_diff = _scan(prefix)
-            # Pass 2: relax to type-only match so a camera-name mismatch between the
-            # AI worker and the event pipeline no longer silently drops the snapshot.
+
+            # Pass 2: camera-aware fallback. Only borrow a same-type snapshot when it is
+            # safe — i.e. every in-range candidate belongs to a SINGLE camera token.
+            # That means the worker names all its files with one token (a naming mismatch,
+            # e.g. real camera 'frontcam3' written as 'cma3'). If TWO or more distinct
+            # cameras produce this type, a type-only match could hand cam1's event a
+            # cma3 image — so we refuse and honestly report 'not found' instead.
             if best_path is None:
-                best_path, best_diff = _scan(type_prefix)
-                if best_path:
+                cand, cand_diff, cand_tokens = _scan(
+                    type_prefix, collect_tokens=True)
+                if cand and len(cand_tokens) == 1:
+                    best_path, best_diff = cand, cand_diff
                     logger.info(
                         f"Camera-prefixed snapshot '{prefix}*' not found for {event_id}; "
-                        f"fell back to type-only match '{os.path.basename(best_path)}' "
-                        f"(diff: {best_diff/1000:.2f}s)")
+                        f"using type-only match '{os.path.basename(best_path)}' "
+                        f"(single camera token, diff: {best_diff/1000:.2f}s)")
+                elif cand:
+                    logger.warning(
+                        f"Skipping type-only snapshot fallback for {event_id}: multiple "
+                        f"cameras {sorted(cand_tokens)} produce '{model_type}' snapshots. "
+                        f"Refusing cross-camera match to avoid showing the wrong image.")
 
             if best_path:
                 logger.info(
