@@ -101,6 +101,18 @@ const defaultSettings: SystemSettings = {
     },
     imageSaveThreshold: 0.30,
     maxSnapshotBuffer: 100,
+    onnxIntraOpThreads: 2,
+    onnxInterOpThreads: 1,
+    intraOpThreads: {
+      weapon: 2,
+      fire: 1,
+      fall: 2,
+    },
+    interOpThreads: {
+      weapon: 1,
+      fire: 1,
+      fall: 1,
+    },
   },
   ecs: {
     thresholds: {
@@ -165,6 +177,18 @@ function mergeSettingsFromApi(data: Partial<SystemSettings>): SystemSettings {
         ...defaultSettings.workers.thresholds,
         ...data.workers?.thresholds,
       },
+      intraOpThreads: {
+        weapon: data.workers?.intraOpThreads?.weapon ?? data.workers?.onnxThreads?.intra?.weapon ?? 2,
+        fire: data.workers?.intraOpThreads?.fire ?? data.workers?.onnxThreads?.intra?.fire ?? 1,
+        fall: data.workers?.intraOpThreads?.fall ?? data.workers?.onnxThreads?.intra?.fall ?? 2,
+      },
+      interOpThreads: {
+        weapon: data.workers?.interOpThreads?.weapon ?? data.workers?.onnxThreads?.inter?.weapon ?? 1,
+        fire: data.workers?.interOpThreads?.fire ?? data.workers?.onnxThreads?.inter?.fire ?? 1,
+        fall: data.workers?.interOpThreads?.fall ?? data.workers?.onnxThreads?.inter?.fall ?? 1,
+      },
+      onnxIntraOpThreads: data.workers?.onnxIntraOpThreads ?? data.workers?.onnxThreads?.intraOpNumThreads ?? 2,
+      onnxInterOpThreads: data.workers?.onnxInterOpThreads ?? data.workers?.onnxThreads?.interOpNumThreads ?? 1,
     },
     ecs: {
       ...defaultSettings.ecs,
@@ -380,8 +404,39 @@ export default function Settings() {
         payload.clips = settings.clips;
       }
       else if (activeTab === 'models') {
+        const weaponIntra = settings.workers?.intraOpThreads?.weapon ?? 2;
+        const fireIntra = settings.workers?.intraOpThreads?.fire ?? 1;
+        const fallIntra = settings.workers?.intraOpThreads?.fall ?? 2;
         payload.models = settings.models;
-        payload.workers = settings.workers;
+        payload.workers = {
+          ...settings.workers,
+          intraOpThreads: {
+            weapon: weaponIntra,
+            fire: fireIntra,
+            fall: fallIntra,
+          },
+          interOpThreads: {
+            weapon: settings.workers?.interOpThreads?.weapon ?? 1,
+            fire: settings.workers?.interOpThreads?.fire ?? 1,
+            fall: settings.workers?.interOpThreads?.fall ?? 1,
+          },
+          onnxIntraOpThreads: settings.workers?.onnxIntraOpThreads ?? 2,
+          onnxInterOpThreads: settings.workers?.onnxInterOpThreads ?? 1,
+          onnxThreads: {
+            intraOpNumThreads: settings.workers?.onnxIntraOpThreads ?? 2,
+            interOpNumThreads: settings.workers?.onnxInterOpThreads ?? 1,
+            intra: {
+              weapon: weaponIntra,
+              fire: fireIntra,
+              fall: fallIntra,
+            },
+            inter: {
+              weapon: settings.workers?.interOpThreads?.weapon ?? 1,
+              fire: settings.workers?.interOpThreads?.fire ?? 1,
+              fall: settings.workers?.interOpThreads?.fall ?? 1,
+            },
+          },
+        };
         payload.ecs = settings.ecs;
       }
       else if (activeTab === 'cameras') {
@@ -557,6 +612,21 @@ export default function Settings() {
     setSettings((prev: SystemSettings) => ({
       ...prev,
       workers: { ...defaultSettings.workers, ...prev.workers, ...patch } as SystemSettings['workers'],
+    }));
+  };
+
+  const updateWorkerIntraThreads = (patch: Partial<WorkerThreadsSettings>) => {
+    setSettings((prev: SystemSettings) => ({
+      ...prev,
+      workers: {
+        ...defaultSettings.workers,
+        ...prev.workers,
+        intraOpThreads: {
+          ...defaultSettings.workers.intraOpThreads,
+          ...prev.workers?.intraOpThreads,
+          ...patch,
+        },
+      } as SystemSettings['workers'],
     }));
   };
 
@@ -1228,43 +1298,117 @@ export default function Settings() {
                     </div>
 
                     <div className="pt-6 border-t border-white/5">
-                      <h3 className="text-lg font-semibold mb-1">ECS Thresholds</h3>
-                      <p className="text-xs text-muted-foreground mb-3">
-                        Minimum confidence before ECS creates an incident (second filter after workers). Applied via Redis pub/sub at runtime.
+                      <div className="flex items-center justify-between mb-1">
+                        <h3 className="text-lg font-semibold">ONNX Runtime & Worker Thread Allocation</h3>
+                        {(() => {
+                          const w = settings.workers?.intraOpThreads?.weapon ?? 2;
+                          const f = settings.workers?.intraOpThreads?.fire ?? 1;
+                          const l = settings.workers?.intraOpThreads?.fall ?? 2;
+                          const total = w + f + l;
+                          const isOptimal = total <= 6;
+                          return (
+                            <span className={cn(
+                              "text-xs px-2.5 py-1 rounded-full font-mono font-medium border",
+                              isOptimal 
+                                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                                : "bg-amber-500/10 border-amber-500/20 text-amber-400"
+                            )}>
+                              {w} + {f} + {l} = {total} / 8 CPU Threads {isOptimal ? "(Optimal)" : "(High Load)"}
+                            </span>
+                          );
+                        })()}
+                      </div>
+                      <p className="text-xs text-muted-foreground mb-4">
+                        Allocate intra-op CPU threads individually per AI model worker. Setting heavier models (Weapon/Fall) to <strong>2</strong> and lighter models (Fire) to <strong>1</strong> or <strong>2</strong> keeps CPU usage within 8 logical threads without lock contention.
                       </p>
 
-                      <div className="space-y-5">
+                      <div className="space-y-4 rounded-xl border border-white/5 bg-secondary/10 p-4">
+                        {/* Weapon Worker Intra Threads */}
                         <div className="space-y-2">
-                          <Label>Weapon Threshold ({Math.round((settings.ecs?.thresholds?.weapon ?? 0.30) * 100)}%)</Label>
+                          <div className="flex items-center justify-between">
+                            <Label className="text-sm font-medium">
+                              Weapon Worker Intra-Op Threads ({settings.workers?.intraOpThreads?.weapon ?? 2} threads)
+                            </Label>
+                            <span className="text-xs font-mono px-2 py-0.5 rounded bg-secondary text-foreground">
+                              Recommended: 2
+                            </span>
+                          </div>
                           <Slider
-                            value={[(settings.ecs?.thresholds?.weapon ?? 0.30) * 100]}
-                            min={10}
-                            max={99}
+                            value={[settings.workers?.intraOpThreads?.weapon ?? 2]}
+                            min={1}
+                            max={6}
                             step={1}
-                            onValueChange={(value) => updateEcsThresholds({ weapon: value[0] / 100 })}
+                            onValueChange={(val) => updateWorkerIntraThreads({ weapon: val[0] })}
                           />
+                          <p className="text-[11px] text-muted-foreground">
+                            Runs ~640px YOLOv8 inference. 2 threads provide optimal speedup without hogging the CPU.
+                          </p>
                         </div>
 
-                        <div className="space-y-2">
-                          <Label>Fire Threshold ({Math.round((settings.ecs?.thresholds?.fire ?? 0.30) * 100)}%)</Label>
+                        {/* Fire Worker Intra Threads */}
+                        <div className="space-y-2 pt-3 border-t border-white/5">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-sm font-medium">
+                              Fire Worker Intra-Op Threads ({settings.workers?.intraOpThreads?.fire ?? 1} thread)
+                            </Label>
+                            <span className="text-xs font-mono px-2 py-0.5 rounded bg-secondary text-foreground">
+                              Recommended: 1 or 2
+                            </span>
+                          </div>
                           <Slider
-                            value={[(settings.ecs?.thresholds?.fire ?? 0.30) * 100]}
-                            min={10}
-                            max={99}
+                            value={[settings.workers?.intraOpThreads?.fire ?? 1]}
+                            min={1}
+                            max={6}
                             step={1}
-                            onValueChange={(value) => updateEcsThresholds({ fire: value[0] / 100 })}
+                            onValueChange={(val) => updateWorkerIntraThreads({ fire: val[0] })}
                           />
+                          <p className="text-[11px] text-muted-foreground">
+                            Runs ~416px lightweight YOLOv8 inference. 1 thread is fast (~120ms) and saves CPU for weapon/fall detection.
+                          </p>
                         </div>
 
-                        <div className="space-y-2">
-                          <Label>Fall Threshold ({Math.round((settings.ecs?.thresholds?.fall ?? 0.30) * 100)}%)</Label>
+                        {/* Fall Worker Intra Threads */}
+                        <div className="space-y-2 pt-3 border-t border-white/5">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-sm font-medium">
+                              Fall Worker Intra-Op Threads ({settings.workers?.intraOpThreads?.fall ?? 2} threads)
+                            </Label>
+                            <span className="text-xs font-mono px-2 py-0.5 rounded bg-secondary text-foreground">
+                              Recommended: 2
+                            </span>
+                          </div>
                           <Slider
-                            value={[(settings.ecs?.thresholds?.fall ?? 0.30) * 100]}
-                            min={10}
-                            max={99}
+                            value={[settings.workers?.intraOpThreads?.fall ?? 2]}
+                            min={1}
+                            max={6}
                             step={1}
-                            onValueChange={(value) => updateEcsThresholds({ fall: value[0] / 100 })}
+                            onValueChange={(val) => updateWorkerIntraThreads({ fall: val[0] })}
                           />
+                          <p className="text-[11px] text-muted-foreground">
+                            Runs ~640px YOLOv8 pose/fall inference. 2 threads provide smooth ~180ms latency.
+                          </p>
+                        </div>
+
+                        {/* Global Inter-Op Threads */}
+                        <div className="space-y-2 pt-3 border-t border-white/5">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-sm font-medium">
+                              Inter-Op Threads ({settings.workers?.onnxInterOpThreads ?? 1} thread per worker)
+                            </Label>
+                            <span className="text-xs font-mono px-2 py-0.5 rounded bg-secondary text-foreground">
+                              Default: 1
+                            </span>
+                          </div>
+                          <Slider
+                            value={[settings.workers?.onnxInterOpThreads ?? 1]}
+                            min={1}
+                            max={4}
+                            step={1}
+                            onValueChange={(val) => updateWorkers({ onnxInterOpThreads: val[0] })}
+                          />
+                          <p className="text-[11px] text-muted-foreground">
+                            Sequential YOLO models execute node-by-node. Keeping this at 1 minimizes OS thread context-switching.
+                          </p>
                         </div>
                       </div>
                     </div>

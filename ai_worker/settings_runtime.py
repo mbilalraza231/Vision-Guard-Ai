@@ -101,3 +101,61 @@ def load_worker_runtime_settings(model_type: str) -> Dict[str, Any]:
         "max_snapshot_buffer": max_snapshot_buffer,
         "fire_model": fire_runtime,
     }
+
+def load_worker_onnx_threads(model_type: str) -> dict:
+    """
+    Read ONNX thread settings from Redis system_settings.
+    Supports per-worker allocation:
+      - workers.intraOpThreads.{model_type} (e.g., weapon: 2, fire: 1, fall: 2)
+      - workers.onnxThreads.intra.{model_type}
+    Falls back to global workers.onnxIntraOpThreads, env vars, then defaults.
+    """
+    workers = _redis_get_settings().get("workers", {})
+    if not isinstance(workers, dict):
+        workers = {}
+
+    # Check per-model intra threads
+    intra = None
+    intra_map = workers.get("intraOpThreads")
+    if isinstance(intra_map, dict) and model_type in intra_map:
+        intra = intra_map.get(model_type)
+
+    onnx = workers.get("onnxThreads", {})
+    if intra is None and isinstance(onnx, dict):
+        onnx_intra_map = onnx.get("intra")
+        if isinstance(onnx_intra_map, dict) and model_type in onnx_intra_map:
+            intra = onnx_intra_map.get(model_type)
+        if intra is None:
+            intra = onnx.get("intraOpNumThreads")
+
+    if intra is None:
+        intra = workers.get("onnxIntraOpThreads")
+
+    if intra is None:
+        # Check per-model env var e.g. ONNX_INTRA_OP_NUM_THREADS_WEAPON
+        env_model = os.getenv(f"ONNX_INTRA_OP_NUM_THREADS_{model_type.upper()}")
+        if env_model is not None:
+            intra = env_model
+        else:
+            intra = os.getenv("ONNX_INTRA_OP_NUM_THREADS", "2")
+
+    # Check per-model inter threads
+    inter = None
+    inter_map = workers.get("interOpThreads")
+    if isinstance(inter_map, dict) and model_type in inter_map:
+        inter = inter_map.get(model_type)
+
+    if inter is None and isinstance(onnx, dict):
+        onnx_inter_map = onnx.get("inter")
+        if isinstance(onnx_inter_map, dict) and model_type in onnx_inter_map:
+            inter = onnx_inter_map.get(model_type)
+        if inter is None:
+            inter = onnx.get("interOpNumThreads")
+
+    if inter is None:
+        inter = workers.get("onnxInterOpThreads")
+
+    if inter is None:
+        inter = os.getenv("ONNX_INTER_OP_NUM_THREADS", "1")
+
+    return {"intra": max(1, int(intra)), "inter": max(1, int(inter))}

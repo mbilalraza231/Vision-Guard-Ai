@@ -87,6 +87,32 @@ def _load_default_settings() -> Dict[str, Any]:
             },
             "imageSaveThreshold": _env_float("IMAGE_SAVE_THRESHOLD", 0.30),
             "maxSnapshotBuffer": _env_int("WORKER_MAX_SNAPSHOT_BUFFER", 100),
+            "onnxIntraOpThreads": _env_int("ONNX_INTRA_OP_NUM_THREADS", 2),
+            "onnxInterOpThreads": _env_int("ONNX_INTER_OP_NUM_THREADS", 1),
+            "intraOpThreads": {
+                "weapon": _env_int("ONNX_INTRA_OP_NUM_THREADS_WEAPON", 2),
+                "fire": _env_int("ONNX_INTRA_OP_NUM_THREADS_FIRE", 1),
+                "fall": _env_int("ONNX_INTRA_OP_NUM_THREADS_FALL", 2),
+            },
+            "interOpThreads": {
+                "weapon": _env_int("ONNX_INTER_OP_NUM_THREADS_WEAPON", 1),
+                "fire": _env_int("ONNX_INTER_OP_NUM_THREADS_FIRE", 1),
+                "fall": _env_int("ONNX_INTER_OP_NUM_THREADS_FALL", 1),
+            },
+            "onnxThreads": {
+                "intraOpNumThreads": _env_int("ONNX_INTRA_OP_NUM_THREADS", 2),
+                "interOpNumThreads": _env_int("ONNX_INTER_OP_NUM_THREADS", 1),
+                "intra": {
+                    "weapon": _env_int("ONNX_INTRA_OP_NUM_THREADS_WEAPON", 2),
+                    "fire": _env_int("ONNX_INTRA_OP_NUM_THREADS_FIRE", 1),
+                    "fall": _env_int("ONNX_INTRA_OP_NUM_THREADS_FALL", 2),
+                },
+                "inter": {
+                    "weapon": _env_int("ONNX_INTER_OP_NUM_THREADS_WEAPON", 1),
+                    "fire": _env_int("ONNX_INTER_OP_NUM_THREADS_FIRE", 1),
+                    "fall": _env_int("ONNX_INTER_OP_NUM_THREADS_FALL", 1),
+                },
+            },
             "fireModel": {
                 "iouThreshold": _env_float("WORKER_IOU_THRESHOLD", 0.45),
                 "agnosticNms": _env_bool("WORKER_AGNOSTIC_NMS", True),

@@ -211,6 +211,12 @@ export interface CameraSettings {
   targetFalsePositiveRate: number;
 }
 
+export interface WorkerThreadsSettings {
+  weapon: number;
+  fire: number;
+  fall: number;
+}
+
 export interface WorkerSettings {
   thresholds: {
     weapon: number;
@@ -219,6 +225,16 @@ export interface WorkerSettings {
   };
   imageSaveThreshold: number;
   maxSnapshotBuffer?: number;
+  onnxIntraOpThreads?: number;
+  onnxInterOpThreads?: number;
+  intraOpThreads?: WorkerThreadsSettings;
+  interOpThreads?: WorkerThreadsSettings;
+  onnxThreads?: {
+    intraOpNumThreads?: number;
+    interOpNumThreads?: number;
+    intra?: WorkerThreadsSettings;
+    inter?: WorkerThreadsSettings;
+  };
 }
 
 export interface EcsPersistenceSettings {

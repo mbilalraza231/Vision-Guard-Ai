@@ -26,7 +26,7 @@ from ..inference.model_loader import ModelLoader
 from ..inference.preprocessor import Preprocessor
 from ..inference.inference_engine import InferenceEngine
 from ..inference.postprocessor import Postprocessor
-from ..settings_runtime import load_worker_runtime_settings
+from ..settings_runtime import load_worker_runtime_settings, load_worker_onnx_threads
 
 
 class AIWorker:
