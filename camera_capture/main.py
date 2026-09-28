@@ -117,7 +117,7 @@ def load_cameras_from_json(config_path: str) -> tuple[list, dict]:
 
 def load_cameras_from_api(backend_host: str, backend_port: str, config_path_fallback: str) -> tuple[list, dict]:
     """Load enabled camera configs from the backend REST API (PostgreSQL single source of truth).
-    
+
     Falls back to cameras.json only if the API is unreachable.
     """
     import urllib.request
@@ -138,10 +138,12 @@ def load_cameras_from_api(backend_host: str, backend_port: str, config_path_fall
                 process_mode=cam.get("process_mode", "live"),
                 loop_video=cam.get("loop_video", True),
             ))
-        logger.info(f"Loaded {len(cameras)} cameras from backend API ({backend_url}/cameras)")
+        logger.info(
+            f"Loaded {len(cameras)} cameras from backend API ({backend_url}/cameras)")
         return cameras, {}
     except Exception as e:
-        logger.warning(f"Failed to load cameras from backend API: {e}. Falling back to {config_path_fallback}")
+        logger.warning(
+            f"Failed to load cameras from backend API: {e}. Falling back to {config_path_fallback}")
         return load_cameras_from_json(config_path_fallback)
 
 
@@ -159,8 +161,10 @@ def main():
     backend_host = os.getenv("BACKEND_HOST", "backend")
     backend_port = os.getenv("BACKEND_PORT", "8000")
 
-    logger.info(f"Loading camera config from backend API: http://{backend_host}:{backend_port}/cameras")
-    cameras, global_config = load_cameras_from_api(backend_host, backend_port, config_path)
+    logger.info(
+        f"Loading camera config from backend API: http://{backend_host}:{backend_port}/cameras")
+    cameras, global_config = load_cameras_from_api(
+        backend_host, backend_port, config_path)
 
     # Load live settings from Redis (Dashboard > Camera Rules) and apply them.
     # This ensures the user's settings survive container restarts.
@@ -178,6 +182,8 @@ def main():
             f"Camera runtime settings (from Redis): "
             f"default_fps={default_fps}, motion_threshold={motion_threshold}, "
             f"global_fps_target={global_fps_target}, "
+            f"opencv_threads={cam_runtime.get('opencv_threads', 0)}, "
+            f"motion_detection_width={cam_runtime.get('motion_detection_width', 0)}, "
             f"max_queue_size={queue_settings['max_queue_size']}, "
             f"task_ttl_seconds={queue_settings['task_ttl_seconds']}"
         )
@@ -189,14 +195,21 @@ def main():
                 cam.fps = default_fps
             if cam.motion_threshold == 0.02:  # Only override if still at factory default
                 cam.motion_threshold = motion_threshold
-                
+
             # Apply compression and enhancement settings from Redis
-            cam.enable_frame_compression = cam_runtime.get("enable_frame_compression", False)
-            cam.compression_quality = cam_runtime.get("compression_quality", 95)
-            cam.compression_format = cam_runtime.get("compression_format", "jpeg")
-            cam.pre_resize_dimensions = cam_runtime.get("pre_resize_dimensions", [640, 416])
+            cam.enable_frame_compression = cam_runtime.get(
+                "enable_frame_compression", False)
+            cam.compression_quality = cam_runtime.get(
+                "compression_quality", 95)
+            cam.compression_format = cam_runtime.get(
+                "compression_format", "jpeg")
+            cam.pre_resize_dimensions = cam_runtime.get(
+                "pre_resize_dimensions", [640, 416])
             cam.enable_clahe = cam_runtime.get("enable_clahe", False)
             cam.enable_denoising = cam_runtime.get("enable_denoising", False)
+            cam.opencv_threads = cam_runtime.get("opencv_threads", 0)
+            cam.motion_detection_width = cam_runtime.get(
+                "motion_detection_width", 0)
     except Exception as e:
         logger.warning(
             f"Could not apply Redis camera settings, using cameras.json values: {e}")
@@ -254,7 +267,8 @@ def main():
     try:
         from camera_capture.prom_metrics import start_metrics_server, PrometheusMetricsBridge as CameraMetricsBridge
         start_metrics_server(8004)
-        prom_bridge = CameraMetricsBridge(os.getenv("REDIS_HOST", "redis"), int(os.getenv("REDIS_PORT", "6379")))
+        prom_bridge = CameraMetricsBridge(
+            os.getenv("REDIS_HOST", "redis"), int(os.getenv("REDIS_PORT", "6379")))
         prom_bridge.start()
         logger.info("Camera Prometheus metrics server started on port 8004")
     except Exception as e:
@@ -287,16 +301,20 @@ def main():
                 pubsub.subscribe("vg:config:cameras", "vg:settings:updates")
                 for message in pubsub.listen():
                     if message["type"] == "message":
-                        channel = message.get("channel", b"").decode("utf-8", "ignore")
-                        data = message.get("data", b"").decode("utf-8", "ignore")
-                        logger.info(f"Pub/Sub signal received on '{channel}': {data}")
+                        channel = message.get(
+                            "channel", b"").decode("utf-8", "ignore")
+                        data = message.get("data", b"").decode(
+                            "utf-8", "ignore")
+                        logger.info(
+                            f"Pub/Sub signal received on '{channel}': {data}")
                         reload_event.set()
             except Exception as e:
                 logger.warning(f"Pub/Sub listener thread died: {e}")
 
         t = threading.Thread(target=_combined_listener, daemon=True)
         t.start()
-        logger.info("Pub/Sub listener started (channels: vg:config:cameras, vg:settings:updates)")
+        logger.info(
+            "Pub/Sub listener started (channels: vg:config:cameras, vg:settings:updates)")
     except Exception as e:
         logger.warning(f"Failed to start Pub/Sub listener: {e}")
 
@@ -317,15 +335,16 @@ def main():
             "Camera Capture Service running. Watching for API config changes via pub/sub...")
 
         while True:
-            # Wait up to 30s for a pub/sub signal; periodic full-sync as safety net
-            pubsub_triggered = reload_event.wait(timeout=30)
+            # Wait up to 300s for a pub/sub signal; periodic full-sync as safety net
+            pubsub_triggered = reload_event.wait(timeout=300)
             reload_event.clear()
 
             if pubsub_triggered:
                 source = "Pub/Sub (instant)"
             else:
-                source = "periodic full-sync (30s)"
-            logger.info(f"Config reload triggered via {source}. Re-querying backend API...")
+                source = "periodic full-sync (5min)"
+            logger.info(
+                f"Config reload triggered via {source}. Re-querying backend API...")
 
             try:
                 # Always load from the API (PostgreSQL) â€” never from the file
@@ -344,12 +363,22 @@ def main():
                             cam.motion_threshold = new_motion_thresh
 
                         # Apply compression and enhancement settings from Redis
-                        cam.enable_frame_compression = cam_runtime.get("enable_frame_compression", False)
-                        cam.compression_quality = cam_runtime.get("compression_quality", 95)
-                        cam.compression_format = cam_runtime.get("compression_format", "jpeg")
-                        cam.pre_resize_dimensions = cam_runtime.get("pre_resize_dimensions", [640, 416])
-                        cam.enable_clahe = cam_runtime.get("enable_clahe", False)
-                        cam.enable_denoising = cam_runtime.get("enable_denoising", False)
+                        cam.enable_frame_compression = cam_runtime.get(
+                            "enable_frame_compression", False)
+                        cam.compression_quality = cam_runtime.get(
+                            "compression_quality", 95)
+                        cam.compression_format = cam_runtime.get(
+                            "compression_format", "jpeg")
+                        cam.pre_resize_dimensions = cam_runtime.get(
+                            "pre_resize_dimensions", [640, 416])
+                        cam.enable_clahe = cam_runtime.get(
+                            "enable_clahe", False)
+                        cam.enable_denoising = cam_runtime.get(
+                            "enable_denoising", False)
+                        cam.opencv_threads = cam_runtime.get(
+                            "opencv_threads", 0)
+                        cam.motion_detection_width = cam_runtime.get(
+                            "motion_detection_width", 0)
 
                     logger.info(
                         f"Applied live Redis settings: fps={new_default_fps}, motion={new_motion_thresh}, "
@@ -410,7 +439,7 @@ def main():
                             getattr(curr_config, 'enable_frame_compression', False) != getattr(camera_config, 'enable_frame_compression', False) or
                             getattr(curr_config, 'compression_quality', 95) != getattr(camera_config, 'compression_quality', 95) or
                             getattr(curr_config, 'compression_format', 'jpeg') != getattr(camera_config, 'compression_format', 'jpeg') or
-                            getattr(curr_config, 'pre_resize_dimensions', [640, 416]) != getattr(camera_config, 'pre_resize_dimensions', [640, 416])):
+                                getattr(curr_config, 'pre_resize_dimensions', [640, 416]) != getattr(camera_config, 'pre_resize_dimensions', [640, 416])):
 
                             logger.info(
                                 f"Camera '{cam_id}' configuration updated. Restarting process...")
@@ -484,5 +513,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-

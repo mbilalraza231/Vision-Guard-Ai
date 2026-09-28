@@ -24,7 +24,7 @@ from ..utils.logging import setup_logging
 class CameraProcess:
     """
     Single camera capture process.
-    
+
     Main loop:
     1. Connect to RTSP stream
     2. Grab frame at configured FPS
@@ -34,7 +34,7 @@ class CameraProcess:
        - Enqueue task to Redis
     5. Handle errors (reconnect, skip, log)
     """
-    
+
     def __init__(
         self,
         camera_config: CameraConfig,
@@ -47,7 +47,7 @@ class CameraProcess:
     ):
         """
         Initialize camera process.
-        
+
         Args:
             camera_config: Camera configuration
             redis_config: Redis configuration
@@ -64,11 +64,11 @@ class CameraProcess:
         self.shared_memory_config = shared_memory_config
         self.log_level = log_level
         self.log_format = log_format
-        
+
         # Process control
         self.process: Optional[Process] = None
         self.stop_event = Event()
-        
+
         # Components (initialized in process)
         self.rtsp_handler: Optional[RTSPHandler] = None
         self.frame_grabber: Optional[FrameGrabber] = None
@@ -76,59 +76,59 @@ class CameraProcess:
         self.redis_producer: Optional[RedisProducer] = None
         self.shared_memory: Optional[SharedMemoryImpl] = None
         self.logger: Optional[logging.Logger] = None
-    
+
     def start(self) -> bool:
         """
         Start camera process.
-        
+
         Returns:
             True if process started successfully
         """
         self.stop_event.clear()
-        
+
         self.process = Process(
             target=self._run,
             name=f"CameraProcess-{self.camera_config.camera_id}",
             daemon=False
         )
         self.process.start()
-        
+
         return self.process.is_alive()
-    
+
     def stop(self, timeout: float = 10.0) -> None:
         """
         Stop camera process gracefully.
-        
+
         Args:
             timeout: Maximum time to wait for process to stop
         """
         if not self.process:
             return
-        
+
         # Signal process to stop
         self.stop_event.set()
-        
+
         # Wait for process to finish
         self.process.join(timeout=timeout)
-        
+
         # Force terminate if still alive
         if self.process.is_alive():
             self.process.terminate()
             self.process.join(timeout=2.0)
-        
+
         # Force kill if still alive
         if self.process.is_alive():
             self.process.kill()
             self.process.join()
-    
+
     def is_alive(self) -> bool:
         """Check if process is alive."""
         return self.process is not None and self.process.is_alive()
-    
+
     def _run(self) -> None:
         """
         Main process loop (runs in separate process).
-        
+
         This is the entry point for the camera process.
         """
         # Setup logging for this process
@@ -137,21 +137,21 @@ class CameraProcess:
             format_type=self.log_format,
             camera_id=self.camera_config.camera_id
         )
-        
+
         self.logger.info(
             f"Camera process starting",
             extra={"camera_id": self.camera_config.camera_id}
         )
-        
+
         try:
             # Initialize components
             if not self._initialize():
                 self.logger.error("Failed to initialize camera process")
                 return
-            
+
             # Main capture loop
             self._capture_loop()
-            
+
         except Exception as e:
             self.logger.error(
                 f"Fatal error in camera process: {e}",
@@ -160,24 +160,37 @@ class CameraProcess:
         finally:
             # Cleanup
             self._shutdown()
-    
+
     def _initialize(self) -> bool:
         """
         Initialize all components.
-        
+
         Returns:
             True if initialization successful
         """
         try:
+            # Bound OpenCV's internal thread pool for THIS camera process so its
+            # motion-detection / resize bursts do not grab every core and thrash
+            # against the AI worker processes. 0 = leave OpenCV default (all cores).
+            _ov_threads = getattr(self.camera_config, 'opencv_threads', 0)
+            if _ov_threads and _ov_threads > 0:
+                try:
+                    import cv2
+                    cv2.setNumThreads(int(_ov_threads))
+                    self.logger.info(f"OpenCV threads capped to {_ov_threads}")
+                except Exception as e:
+                    self.logger.warning(f"Could not set OpenCV threads: {e}")
+
             # Initialize RTSP handler
             self.rtsp_handler = RTSPHandler(
                 rtsp_url=self.camera_config.rtsp_url,
                 camera_id=self.camera_config.camera_id,
                 retry_config=self.retry_config,
-                process_mode=getattr(self.camera_config, 'process_mode', 'live'),
+                process_mode=getattr(self.camera_config,
+                                     'process_mode', 'live'),
                 loop_video=getattr(self.camera_config, 'loop_video', True),
             )
-            
+
             # Initial RTSP connect (non-fatal).
             # If stream is temporarily unavailable, keep process alive and
             # let capture loop auto-reconnect continuously.
@@ -185,47 +198,49 @@ class CameraProcess:
                 self.logger.warning(
                     "Initial RTSP connect failed; camera process will keep retrying in background"
                 )
-            
+
             # Initialize frame grabber
             self.frame_grabber = FrameGrabber(
                 fps=self.camera_config.fps,
                 camera_id=self.camera_config.camera_id
             )
-            
+
             # Initialize motion detector
             self.motion_detector = MotionDetector(
-                threshold=self.camera_config.motion_threshold
+                threshold=self.camera_config.motion_threshold,
+                detect_width=getattr(self.camera_config,
+                                     'motion_detection_width', 0)
             )
-            
+
             # Initialize shared memory
             self.shared_memory = SharedMemoryImpl(
                 max_frame_size_mb=self.shared_memory_config.max_frame_size_mb
             )
-            
+
             # Initialize Redis producer
             self.redis_producer = RedisProducer(
                 redis_config=self.redis_config,
                 buffer_config=self.buffer_config,
                 camera_id=self.camera_config.camera_id
             )
-            
+
             # Connect to Redis
             self.redis_producer.connect()
-            
+
             self.logger.info("Camera process initialized successfully")
             return True
-            
+
         except Exception as e:
             self.logger.error(
                 f"Initialization failed: {e}",
                 extra={"error": str(e)}
             )
             return False
-    
+
     def _capture_loop(self) -> None:
         """Main capture loop."""
         self.logger.info("Starting capture loop")
-        
+
         consecutive_read_failures = 0
         consecutive_loop_errors = 0
         frames_processed = 0
@@ -233,13 +248,14 @@ class CameraProcess:
         heartbeat_interval_sec = 30.0
         reconnect_attempts = 0
         reconnect_backoff = self.retry_config.initial_backoff_seconds
-        
+
         while not self.stop_event.is_set():
             try:
                 # Check if we should capture this frame (FPS throttling).
                 # In BATCH mode for local files: bypass throttle and process every frame
                 # so the AI workers receive the full video content.
-                is_batch = getattr(self.camera_config, 'process_mode', 'live') == 'batch'
+                is_batch = getattr(self.camera_config,
+                                   'process_mode', 'live') == 'batch'
                 if not is_batch and not self.frame_grabber.should_capture():
                     time.sleep(0.01)  # Small sleep to prevent busy waiting
                     continue
@@ -248,14 +264,17 @@ class CameraProcess:
                 # when stream is unavailable.
                 if self.rtsp_handler and not self.rtsp_handler.is_connected:
                     # Check if this is a local file. If it is, and we lost connection
-                    # (either reached the end, or file not found), we should stop gracefully 
+                    # (either reached the end, or file not found), we should stop gracefully
                     # instead of reconnecting infinitely.
                     source_url = getattr(self.rtsp_handler, 'rtsp_url', '')
-                    is_local_file = source_url and not source_url.lower().startswith(('http://', 'https://', 'rtsp://', 'rtmp://'))
-                    should_loop = getattr(self.camera_config, 'loop_video', True)
+                    is_local_file = source_url and not source_url.lower().startswith(
+                        ('http://', 'https://', 'rtsp://', 'rtmp://'))
+                    should_loop = getattr(
+                        self.camera_config, 'loop_video', True)
                     if is_local_file and not should_loop:
-                        self.logger.info("Local video file ended or not found. Stopping capture and notifying backend.", extra={"camera_id": self.camera_config.camera_id})
-                        
+                        self.logger.info("Local video file ended or not found. Stopping capture and notifying backend.", extra={
+                                         "camera_id": self.camera_config.camera_id})
+
                         # Wait for AI workers to drain the Redis queues before stopping.
                         # Batch mode sends many frames instantly; workers need time to classify them.
                         self._wait_for_queue_drain(frames_processed)
@@ -269,10 +288,12 @@ class CameraProcess:
                             url = f"http://{backend_host}:{backend_port}/cameras/{self.camera_config.camera_id}/stop"
                             req = urllib.request.Request(url, method="POST")
                             urllib.request.urlopen(req, timeout=5.0)
-                            self.logger.info("Successfully notified backend to stop local video camera.")
+                            self.logger.info(
+                                "Successfully notified backend to stop local video camera.")
                         except Exception as e:
-                            self.logger.error(f"Failed to notify backend to stop camera: {e}")
-                            
+                            self.logger.error(
+                                f"Failed to notify backend to stop camera: {e}")
+
                         self.stop_event.set()
                         break
 
@@ -283,7 +304,8 @@ class CameraProcess:
                         self.logger.info("Camera stream reconnected")
                     else:
                         reconnect_attempts += 1
-                        sleep_seconds = min(reconnect_backoff, self.retry_config.max_backoff_seconds)
+                        sleep_seconds = min(
+                            reconnect_backoff, self.retry_config.max_backoff_seconds)
                         self.logger.warning(
                             "Camera stream unavailable; will retry reconnect",
                             extra={
@@ -297,18 +319,21 @@ class CameraProcess:
                             self.retry_config.max_backoff_seconds,
                         )
                     continue
-                
+
                 # Read frame from RTSP stream
                 frame = self.rtsp_handler.read_frame()
-                
+
                 if frame is None:
                     # Stream likely dropped mid-run.
                     # If this is a local file, we just reached the end of the video. Break the loop and stop camera.
                     source_url = getattr(self.rtsp_handler, 'rtsp_url', '')
-                    is_local_file = source_url and not source_url.lower().startswith(('http://', 'https://', 'rtsp://', 'rtmp://'))
-                    should_loop = getattr(self.camera_config, 'loop_video', True)
+                    is_local_file = source_url and not source_url.lower().startswith(
+                        ('http://', 'https://', 'rtsp://', 'rtmp://'))
+                    should_loop = getattr(
+                        self.camera_config, 'loop_video', True)
                     if is_local_file and not should_loop:
-                        self.logger.info("Local video file reached the end. Stopping capture and notifying backend.", extra={"camera_id": self.camera_config.camera_id})
+                        self.logger.info("Local video file reached the end. Stopping capture and notifying backend.", extra={
+                                         "camera_id": self.camera_config.camera_id})
 
                         # Wait for AI workers to drain the Redis queues before stopping.
                         # Batch mode sends many frames instantly; workers need time to classify them.
@@ -322,9 +347,11 @@ class CameraProcess:
                             url = f"http://{backend_host}:{backend_port}/cameras/{self.camera_config.camera_id}/stop"
                             req = urllib.request.Request(url, method="POST")
                             urllib.request.urlopen(req, timeout=5.0)
-                            self.logger.info("Successfully notified backend to stop local video camera.")
+                            self.logger.info(
+                                "Successfully notified backend to stop local video camera.")
                         except Exception as e:
-                            self.logger.error(f"Failed to notify backend to stop camera: {e}")
+                            self.logger.error(
+                                f"Failed to notify backend to stop camera: {e}")
                         self.stop_event.set()
                         break
 
@@ -333,40 +360,44 @@ class CameraProcess:
                     if consecutive_read_failures % 5 == 0:
                         self.logger.warning(
                             "Consecutive frame read failures",
-                            extra={"consecutive_read_failures": consecutive_read_failures},
+                            extra={
+                                "consecutive_read_failures": consecutive_read_failures},
                         )
                     self.rtsp_handler.disconnect()
                     continue
-                
+
                 # Reset failure counter on successful read
                 consecutive_read_failures = 0
                 consecutive_loop_errors = 0
                 reconnect_attempts = 0
                 reconnect_backoff = self.retry_config.initial_backoff_seconds
-                
+
                 # Mark frame as captured
                 self.frame_grabber.mark_captured()
-                
+
                 # Report real FPS to Redis every 5 seconds (must be before motion detection continue)
                 now = time.time()
                 if now - last_heartbeat >= 5.0:
                     stats = self.frame_grabber.get_stats()
                     actual_fps = stats.get("actual_fps", 0.0)
-                    
+
                     # Store in Redis for the backend to read
                     if self.redis_producer and self.redis_producer.client:
                         try:
                             # Key format: vg:metrics:camera:{camera_id}:fps
                             fps_key = f"vg:metrics:camera:{self.camera_config.camera_id}:fps"
-                            self.redis_producer.client.setex(fps_key, 15, str(actual_fps))
+                            self.redis_producer.client.setex(
+                                fps_key, 15, str(actual_fps))
 
                             # Key format: vg:metrics:camera:{camera_id}:frames
                             frames_key = f"vg:metrics:camera:{self.camera_config.camera_id}:frames"
-                            frames_data = json.dumps({"camera_id": self.camera_config.camera_id, "frames_processed": frames_processed, "timestamp": now})
-                            self.redis_producer.client.setex(frames_key, 15, frames_data)
+                            frames_data = json.dumps(
+                                {"camera_id": self.camera_config.camera_id, "frames_processed": frames_processed, "timestamp": now})
+                            self.redis_producer.client.setex(
+                                frames_key, 15, frames_data)
                         except Exception:
                             pass
-                            
+
                     self.logger.debug(
                         "Camera heartbeat",
                         extra={
@@ -376,26 +407,26 @@ class CameraProcess:
                         }
                     )
                     last_heartbeat = now
-                
+
                 # Run motion detection (only if enabled)
                 if hasattr(self.camera_config, 'motion_enabled') and self.camera_config.motion_enabled:
                     has_motion = self.motion_detector.detect(frame)
-                    
+
                     if not has_motion:
                         # No motion, skip frame
                         continue
-                
+
                 # Motion detected (or motion detection disabled) - process frame
                 self._process_frame(frame)
                 frames_processed += 1
-                
+
                 # Log progress every 10 frames at INFO level
                 if frames_processed % 10 == 0:
                     self.logger.info(
                         f"Capture loop progress: {frames_processed} frames processed",
                         extra={"frames_processed": frames_processed}
                     )
-                
+
             except KeyboardInterrupt:
                 self.logger.info("Received keyboard interrupt")
                 break
@@ -406,26 +437,28 @@ class CameraProcess:
                 )
                 consecutive_loop_errors += 1
                 sleep_seconds = min(
-                    self.retry_config.initial_backoff_seconds * max(1, consecutive_loop_errors),
+                    self.retry_config.initial_backoff_seconds *
+                    max(1, consecutive_loop_errors),
                     self.retry_config.max_backoff_seconds,
                 )
                 time.sleep(sleep_seconds)
-        
+
         self.logger.info(f"Capture loop ended after {frames_processed} frames")
 
     def _wait_for_queue_drain(self, frames_sent: int) -> None:
         """
         Wait for AI worker Redis queues to drain before notifying the backend to stop.
-        
+
         In batch mode, all frames are sent to Redis almost instantly. The AI workers
         need time to pull and classify them. Without this wait, the process exits and
         the UI resets before any events are produced.
-        
+
         Args:
             frames_sent: Number of frames that were sent to the queues
         """
-        is_batch = getattr(self.camera_config, 'process_mode', 'live') == 'batch'
-        
+        is_batch = getattr(self.camera_config,
+                           'process_mode', 'live') == 'batch'
+
         # How long to wait: batch mode needs more time as many frames were queued at once
         max_wait = 30.0 if is_batch else 5.0
         poll_interval = 0.5
@@ -452,29 +485,34 @@ class CameraProcess:
                             total_pending += (length or 0)
                         except Exception:
                             pass
-                    
+
                     if total_pending == 0:
-                        self.logger.info("All AI worker queues are empty — safe to stop.")
+                        self.logger.info(
+                            "All AI worker queues are empty — safe to stop.")
                         break
-                    
-                    self.logger.debug(f"Waiting for queues to drain: {total_pending} frames still pending")
+
+                    self.logger.debug(
+                        f"Waiting for queues to drain: {total_pending} frames still pending")
                     time.sleep(poll_interval)
                 else:
-                    self.logger.warning(f"Queue drain timeout after {max_wait}s — stopping anyway.")
+                    self.logger.warning(
+                        f"Queue drain timeout after {max_wait}s — stopping anyway.")
             else:
                 # No Redis client available, fall back to a simple fixed wait
-                self.logger.info(f"No Redis client — waiting {max_wait}s as fallback drain wait.")
+                self.logger.info(
+                    f"No Redis client — waiting {max_wait}s as fallback drain wait.")
                 time.sleep(max_wait)
         except Exception as e:
-            self.logger.warning(f"Queue drain wait failed: {e} — stopping immediately.")
+            self.logger.warning(
+                f"Queue drain wait failed: {e} — stopping immediately.")
 
     def _process_frame(self, frame) -> None:
         """
         Process frame with motion detected.
-        
+
         Publishes to ALL priority queues so each worker model
         (weapon/fire/fall) processes every frame.
-        
+
         Args:
             frame: Frame to process
         """
@@ -487,68 +525,81 @@ class CameraProcess:
                     import sys
                     import os
                     # Ensure project root is in sys.path
-                    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+                    sys.path.insert(0, os.path.dirname(os.path.dirname(
+                        os.path.dirname(os.path.abspath(__file__)))))
                     from preprocessing.resize_and_compress import (
                         compress_frame, resize_and_compress_frame, apply_enhancements
                     )
 
-                    _enable_clahe = getattr(self.camera_config, 'enable_clahe', False)
-                    _enable_denoising = getattr(self.camera_config, 'enable_denoising', False)
-                    _fmt = getattr(self.camera_config, 'compression_format', 'jpeg')
-                    _quality = getattr(self.camera_config, 'compression_quality', 95)
+                    _enable_clahe = getattr(
+                        self.camera_config, 'enable_clahe', False)
+                    _enable_denoising = getattr(
+                        self.camera_config, 'enable_denoising', False)
+                    _fmt = getattr(self.camera_config,
+                                   'compression_format', 'jpeg')
+                    _quality = getattr(self.camera_config,
+                                       'compression_quality', 95)
 
-                    # Apply enhancements once at full resolution (if any are enabled)
-                    enhanced_frame = apply_enhancements(
-                        frame,
-                        enable_clahe=_enable_clahe,
-                        enable_denoising=_enable_denoising,
-                    ) if (_enable_clahe or _enable_denoising) else frame
-
-                    # 1. Compress base (enhanced) frame
-                    compressed_bytes = compress_frame(
-                        enhanced_frame,
-                        format=_fmt,
-                        quality=_quality,
-                    )
-
-                    # 2. Generate pre-resized variants — enhancements already applied,
-                    #    so we pass disable flags to avoid double-processing.
-                    pre_resize_dims = getattr(self.camera_config, 'pre_resize_dimensions', [])
+                    # Generate pre-resized variants FIRST (enhancement applied
+                    # AFTER resize on the smaller frame — ~10× cheaper).
+                    pre_resize_dims = getattr(
+                        self.camera_config, 'pre_resize_dimensions', [])
                     if pre_resize_dims:
                         pre_resize_dict = resize_and_compress_frame(
-                            enhanced_frame,
+                            frame,
                             sizes=pre_resize_dims,
                             format=_fmt,
                             quality=_quality,
-                            enable_clahe=False,
-                            enable_denoising=False,
+                            enable_clahe=_enable_clahe,
+                            enable_denoising=_enable_denoising,
+                        )
+
+                    # Base frame: reuse the largest variant's already-encoded bytes
+                    # instead of doing a separate 1080p JPEG encode. Workers always
+                    # read the matching _width variant; this base is lifecycle/fallback.
+                    if pre_resize_dict:
+                        largest_size = max(pre_resize_dict.keys())
+                        compressed_bytes = pre_resize_dict[largest_size]
+                    else:
+                        # No variants configured — base IS the frame workers need
+                        compressed_bytes = compress_frame(
+                            frame,
+                            format=_fmt,
+                            quality=_quality,
                         )
                 except ImportError as e:
-                    self.logger.warning(f"preprocessing module not found, falling back to raw: {e}")
+                    self.logger.warning(
+                        f"preprocessing module not found, falling back to raw: {e}")
                 except Exception as e:
-                    self.logger.warning(f"Failed to compress frame, falling back to raw: {e}")
-                    
+                    self.logger.warning(
+                        f"Failed to compress frame, falling back to raw: {e}")
+
             # Write the base full-res frame
-            shared_memory_key = self.shared_memory.write_frame(frame, compressed_bytes=compressed_bytes)
-            
+            shared_memory_key = self.shared_memory.write_frame(
+                frame, compressed_bytes=compressed_bytes)
+
             # Write pre-resized frames if successfully generated
             if pre_resize_dict:
                 for size, cbytes in pre_resize_dict.items():
                     suffix_key = f"{shared_memory_key}_{size}"
                     try:
-                        self.shared_memory.write_frame(frame, compressed_bytes=cbytes, custom_key=suffix_key)
+                        self.shared_memory.write_frame(
+                            frame, compressed_bytes=cbytes, custom_key=suffix_key)
                     except Exception as e:
-                        self.logger.warning(f"Failed to write pre-resized frame {size}: {e}")
-            
+                        self.logger.warning(
+                            f"Failed to write pre-resized frame {size}: {e}")
+
             # Generate frame ID
-            frame_id = TaskMetadata.generate_frame_id(self.camera_config.camera_id)
-            
+            frame_id = TaskMetadata.generate_frame_id(
+                self.camera_config.camera_id)
+
             # Publish to worker queues based on camera priority configuration
             # Camera priority determines which queues to send to:
             # - "ALL": Send to all worker queues (critical, high, medium)
             # - Specific priority: Send to that priority queue only
-            camera_priority = getattr(self.camera_config, 'priority', 'all').lower()
-            
+            camera_priority = getattr(
+                self.camera_config, 'priority', 'all').lower()
+
             if camera_priority == 'all' or camera_priority == '':
                 # "ALL" priority: Send to all worker queues (weapon, fire, fall)
                 target_queues = ["critical", "high", "medium"]
@@ -558,7 +609,7 @@ class CameraProcess:
             else:
                 # Invalid priority: Default to all queues
                 target_queues = ["critical", "high", "medium"]
-            
+
             for priority in target_queues:
                 task = TaskMetadata(
                     camera_id=self.camera_config.camera_id,
@@ -568,7 +619,7 @@ class CameraProcess:
                     priority=priority
                 )
                 self.redis_producer.enqueue(task)
-            
+
             self.logger.debug(
                 f"Frame processed and enqueued to all queues",
                 extra={
@@ -576,7 +627,7 @@ class CameraProcess:
                     "shared_memory_key": shared_memory_key
                 }
             )
-            
+
         except MemoryError as e:
             # Shared memory full - skip frame safely
             self.logger.warning(
@@ -588,42 +639,42 @@ class CameraProcess:
                 f"Error processing frame: {e}",
                 extra={"error": str(e)}
             )
-    
+
     def _shutdown(self) -> None:
         """Cleanup resources."""
         self.logger.info("Shutting down camera process")
-        
+
         # Disconnect RTSP
         if self.rtsp_handler:
             self.rtsp_handler.disconnect()
-        
+
         # Disconnect Redis
         if self.redis_producer:
             self.redis_producer.disconnect()
-        
+
         # NOTE: Do NOT cleanup shared frames here!
         # Workers may still need frame files for tasks already in the queue.
         # Frame files sit on tmpfs and are cleaned on container restart.
         # if self.shared_memory:
         #     self.shared_memory.cleanup_all()
-        
+
         # Log final statistics
         if self.frame_grabber:
             self.logger.info(
                 "Frame grabber stats",
                 extra=self.frame_grabber.get_stats()
             )
-        
+
         if self.motion_detector:
             self.logger.info(
                 "Motion detector stats",
                 extra=self.motion_detector.get_stats()
             )
-        
+
         if self.redis_producer:
             self.logger.info(
                 "Redis producer stats",
                 extra=self.redis_producer.get_stats()
             )
-        
+
         self.logger.info("Camera process shutdown complete")

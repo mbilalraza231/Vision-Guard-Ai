@@ -99,7 +99,8 @@ def load_camera_runtime_settings() -> Dict[str, Any]:
     pre_resize_dimensions = []
     if pre_resize_dimensions_str:
         try:
-            pre_resize_dimensions = [int(x.strip()) for x in pre_resize_dimensions_str.split(',') if x.strip().isdigit()]
+            pre_resize_dimensions = [int(x.strip()) for x in pre_resize_dimensions_str.split(
+                ',') if x.strip().isdigit()]
         except ValueError:
             pass
 
@@ -116,6 +117,20 @@ def load_camera_runtime_settings() -> Dict[str, Any]:
             os.getenv("CAMERA_ENABLE_DENOISING", "False")
         )
     ).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+    opencv_threads = int(
+        camera_capture.get(
+            "opencvThreads",
+            int(os.getenv("CAMERA_OPENCV_THREADS", "0"))
+        )
+    )
+
+    motion_detection_width = int(
+        camera_capture.get(
+            "motionDetectionWidth",
+            int(os.getenv("CAMERA_MOTION_DETECTION_WIDTH", "0"))
+        )
+    )
 
     global_fps_target = int(
         cameras_section.get(
@@ -150,6 +165,8 @@ def load_camera_runtime_settings() -> Dict[str, Any]:
         "pre_resize_dimensions": pre_resize_dimensions,
         "enable_clahe": enable_clahe,
         "enable_denoising": enable_denoising,
+        "opencv_threads": opencv_threads,
+        "motion_detection_width": motion_detection_width,
         "global_fps_target": global_fps_target,
         "max_queue_size": max_queue_size,
         "task_ttl_seconds": task_ttl_seconds,

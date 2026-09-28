@@ -64,6 +64,17 @@ class CameraConfig(BaseModel):
         default=True,
         description="Whether to loop local video file continuously when it ends"
     )
+    opencv_threads: int = Field(
+        default=0,
+        ge=0,
+        le=64,
+        description="cv2.setNumThreads cap for this camera process (0 = leave OpenCV default / all cores)"
+    )
+    motion_detection_width: int = Field(
+        default=0,
+        ge=0,
+        description="Downscale frame to this width before MOG2 motion detection (0 = full-res, no downscale)"
+    )
 
     @validator('rtsp_url')
     def validate_rtsp_url(cls, v):

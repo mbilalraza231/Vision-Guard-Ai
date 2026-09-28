@@ -270,6 +270,8 @@ export interface CameraCaptureSettings {
   preResizeDimensions?: string;
   enableClahe?: boolean;
   enableDenoising?: boolean;
+  opencvThreads?: number;
+  motionDetectionWidth?: number;
 }
 
 export interface ClipSettings {

@@ -147,6 +147,8 @@ def _load_default_settings() -> Dict[str, Any]:
             "preResizeDimensions": os.environ.get("CAMERA_PRE_RESIZE_DIMENSIONS", "640,416"),
             "enableClahe": _env_bool("CAMERA_ENABLE_CLAHE", False),
             "enableDenoising": _env_bool("CAMERA_ENABLE_DENOISING", False),
+            "opencvThreads": _env_int("CAMERA_OPENCV_THREADS", 0),
+            "motionDetectionWidth": _env_int("CAMERA_MOTION_DETECTION_WIDTH", 0),
         },
         "clips": {
             "preSeconds": _env_int("CLIP_PRE_SECONDS", 0),

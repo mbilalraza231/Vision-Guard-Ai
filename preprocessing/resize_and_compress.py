@@ -64,9 +64,11 @@ def compress_frame(frame: np.ndarray, format: str = "jpeg", quality: int = 95) -
         bytes: Encoded bytes.
     """
     if format.lower() == "jpeg":
-        success, encoded = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
+        success, encoded = cv2.imencode(
+            '.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
     elif format.lower() == "webp":
-        success, encoded = cv2.imencode('.webp', frame, [int(cv2.IMWRITE_WEBP_QUALITY), quality])
+        success, encoded = cv2.imencode(
+            '.webp', frame, [int(cv2.IMWRITE_WEBP_QUALITY), quality])
     else:
         raise ValueError(f"Unsupported compression format: {format}")
 
@@ -128,33 +130,36 @@ def resize_and_compress_frame(
     enable_denoising: bool = False,
 ) -> dict[int, bytes]:
     """
-    Optionally enhance, then resize a frame to multiple dimensions and compress each.
+    Optionally resize a frame to multiple dimensions, apply enhancements on the
+    SMALLER frame (much cheaper than full-res), then compress each.
 
-    Enhancements (CLAHE / denoising) are applied ONCE to the original-resolution
-    frame before resizing so the cost is paid only once regardless of how many
-    size variants are generated.
+    Enhancements (CLAHE / denoising) are applied AFTER resize per size variant,
+    so the expensive pixel operations run on e.g. 640×640 instead of 1920×1080
+    (~10× fewer pixels). The AI workers receive the enhanced small variant.
 
     Args:
         frame (np.ndarray): Original OpenCV BGR image as numpy array.
         sizes (list[int]): List of target widths (e.g., [640, 416]).
         format (str): Compression format ('jpeg' or 'webp').
         quality (int): Compression quality (1-100).
-        enable_clahe (bool): Apply CLAHE contrast enhancement before resize.
-        enable_denoising (bool): Apply Gaussian denoising before resize.
+        enable_clahe (bool): Apply CLAHE contrast enhancement after resize.
+        enable_denoising (bool): Apply Gaussian denoising after resize.
 
     Returns:
         dict[int, bytes]: Dictionary mapping size → compressed bytes.
     """
-    # Apply enhancements once at full resolution before generating size variants
-    if enable_clahe or enable_denoising:
-        frame = apply_enhancements(frame, enable_clahe=enable_clahe, enable_denoising=enable_denoising)
-
     results = {}
     for size in sizes:
         if frame.shape[:2] != (size, size):
-            resized = cv2.resize(frame, (size, size), interpolation=cv2.INTER_LINEAR)
+            resized = cv2.resize(frame, (size, size),
+                                 interpolation=cv2.INTER_LINEAR)
         else:
-            resized = frame
+            resized = frame.copy()
+
+        # Apply enhancements on the SMALL resized frame (far cheaper than full-res)
+        if enable_clahe or enable_denoising:
+            resized = apply_enhancements(
+                resized, enable_clahe=enable_clahe, enable_denoising=enable_denoising)
 
         results[size] = compress_frame(resized, format=format, quality=quality)
 

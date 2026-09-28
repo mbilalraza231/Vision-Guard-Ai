@@ -136,6 +136,8 @@ const defaultSettings: SystemSettings = {
   cameraCapture: {
     defaultFps: 5,
     motionThreshold: 0.02,
+    opencvThreads: 0,
+    motionDetectionWidth: 0,
   },
   clips: {
     preSeconds: 0,
@@ -1825,6 +1827,56 @@ export default function Settings() {
 
                       <p className="text-xs text-muted-foreground">
                         Higher values reduce motion sensitivity (fewer frames processed in low-motion scenes).
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-white/5 bg-secondary/10 p-5 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="cameraOpenCvThreads" className="text-base font-semibold">
+                          Camera OpenCV Threads
+                        </Label>
+                        <span className="text-sm font-mono bg-secondary px-2 py-0.5 rounded text-primary font-bold">
+                          {(settings.cameraCapture?.opencvThreads ?? 0) === 0 ? "Auto (all cores)" : `${settings.cameraCapture?.opencvThreads} cores`}
+                        </span>
+                      </div>
+
+                      <div className="py-2">
+                        <Slider
+                          value={[settings.cameraCapture?.opencvThreads ?? 0]}
+                          min={0}
+                          max={8}
+                          step={1}
+                          onValueChange={(value) => updateCameraCapture({ opencvThreads: value[0] })}
+                        />
+                      </div>
+
+                      <p className="text-xs text-muted-foreground">
+                        Caps how many CPU cores the camera process may use for motion detection and resizing. 0 = OpenCV default (grabs every core and competes with the AI workers). Set 1-2 on small machines. Does not limit video decoding.
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-white/5 bg-secondary/10 p-5 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="cameraMotionWidth" className="text-base font-semibold">
+                          Motion Detection Width
+                        </Label>
+                        <span className="text-sm font-mono bg-secondary px-2 py-0.5 rounded text-primary font-bold">
+                          {(settings.cameraCapture?.motionDetectionWidth ?? 0) === 0 ? "Full-res" : `${settings.cameraCapture?.motionDetectionWidth}px`}
+                        </span>
+                      </div>
+
+                      <div className="py-2">
+                        <Slider
+                          value={[settings.cameraCapture?.motionDetectionWidth ?? 0]}
+                          min={0}
+                          max={1280}
+                          step={32}
+                          onValueChange={(value) => updateCameraCapture({ motionDetectionWidth: value[0] })}
+                        />
+                      </div>
+
+                      <p className="text-xs text-muted-foreground">
+                        Downscale frames to this width before the motion check to cut CPU. Motion is coarse, so accuracy barely changes and the full-res frame sent to AI is untouched. 0 = no downscale.
                       </p>
                     </div>
                   </div>
