@@ -145,6 +145,13 @@ class ECSService:
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
 
+        # main.py already installs a root handler via logging.basicConfig().
+        # Without this, every record would be emitted TWICE (once here, once via
+        # propagation to root), doubling log volume and breaking grep-based analysis.
+        # Same guard used by ai_worker/utils/logging.py and
+        # camera_capture/utils/logging.py.
+        self.logger.propagate = False
+
         self.logger.info("ECS starting (SINGLE INSTANCE)")
 
         # Setup metrics reporter inside the process
@@ -429,7 +436,8 @@ class ECSService:
                     try:
                         e2e_sec = time.time() - msg.timestamp
                         if 0 < e2e_sec < 60.0 and self._clip_redis:
-                            self._clip_redis.setex("vg:metrics:ecs:e2e_latency", 10, str(round(e2e_sec, 3)))
+                            self._clip_redis.setex(
+                                "vg:metrics:ecs:e2e_latency", 10, str(round(e2e_sec, 3)))
                     except Exception:
                         pass
 

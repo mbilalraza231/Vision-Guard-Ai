@@ -1289,6 +1289,33 @@ export default function Settings() {
                         Minimum model confidence before a worker publishes a detection. Applied live via Redis after Save.
                       </p>
 
+                      {/* How a detection becomes an event — clarifies which gate actually controls things */}
+                      <div className="mb-4 rounded-xl border border-white/5 bg-secondary/10 p-4">
+                        <p className="text-xs font-medium text-foreground mb-2">
+                          How a detection becomes an event (in order):
+                        </p>
+                        <ol className="text-[11px] text-muted-foreground space-y-1 list-decimal list-inside">
+                          <li>
+                            <span className="text-foreground/90">Worker gate (sliders below)</span> — the model must reach this confidence or the detection is dropped and never published.
+                          </li>
+                          <li>
+                            <span className="text-foreground/90">Image save</span> — a JPEG is written to disk only above the <em>Image save threshold</em> (further down this tab).
+                          </li>
+                          <li>
+                            <span className="text-foreground/90">ECS floor</span> — the detection must also clear the per-type <em>ECS floor</em> (under “ECS persistence”) to count toward an event.
+                          </li>
+                          <li>
+                            <span className="text-foreground/90">Persistence</span> — needs <em>≥ min detections</em> within the <em>window</em> before an incident is created.
+                          </li>
+                          <li>
+                            <span className="text-foreground/90">Cooldown</span> — further repeats are then suppressed for the cooldown seconds.
+                          </li>
+                        </ol>
+                        <p className="text-[11px] text-muted-foreground mt-2">
+                          The effective gate is the <span className="text-foreground/90">higher</span> of the Worker gate and the ECS floor. By default the ECS floor (30%) is below the worker gate, so the <span className="text-foreground/90">worker sliders are in full control</span>.
+                        </p>
+                      </div>
+
                       <div className="space-y-5">
                         <div className="space-y-2">
                           <Label>Weapon Worker ({Math.round((settings.workers?.thresholds?.weapon ?? 0.70) * 100)}%)</Label>
@@ -1473,18 +1500,31 @@ export default function Settings() {
                     <div className="pt-6 border-t border-white/5">
                       <h3 className="text-lg font-semibold mb-1">ECS persistence & deduplication</h3>
                       <p className="text-xs text-muted-foreground mb-4">
-                        How many qualifying detections within a time window are required before an incident is created, and how long to suppress repeats. Applied live via Redis (~10s).
+                        The <em>ECS floor</em> is the minimum confidence a detection needs to count at all; then how many qualifying detections within a window are required before an incident is created, and how long to suppress repeats. Applied live via Redis (~10s).
                       </p>
                       {(
                         [
-                          ['weaponPersistence', 'Weapon', settings.ecs?.weaponPersistence] as const,
-                          ['firePersistence', 'Fire', settings.ecs?.firePersistence] as const,
-                          ['fallPersistence', 'Fall', settings.ecs?.fallPersistence] as const,
+                          ['weaponPersistence', 'weapon', 'Weapon', settings.ecs?.weaponPersistence] as const,
+                          ['firePersistence', 'fire', 'Fire', settings.ecs?.firePersistence] as const,
+                          ['fallPersistence', 'fall', 'Fall', settings.ecs?.fallPersistence] as const,
                         ]
-                      ).map(([key, label, p]) => (
+                      ).map(([key, tkey, label, p]) => (
                         <div key={key} className="mb-4 rounded-xl border border-white/5 bg-secondary/10 p-4">
                           <h4 className="font-semibold text-sm mb-3">{label}</h4>
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                            <div className="space-y-1">
+                              <Label className="text-xs">ECS floor (%)</Label>
+                              <Input
+                                type="number"
+                                min={0}
+                                max={99}
+                                value={Math.round((settings.ecs?.thresholds?.[tkey] ?? 0.30) * 100)}
+                                onChange={(e) =>
+                                  updateEcsThresholds({ [tkey]: Math.min(99, Math.max(0, Number(e.target.value) || 0)) / 100 } as Partial<SystemSettings['ecs']['thresholds']>)
+                                }
+                                className="font-mono text-sm"
+                              />
+                            </div>
                             <div className="space-y-1">
                               <Label className="text-xs">Min detections</Label>
                               <Input
