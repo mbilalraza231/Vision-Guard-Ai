@@ -91,6 +91,12 @@ class ClipRecorder:
             logger.info(
                 "CLIP_ENABLE_BACKGROUND_BUFFER=true. Dashcam mode active.")
 
+        # Fast/slow split: the event pipeline now runs concurrently, but heavy clip
+        # recording (ffmpeg + OpenCV) must stay bounded so a burst of events cannot
+        # thrash the CPU. Snapshot find/secure stays fast and runs immediately.
+        self._clip_semaphore = asyncio.Semaphore(
+            int(os.getenv("CLIP_MAX_CONCURRENT_RECORDINGS", "3")))
+
         # We start the background capture threads here
         self._shutdown_event = threading.Event()
         self._capture_threads: Dict[str, threading.Thread] = {}
@@ -452,10 +458,14 @@ class ClipRecorder:
             f"Clip Settings Read: pre={pre_seconds}, post={post_seconds}, fps={target_fps}, buffer={use_buffer}")
 
         # Step 2 — Record latency-aware post-event clip (This takes 10-15 seconds)
-        # Recording uses OpenCV/FFMPEG, must be in a thread
-        clip_path, error_msg = await asyncio.to_thread(
-            self._record_clip, event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds, use_buffer, target_fps
-        )
+        # Recording uses OpenCV/FFMPEG, must be in a thread.
+        # Bounded concurrency: at most N clips record at once (see _clip_semaphore)
+        # so many events can be in flight for the FAST snapshot path without the
+        # SLOW clip path saturating CPU.
+        async with self._clip_semaphore:
+            clip_path, error_msg = await asyncio.to_thread(
+                self._record_clip, event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds, use_buffer, target_fps
+            )
         result["clip_local"] = clip_path
 
         if clip_path:

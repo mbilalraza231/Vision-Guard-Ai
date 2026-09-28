@@ -36,11 +36,13 @@ def setup_logging(level_str: str) -> None:
     # Ensure stdout handler is set correctly
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
-    
+
     handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+    handler.setFormatter(logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
     logging.getLogger().addHandler(handler)
     logging.getLogger().setLevel(level)
+
 
 class MetricsReporter:
     def __init__(self, r, name):
@@ -64,34 +66,37 @@ class MetricsReporter:
                         mem += c.memory_info().rss
                     except Exception:
                         pass
-                cpu = p.cpu_percent(interval=None) # Interval None for non-blocking
+                # Interval None for non-blocking
+                cpu = p.cpu_percent(interval=None)
                 for c in p.children(recursive=True):
                     try:
                         cpu += c.cpu_percent(interval=None)
                     except Exception:
                         pass
-                
+
                 await self.r.setex(self.key, 15, json.dumps({
                     "cpu_percent": round(cpu, 2),
                     "memory_gb": round(mem / (1024**3), 4),
                     "timestamp": time.time()
                 }))
             except Exception as e:
-                logging.getLogger("clip_recorder.metrics").debug(f"Metrics error: {e}")
-            
+                logging.getLogger("clip_recorder.metrics").debug(
+                    f"Metrics error: {e}")
+
             try:
-                import gc, ctypes
+                import gc
+                import ctypes
                 gc.collect()
                 ctypes.CDLL("libc.so.6").malloc_trim(0)
             except Exception:
                 pass
-            
+
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=5)
             except asyncio.TimeoutError:
                 pass
 
-    def stop(self): 
+    def stop(self):
         self._stop.set()
 
 
@@ -108,12 +113,12 @@ async def main() -> None:
             "Clips and snapshots will be saved locally but not uploaded."
         )
 
-
     log.info("Clip recorder starting (Async Mode)...")
     log.info(f"  Redis:         {config.redis_host}:{config.redis_port}")
     log.info(f"  Stream:        {CLIP_REQUEST_STREAM}")
     log.info(f"  Camera source: {config.camera_source or '(per-event)'}")
-    log.info(f"  Background buf:.env default={config.enable_background_buffer} (Redis may override)")
+    log.info(
+        f"  Background buf:.env default={config.enable_background_buffer} (Redis may override)")
     log.info(f"  Post seconds:  {config.clip_post_seconds}")
     log.info(f"  Clip dir:      {config.clip_dir}")
     log.info(f"  Snapshot dir:  {config.snapshot_dir}")
@@ -159,28 +164,34 @@ async def main() -> None:
         raw_settings = await redis_client.get("vg:system_settings")
         if raw_settings:
             sys_data = json.loads(raw_settings)
-            enable_buffer = sys_data.get("clips", {}).get("enableBackgroundBuffer", enable_buffer)
-            log.info(f"  Background buf (from Redis settings): {enable_buffer}")
+            enable_buffer = sys_data.get("clips", {}).get(
+                "enableBackgroundBuffer", enable_buffer)
+            log.info(
+                f"  Background buf (from Redis settings): {enable_buffer}")
         else:
             log.info(f"  Background buf (from .env): {enable_buffer}")
     except Exception as e:
-        log.warning(f"Could not read background buffer setting from Redis on startup: {e}")
+        log.warning(
+            f"Could not read background buffer setting from Redis on startup: {e}")
 
     if enable_buffer:
         try:
             # Fetch all cameras from the registry
-            camera_sources = await redis_client.hvals("vg:camera:sources")  # type: ignore
+            # type: ignore
+            camera_sources = await redis_client.hvals("vg:camera:sources")
             if camera_sources:
                 recorder.start_dashcam_buffers(camera_sources)
-                log.info(f"  Pre-started background buffers for {len(camera_sources)} camera(s)")
+                log.info(
+                    f"  Pre-started background buffers for {len(camera_sources)} camera(s)")
             else:
-                log.warning("No camera sources found in Redis registry (vg:camera:sources) â€” buffers will start on first event")
+                log.warning(
+                    "No camera sources found in Redis registry (vg:camera:sources) â€” buffers will start on first event")
         except Exception as e:
             log.warning(f"Failed to auto-start dashcam buffers: {e}")
 
     # Track current buffer state to detect toggles
     current_buffer_state = enable_buffer
-    
+
     # --- Pub/Sub Settings Listener ---
     async def listen_for_settings_updates():
         nonlocal current_buffer_state
@@ -191,12 +202,15 @@ async def main() -> None:
                 if message["type"] == "message":
                     try:
                         data = json.loads(message["data"])
-                        new_state = data.get("clips", {}).get("enableBackgroundBuffer", current_buffer_state)
+                        new_state = data.get("clips", {}).get(
+                            "enableBackgroundBuffer", current_buffer_state)
                         if new_state != current_buffer_state:
-                            log.info(f"Background Buffer toggled in Dashboard: {current_buffer_state} -> {new_state}")
+                            log.info(
+                                f"Background Buffer toggled in Dashboard: {current_buffer_state} -> {new_state}")
                             current_buffer_state = new_state
                             if new_state:
-                                sources = await redis_client.hvals("vg:camera:sources")  # type: ignore
+                                # type: ignore
+                                sources = await redis_client.hvals("vg:camera:sources")
                                 recorder.start_dashcam_buffers(sources)
                             else:
                                 recorder.stop_dashcam_buffers()
@@ -221,13 +235,13 @@ async def main() -> None:
     # --- Track last-read stream ID for XREAD (with persistence) ---
     LAST_ID_KEY = "vg:clip:last_id"
     saved_id = await redis_client.get(LAST_ID_KEY)
-    
+
     if saved_id:
         last_id = saved_id
         log.info(f"Resuming from saved clip request ID: {last_id}")
     else:
         # Fallback to config or latest
-        last_id = "$" 
+        last_id = "$"
         log.info("No saved clip request ID found, starting from latest message ($)")
 
     log.info(f"Listening on Redis stream: {CLIP_REQUEST_STREAM}")
@@ -252,18 +266,22 @@ async def main() -> None:
                         try:
                             await redis_client.set(LAST_ID_KEY, last_id)
                         except Exception as e:
-                            log.warning(f"Failed to persist clip progress ID: {e}")
+                            log.warning(
+                                f"Failed to persist clip progress ID: {e}")
 
                         try:
-                            event_id    = fields.get("event_id", "")
-                            event_type  = fields.get("event_type", "unknown")
-                            camera_id   = fields.get("camera_id", "")
+                            event_id = fields.get("event_id", "")
+                            event_type = fields.get("event_type", "unknown")
+                            camera_id = fields.get("camera_id", "")
                             # Allow per-message camera_source override; default to config
-                            camera_src  = fields.get("camera_source") or config.camera_source
-                            timestamp   = float(fields.get("timestamp", time.time()))
+                            camera_src = fields.get(
+                                "camera_source") or config.camera_source
+                            timestamp = float(fields.get(
+                                "timestamp", time.time()))
 
                             if not event_id:
-                                log.warning(f"Clip request missing event_id, skipping: {fields}")
+                                log.warning(
+                                    f"Clip request missing event_id, skipping: {fields}")
                                 continue
 
                             if not camera_src:
@@ -273,29 +291,45 @@ async def main() -> None:
                                 # Don't continue; let recorder.py fetch the snapshot.
                                 # It will fail the clip part gracefully.
 
-                            log.info(f"Processing clip request for event {event_id}")
-
-                            # Await the async record_and_upload
-                            result = await recorder.record_and_upload(
-                                event_id=event_id,
-                                event_type=event_type,
-                                camera_id=camera_id,
-                                camera_source=camera_src,
-                                detection_ts=timestamp,
-                            )
-
                             log.info(
-                                f"Clip pipeline done for event {event_id} | "
-                                f"snapshot={result.get('snapshot_url')} | "
-                                f"clip={result.get('clip_url')}"
+                                f"Processing clip request for event {event_id}")
+
+                            # Fast/slow split: do NOT await the pipeline here. Run it
+                            # as a concurrent task so the loop immediately reads the
+                            # next event and secures its snapshot (fast path) while
+                            # slow clip recording happens in parallel (bounded by a
+                            # semaphore inside the recorder). This stops a long clip
+                            # from delaying the next event's snapshot past the worker's
+                            # rolling-buffer deletion window.
+                            def _on_clip_done(t: "asyncio.Task", _eid=event_id) -> None:
+                                if t.cancelled():
+                                    return
+                                exc = t.exception()
+                                if exc is not None:
+                                    log.error(
+                                        f"Clip pipeline error for event {_eid}: {exc}",
+                                        exc_info=exc,
+                                    )
+
+                            task = asyncio.create_task(
+                                recorder.record_and_upload(
+                                    event_id=event_id,
+                                    event_type=event_type,
+                                    camera_id=camera_id,
+                                    camera_source=camera_src,
+                                    detection_ts=timestamp,
+                                )
                             )
+                            task.add_done_callback(_on_clip_done)
 
                         except Exception as e:
-                            log.error(f"Error processing clip request: {e}", exc_info=True)
+                            log.error(
+                                f"Error processing clip request: {e}", exc_info=True)
 
             except Exception as e:
                 if not stop_event.is_set():
-                    log.error(f"Unexpected error in main loop: {e}", exc_info=True)
+                    log.error(
+                        f"Unexpected error in main loop: {e}", exc_info=True)
                     await asyncio.sleep(2)
 
     finally:
@@ -310,4 +344,3 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         pass
-
