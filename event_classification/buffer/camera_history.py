@@ -7,7 +7,7 @@ and event deduplication (cooldown).
 
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 import time
 
 
@@ -38,7 +38,8 @@ class CameraEventHistory:
         confidence: float,
     ) -> None:
         """Add detection to sliding window. Prune old entries."""
-        cutoff = max(source_timestamp, ingest_timestamp) - self.history_window_seconds
+        cutoff = max(source_timestamp, ingest_timestamp) - \
+            self.history_window_seconds
         target = self._get_deque(event_type)
         if target is not None:
             target.append((source_timestamp, ingest_timestamp, confidence))
@@ -76,10 +77,41 @@ class CameraEventHistory:
         if target is None:
             return 0.0
         if time_axis == "ingest":
-            recent = [c for _src_ts, ingest_ts, c in target if ingest_ts >= cutoff]
+            recent = [c for _src_ts, ingest_ts,
+                      c in target if ingest_ts >= cutoff]
         else:
-            recent = [c for source_ts, _ingest_ts, c in target if source_ts >= cutoff]
+            recent = [c for source_ts, _ingest_ts,
+                      c in target if source_ts >= cutoff]
         return max(recent) if recent else 0.0
+
+    def get_peak_detection(
+        self,
+        event_type: str,
+        window_seconds: float,
+        time_axis: str = "source",
+        now_ts: Optional[float] = None,
+    ) -> Optional[Tuple[float, float]]:
+        """Return (source_ts, confidence) of the HIGHEST-confidence detection in the
+        last N seconds.
+
+        Used so the finalized event's timestamp points at the PEAK detection. The
+        clip_recorder looks up the snapshot by that timestamp, so the displayed image
+        matches the event's reported (max) confidence instead of the triggering frame's.
+        """
+        clock = now_ts if now_ts is not None else time.time()
+        cutoff = clock - window_seconds
+        target = self._get_deque(event_type)
+        if target is None:
+            return None
+        best_src_ts: Optional[float] = None
+        best_conf: float = -1.0
+        for src_ts, ingest_ts, conf in target:
+            if (ingest_ts if time_axis == "ingest" else src_ts) >= cutoff and conf > best_conf:
+                best_conf = conf
+                best_src_ts = src_ts
+        if best_src_ts is None:
+            return None
+        return (best_src_ts, best_conf)
 
     def is_in_cooldown(
         self,
@@ -98,7 +130,8 @@ class CameraEventHistory:
 
     def mark_event_written(self, event_type: str, now_ts: Optional[float] = None) -> None:
         """Call after writing an event to DB to start cooldown."""
-        self.last_event_ts[event_type] = now_ts if now_ts is not None else time.time()
+        self.last_event_ts[event_type] = now_ts if now_ts is not None else time.time(
+        )
 
     def _get_deque(self, event_type: str) -> Optional[deque]:
         mapping = {

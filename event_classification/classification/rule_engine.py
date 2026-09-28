@@ -18,25 +18,25 @@ from .event_models import Event
 class RuleEngine:
     """
     Deterministic classification rule engine (v2).
-    
+
     Applies rules in strict priority order:
     1. Weapon (immediate CRITICAL) — with cooldown
     2. Fire/Smoke (temporal persistence) — camera-level history
     3. Fall (immediate MEDIUM) — with cooldown
-    
+
     Only ONE final event per frame.
     """
-    
+
     def __init__(self, config: ECSConfig):
         """
         Initialize rule engine.
-        
+
         Args:
             config: ECS configuration
         """
         self.config = config
         self.logger = logging.getLogger(__name__)
-        
+
         # Statistics
         self.classifications_run = 0
         self.weapon_events = 0
@@ -44,7 +44,7 @@ class RuleEngine:
         self.fall_events = 0
         self.no_event = 0
         self.cooldown_suppressed = 0
-        
+
         self.logger.info(
             "Rule engine v2 initialized",
             extra={
@@ -58,7 +58,7 @@ class RuleEngine:
                 "fall_cooldown": config.fall_cooldown_seconds,
             }
         )
-    
+
     def classify(
         self,
         frame_state: FrameState,
@@ -67,16 +67,16 @@ class RuleEngine:
         """
         Classify frame using deterministic rules with camera-level
         temporal awareness and cooldown deduplication.
-        
+
         STRICT PRIORITY ORDER:
         1. Weapon → CRITICAL (immediate, cooldown 30s)
         2. Fire → HIGH (temporal persistence, cooldown 60s)
         3. Fall → MEDIUM (immediate, cooldown 30s)
-        
+
         Args:
             frame_state: Frame state with AI results
             camera_history: Per-camera detection history
-            
+
         Returns:
             Event if classification successful, None otherwise
         """
@@ -100,19 +100,20 @@ class RuleEngine:
             axis = "ingest" if use_ingest else "source"
             reference_ts = ingest_ts if use_ingest else source_ts
             return axis, source_ts, ingest_ts, reference_ts
-        
+
         # PRIORITY 1: Weapon Detection (CRITICAL)
         if frame_state.has_weapon():
             weapon_result = frame_state.weapon_result
             confidence = normalize_confidence(weapon_result.confidence)
-            timeline_axis, source_ts, ingest_ts, reference_ts = resolve_timeline(weapon_result)
-            
+            timeline_axis, source_ts, ingest_ts, reference_ts = resolve_timeline(
+                weapon_result)
+
             if confidence >= self.config.weapon_confidence_threshold:
                 # Add to camera history for persistence tracking
                 camera_history.add_detection(
                     'weapon', source_ts, ingest_ts, confidence
                 )
-                
+
                 # Check camera-level persistence
                 recent_count = camera_history.get_recent_count(
                     'weapon',
@@ -120,10 +121,10 @@ class RuleEngine:
                     time_axis=timeline_axis,
                     now_ts=reference_ts,
                 )
-                
+
                 if recent_count >= self.config.weapon_min_detections:
                     frame_state.classification_reason = "window_elapsed"
-                    
+
                     # Check cooldown
                     if camera_history.is_in_cooldown(
                         'weapon', self.config.weapon_cooldown_seconds, now_ts=ingest_ts
@@ -140,31 +141,38 @@ class RuleEngine:
                             }
                         )
                         return None
-                    
-                    # Use max confidence from window for event
-                    max_confidence = camera_history.get_max_confidence(
+
+                    # Use max confidence from window AND the timestamp of that peak
+                    # detection, so the snapshot the recorder fetches matches the
+                    # reported confidence (instead of the triggering frame's lower one).
+                    _peak = camera_history.get_peak_detection(
                         'weapon',
                         self.config.weapon_persistence_window_sec,
                         time_axis=timeline_axis,
                         now_ts=reference_ts,
                     )
-                    
+                    if _peak is not None:
+                        max_confidence, peak_source_ts = _peak[1], _peak[0]
+                    else:
+                        max_confidence, peak_source_ts = confidence, source_ts
+
                     self.weapon_events += 1
-                    camera_history.mark_event_written('weapon', now_ts=ingest_ts)
-                    
+                    camera_history.mark_event_written(
+                        'weapon', now_ts=ingest_ts)
+
                     event = Event(
                         event_id=str(uuid.uuid4()),
                         event_type="weapon_detected",
                         severity="CRITICAL",
                         camera_id=frame_state.camera_id,
                         frame_id=frame_state.frame_id,
-                        timestamp=source_ts,
+                        timestamp=peak_source_ts,
                         confidence=max_confidence,
                         bbox=weapon_result.bbox,
                         model_type="weapon",
                         correlation_age_ms=frame_state.get_age_ms()
                     )
-                    
+
                     self.logger.warning(
                         f"WEAPON DETECTED (CRITICAL) — persistence confirmed",
                         extra={
@@ -176,21 +184,22 @@ class RuleEngine:
                             "age_ms": frame_state.get_age_ms()
                         }
                     )
-                    
+
                     return event
-        
+
         # PRIORITY 2: Fire Detection (HIGH)
         if frame_state.has_fire():
             fire_result = frame_state.fire_result
             confidence = normalize_confidence(fire_result.confidence)
-            timeline_axis, source_ts, ingest_ts, reference_ts = resolve_timeline(fire_result)
-            
+            timeline_axis, source_ts, ingest_ts, reference_ts = resolve_timeline(
+                fire_result)
+
             if confidence >= self.config.fire_confidence_threshold:
                 # Add to camera history for persistence tracking
                 camera_history.add_detection(
                     'fire', source_ts, ingest_ts, confidence
                 )
-                
+
                 # Check camera-level persistence
                 recent_count = camera_history.get_recent_count(
                     'fire',
@@ -198,10 +207,10 @@ class RuleEngine:
                     time_axis=timeline_axis,
                     now_ts=reference_ts,
                 )
-                
+
                 if recent_count >= self.config.fire_min_detections:
                     frame_state.classification_reason = "window_elapsed"
-                    
+
                     # Check cooldown
                     if camera_history.is_in_cooldown(
                         'fire', self.config.fire_cooldown_seconds, now_ts=ingest_ts
@@ -218,31 +227,37 @@ class RuleEngine:
                             }
                         )
                         return None
-                    
-                    # Use max confidence from window for event
-                    max_confidence = camera_history.get_max_confidence(
+
+                    # Use max confidence from window AND the timestamp of that peak
+                    # detection, so the snapshot the recorder fetches matches the
+                    # reported confidence (instead of the triggering frame's lower one).
+                    _peak = camera_history.get_peak_detection(
                         'fire',
                         self.config.fire_persistence_window_sec,
                         time_axis=timeline_axis,
                         now_ts=reference_ts,
                     )
-                    
+                    if _peak is not None:
+                        max_confidence, peak_source_ts = _peak[1], _peak[0]
+                    else:
+                        max_confidence, peak_source_ts = confidence, source_ts
+
                     self.fire_events += 1
                     camera_history.mark_event_written('fire', now_ts=ingest_ts)
-                    
+
                     event = Event(
                         event_id=str(uuid.uuid4()),
                         event_type="fire_detected",
                         severity="HIGH",
                         camera_id=frame_state.camera_id,
                         frame_id=frame_state.frame_id,
-                        timestamp=source_ts,
+                        timestamp=peak_source_ts,
                         confidence=max_confidence,
                         bbox=fire_result.bbox,
                         model_type="fire",
                         correlation_age_ms=frame_state.get_age_ms()
                     )
-                    
+
                     self.logger.warning(
                         f"FIRE DETECTED (HIGH) — persistence confirmed",
                         extra={
@@ -254,21 +269,22 @@ class RuleEngine:
                             "age_ms": frame_state.get_age_ms()
                         }
                     )
-                    
+
                     return event
-        
+
         # PRIORITY 3: Fall Detection (MEDIUM)
         if frame_state.has_fall():
             fall_result = frame_state.fall_result
             confidence = normalize_confidence(fall_result.confidence)
-            timeline_axis, source_ts, ingest_ts, reference_ts = resolve_timeline(fall_result)
-            
+            timeline_axis, source_ts, ingest_ts, reference_ts = resolve_timeline(
+                fall_result)
+
             if confidence >= self.config.fall_confidence_threshold:
                 # Add to camera history for persistence tracking
                 camera_history.add_detection(
                     'fall', source_ts, ingest_ts, confidence
                 )
-                
+
                 # Check camera-level persistence
                 recent_count = camera_history.get_recent_count(
                     'fall',
@@ -276,10 +292,10 @@ class RuleEngine:
                     time_axis=timeline_axis,
                     now_ts=reference_ts,
                 )
-                
+
                 if recent_count >= self.config.fall_min_detections:
                     frame_state.classification_reason = "window_elapsed"
-                    
+
                     # Check cooldown
                     if camera_history.is_in_cooldown(
                         'fall', self.config.fall_cooldown_seconds, now_ts=ingest_ts
@@ -296,31 +312,37 @@ class RuleEngine:
                             }
                         )
                         return None
-                    
-                    # Use max confidence from window for event
-                    max_confidence = camera_history.get_max_confidence(
+
+                    # Use max confidence from window AND the timestamp of that peak
+                    # detection, so the snapshot the recorder fetches matches the
+                    # reported confidence (instead of the triggering frame's lower one).
+                    _peak = camera_history.get_peak_detection(
                         'fall',
                         self.config.fall_persistence_window_sec,
                         time_axis=timeline_axis,
                         now_ts=reference_ts,
                     )
-                    
+                    if _peak is not None:
+                        max_confidence, peak_source_ts = _peak[1], _peak[0]
+                    else:
+                        max_confidence, peak_source_ts = confidence, source_ts
+
                     self.fall_events += 1
                     camera_history.mark_event_written('fall', now_ts=ingest_ts)
-                    
+
                     event = Event(
                         event_id=str(uuid.uuid4()),
                         event_type="fall_detected",
                         severity="MEDIUM",
                         camera_id=frame_state.camera_id,
                         frame_id=frame_state.frame_id,
-                        timestamp=source_ts,
+                        timestamp=peak_source_ts,
                         confidence=max_confidence,
                         bbox=fall_result.bbox,
                         model_type="fall",
                         correlation_age_ms=frame_state.get_age_ms()
                     )
-                    
+
                     self.logger.info(
                         f"FALL DETECTED (MEDIUM) — persistence confirmed",
                         extra={
@@ -332,13 +354,13 @@ class RuleEngine:
                             "age_ms": frame_state.get_age_ms()
                         }
                     )
-                    
+
                     return event
-        
+
         # No event classified
         self.no_event += 1
         frame_state.classification_reason = "no_detection"
-        
+
         self.logger.debug(
             f"No event classified",
             extra={
@@ -348,16 +370,16 @@ class RuleEngine:
                 "has_fall": frame_state.has_fall()
             }
         )
-        
+
         return None
-    
+
     def should_classify_immediately(self, frame_state: FrameState) -> bool:
         """
         Check if frame should be classified immediately (weapon short-circuit).
-        
+
         Args:
             frame_state: Frame state
-            
+
         Returns:
             True if should classify immediately (weapon detected)
         """
@@ -365,9 +387,9 @@ class RuleEngine:
             weapon_result = frame_state.weapon_result
             if weapon_result.confidence >= self.config.weapon_confidence_threshold:
                 return True
-        
+
         return False
-    
+
     def get_stats(self) -> dict:
         """Get classification statistics."""
         return {
