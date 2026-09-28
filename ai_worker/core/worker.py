@@ -211,18 +211,20 @@ class AIWorker:
             )
 
             self._apply_runtime_settings()
-            
-            # WARMUP PASS: Run a dummy frame to pay the ONNX/OpenVINO compile penalty 
-            # *before* we start consuming tasks. This prevents massive latency on the 
+
+            # WARMUP PASS: Run a dummy frame to pay the ONNX/OpenVINO compile penalty
+            # *before* we start consuming tasks. This prevents massive latency on the
             # very first real frame, which otherwise causes ECS to sweep the frame.
             try:
                 import numpy as np
-                dummy_frame = np.zeros((self.config.input_height, self.config.input_width, 3), dtype=np.uint8)
+                dummy_frame = np.zeros(
+                    (self.config.input_height, self.config.input_width, 3), dtype=np.uint8)
                 input_tensor = self.preprocessor.preprocess(dummy_frame)
                 _ = self.inference_engine.run(input_tensor)
                 self.logger.info("AI Worker model warmup complete")
             except Exception as e:
-                self.logger.warning(f"AI Worker model warmup failed (non-fatal): {e}")
+                self.logger.warning(
+                    f"AI Worker model warmup failed (non-fatal): {e}")
 
             self.logger.info("AI Worker initialized successfully")
             return True
@@ -240,16 +242,18 @@ class AIWorker:
             runtime = load_worker_runtime_settings(self.config.model_type)
             changed = False
 
-                        # Load privacy settings directly to avoid Redis call per frame
+            # Load privacy settings directly to avoid Redis call per frame
             try:
                 import redis
                 import json
                 import os
-                r_cli = redis.Redis(host=os.getenv("REDIS_HOST", "redis"), port=int(os.getenv("REDIS_PORT", "6379")), decode_responses=True)
+                r_cli = redis.Redis(host=os.getenv("REDIS_HOST", "redis"), port=int(
+                    os.getenv("REDIS_PORT", "6379")), decode_responses=True)
                 settings_data = r_cli.get("vg:settings")
                 if settings_data:
                     settings_json = json.loads(settings_data)
-                    self._mask_faces_enabled = settings_json.get("privacy", {}).get("maskFaces", False)
+                    self._mask_faces_enabled = settings_json.get(
+                        "privacy", {}).get("maskFaces", False)
                 r_cli.close()
             except Exception:
                 pass
@@ -431,7 +435,8 @@ class AIWorker:
                 result["inference_latency_ms"] = inference_latency_ms
                 try:
                     from ai_worker.prom_metrics import INFERENCE_LATENCY
-                    INFERENCE_LATENCY.labels(model_type=self.config.model_type).observe(inference_latency_ms / 1000.0)
+                    INFERENCE_LATENCY.labels(model_type=self.config.model_type).observe(
+                        inference_latency_ms / 1000.0)
                 except Exception:
                     pass
 
@@ -455,7 +460,8 @@ class AIWorker:
 
                 try:
                     if hasattr(self.result_publisher, 'client') and self.result_publisher.client:
-                        self.result_publisher.client.setex(f"vg:metrics:worker:{self.config.model_type}:latency", 10, str(round(inference_latency_ms, 2)))
+                        self.result_publisher.client.setex(
+                            f"vg:metrics:worker:{self.config.model_type}:latency", 10, str(round(inference_latency_ms, 2)))
                 except Exception:
                     pass
 
@@ -467,22 +473,27 @@ class AIWorker:
 
                 try:
                     from ai_worker.prom_metrics import INFERS_TOTAL, INFERENCE_LATENCY
-                    INFERS_TOTAL.labels(model_type=self.config.model_type, status="completed").inc()
+                    INFERS_TOTAL.labels(
+                        model_type=self.config.model_type, status="completed").inc()
                     if inference_latency_ms > 0:
-                        INFERENCE_LATENCY.labels(model_type=self.config.model_type).observe(inference_latency_ms / 1000.0)
+                        INFERENCE_LATENCY.labels(model_type=self.config.model_type).observe(
+                            inference_latency_ms / 1000.0)
                 except Exception:
                     pass
 
                 if result.get("confidence", 0) >= self.config.confidence_threshold:
                     try:
                         if hasattr(self.result_publisher, 'client') and self.result_publisher.client:
-                            self.result_publisher.client.incr(f"vg:metrics:worker:{self.config.model_type}:detections")
+                            self.result_publisher.client.incr(
+                                f"vg:metrics:worker:{self.config.model_type}:detections")
                     except Exception:
                         pass
                     try:
                         from ai_worker.prom_metrics import DETECTIONS_TOTAL, LAST_DETECTION_TIMESTAMP
-                        DETECTIONS_TOTAL.labels(model_type=self.config.model_type, label=self.config.model_type).inc()
-                        LAST_DETECTION_TIMESTAMP.labels(model_type=self.config.model_type).set_to_current_time()
+                        DETECTIONS_TOTAL.labels(
+                            model_type=self.config.model_type, label=self.config.model_type).inc()
+                        LAST_DETECTION_TIMESTAMP.labels(
+                            model_type=self.config.model_type).set_to_current_time()
                     except Exception:
                         pass
                     base_logger.info(
@@ -651,13 +662,26 @@ class AIWorker:
                     f"cv2.imwrite returned False for {filepath} (disk full, bad path, or permissions)")
                 return ""
 
-            # Auto-cleanup: keep only last 50 images per model type
+            # Auto-cleanup: keep only the last `max_snapshot_buffer` images per model
+            # type, trimmed by DETECTION TIMESTAMP (the trailing _<ts_ms> in the name),
+            # NOT alphabetically by filename. Sorting by name would always delete one
+            # camera's snapshots first whenever multiple cameras share this worker
+            # (e.g. 'fall_cam1_*' sorts before 'fall_cma3_*'), starving that camera and
+            # causing the clip_recorder to find 'No snapshot' for it.
             try:
                 prefix = f"{self.config.model_type}_"
-                all_images = sorted([
+                candidates = [
                     f for f in os.listdir(DETECTION_DIR)
                     if f.startswith(prefix) and f.endswith('.jpg')
-                ])
+                ]
+
+                def _ts_key(name):
+                    try:
+                        return int(name.rsplit("_", 1)[1][:-4])
+                    except (IndexError, ValueError):
+                        return -1
+
+                all_images = sorted(candidates, key=_ts_key)
                 max_buf = getattr(self, "_max_snapshot_buffer", 100)
                 if len(all_images) > max_buf:
                     for old in all_images[:-max_buf]:

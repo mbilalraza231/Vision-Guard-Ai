@@ -679,29 +679,15 @@ class ClipRecorder:
             best_path: Optional[str] = None
             best_diff = float("inf")
 
-            # Pass 1: exact <type>_<camera>_ match (preferred, always correct).
+            # Pass 1: exact <type>_<camera>_ match (the ONLY acceptable match).
             best_path, best_diff = _scan(prefix)
 
-            # Pass 2: camera-aware fallback. Only borrow a same-type snapshot when it is
-            # safe — i.e. every in-range candidate belongs to a SINGLE camera token.
-            # That means the worker names all its files with one token (a naming mismatch,
-            # e.g. real camera 'frontcam3' written as 'cma3'). If TWO or more distinct
-            # cameras produce this type, a type-only match could hand cam1's event a
-            # cma3 image — so we refuse and honestly report 'not found' instead.
-            if best_path is None:
-                cand, cand_diff, cand_tokens = _scan(
-                    type_prefix, collect_tokens=True)
-                if cand and len(cand_tokens) == 1:
-                    best_path, best_diff = cand, cand_diff
-                    logger.info(
-                        f"Camera-prefixed snapshot '{prefix}*' not found for {event_id}; "
-                        f"using type-only match '{os.path.basename(best_path)}' "
-                        f"(single camera token, diff: {best_diff/1000:.2f}s)")
-                elif cand:
-                    logger.warning(
-                        f"Skipping type-only snapshot fallback for {event_id}: multiple "
-                        f"cameras {sorted(cand_tokens)} produce '{model_type}' snapshots. "
-                        f"Refusing cross-camera match to avoid showing the wrong image.")
+            # No cross-camera fallback: the filename camera token comes from the
+            # worker (task.camera_id) and the event camera_id comes from the
+            # classifier. If they disagree (e.g. a camera was renamed), borrowing a
+            # same-type snapshot from a DIFFERENT camera token would show the wrong
+            # image. So if the exact match is missing, we honestly report 'not found'
+            # instead of guessing. A wrong snapshot is worse than none.
 
             if best_path:
                 logger.info(
