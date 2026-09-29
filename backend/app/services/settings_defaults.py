@@ -169,6 +169,7 @@ def _load_default_settings() -> Dict[str, Any]:
             "autoDelete": False,
             "maxStorage": 50,
             "maxSecuredSnapshotBuffer": _env_int("MAX_SECURED_SNAPSHOT_BUFFER", 200),
+            "maxClips": _env_int("MAX_CLIPS", 100),
         },
         "models": {
             "detectionModel": "yolo-edge-v2",

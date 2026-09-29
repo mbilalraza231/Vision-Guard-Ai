@@ -123,6 +123,7 @@ class StorageCleaner:
         max_storage_gb = float(storage_settings.get("maxStorage", 50))
         max_secured = int(storage_settings.get(
             "maxSecuredSnapshotBuffer", 200))
+        max_clips = int(storage_settings.get("maxClips", 100))
 
         if gdpr_compliant:
             # Force GDPR strict retention limit (caps at 30 days maximum, or keeps user stricter choice if smaller)
@@ -145,6 +146,9 @@ class StorageCleaner:
         # These are temporary copies made during Cloud upload; normally removed right
         # after upload, but this caps orphans left by failed uploads / Cloudinary-off.
         await self._trim_secured_snapshots(max_secured)
+
+        # Trim local clip files to the configured cap (oldest deleted first).
+        await self._trim_clips(max_clips)
 
     # ------------------------------------------------------------------ #
     # Settings Fetch                                                        #
@@ -373,6 +377,58 @@ class StorageCleaner:
             )
         except Exception as exc:
             logger.error("StorageCleaner [secured cap] failed: %s", exc)
+
+    async def _trim_clips(self, max_clips: int):
+        """Keep only the newest `max_clips` video clip files on disk.
+
+        The clip recorder writes clips to the local clips directory and uploads
+        to Cloudinary. Clips are NOT deleted after upload — they are managed here.
+        When the count exceeds the configured cap, the oldest clips are removed
+        (and their local DB evidence rows cleaned).
+        Only targets .mp4 and .avi files in the clips directory.
+        """
+        if max_clips <= 0:
+            return
+        try:
+            clips: List[tuple] = []
+            for dirpath, _, filenames in os.walk(self.clip_dir):
+                for fname in filenames:
+                    if fname.lower().endswith((".mp4", ".avi")):
+                        fpath = os.path.join(dirpath, fname)
+                        try:
+                            clips.append((fpath, os.stat(fpath).st_mtime))
+                        except OSError:
+                            pass
+
+            # Newest first
+            clips.sort(key=lambda x: x[1], reverse=True)
+            stale = clips[max_clips:]
+            if not stale:
+                return
+
+            removed = 0
+            from backend.app.core.database import db
+            for fpath, _ in stale:
+                try:
+                    os.remove(fpath)
+                    removed += 1
+                    # Clean DB reference for local provider
+                    await db.execute(
+                        "DELETE FROM event_evidence WHERE storage_provider = 'local' AND public_url = $1",
+                        fpath
+                    )
+                except OSError as exc:
+                    logger.warning(
+                        "StorageCleaner [clips cap]: could not delete %s: %s", fpath, exc)
+                except Exception as exc:
+                    logger.warning(
+                        "StorageCleaner [clips cap]: DB cleanup failed for %s: %s", fpath, exc)
+            logger.info(
+                "StorageCleaner [clips cap]: %d clips on disk (cap=%d), removed %d oldest",
+                len(clips), max_clips, removed,
+            )
+        except Exception as exc:
+            logger.error("StorageCleaner [clips cap] failed: %s", exc)
 
     @staticmethod
     def _get_dir_size(directory: str) -> float:

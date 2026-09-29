@@ -78,6 +78,7 @@ const defaultSettings: SystemSettings = {
     autoDelete: false,
     maxStorage: 50,
     maxSecuredSnapshotBuffer: 200,
+    maxClips: 100,
   },
   models: {
     detectionModel: 'yolo-edge-v2',
@@ -1189,6 +1190,29 @@ export default function Settings() {
                         successful cloud upload; the hourly cleanup keeps at most this many of the newest ones if uploads fail or
                         Cloudinary is off. Only touches "snapshot_secured_*" files — never original detections or clips. Requires
                         Scheduled Cleanup (above) to be ON.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="maxClips">
+                        Max Clips ({settings.storage.maxClips ?? 100} files)
+                      </Label>
+                      <Input
+                        id="maxClips"
+                        type="number"
+                        min={0}
+                        max={5000}
+                        value={settings.storage.maxClips ?? 100}
+                        onChange={(e) =>
+                          updateStorage({
+                            maxClips: Math.max(0, Math.min(5000, Number(e.target.value) || 0)),
+                          })
+                        }
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Cap for locally-stored video clip files. Clips are kept on disk after upload for quick playback.
+                        When the count exceeds this limit, the hourly cleanup removes the oldest clips first.
+                        Set to 0 to disable clip trimming. Requires Scheduled Cleanup (above) to be ON.
                       </p>
                     </div>
 

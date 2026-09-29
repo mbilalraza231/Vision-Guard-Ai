@@ -84,14 +84,6 @@ class MetricsReporter:
                     f"Metrics error: {e}")
 
             try:
-                import gc
-                import ctypes
-                gc.collect()
-                ctypes.CDLL("libc.so.6").malloc_trim(0)
-            except Exception:
-                pass
-
-            try:
                 await asyncio.wait_for(self._stop.wait(), timeout=5)
             except asyncio.TimeoutError:
                 pass

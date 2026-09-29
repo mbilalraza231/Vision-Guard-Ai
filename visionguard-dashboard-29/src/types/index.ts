@@ -304,6 +304,7 @@ export interface StorageSettings {
   autoDelete: boolean;
   maxStorage: number;
   maxSecuredSnapshotBuffer?: number;
+  maxClips?: number;
 }
 
 export interface ModelSettings {

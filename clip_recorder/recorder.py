@@ -49,7 +49,6 @@ class ClipRecorder:
       3. Upload snapshot to Cloudinary
       4. Upload clip to Cloudinary
       5. Write both URLs to event_evidence table
-      6. Delete local clip file after successful upload
     """
 
     def __init__(self, config: ClipConfig) -> None:
@@ -838,17 +837,32 @@ class ClipRecorder:
             filename = f"{event_type}_{event_id}_{ts_str}.mp4"
             out_path = os.path.join(self.config.clip_dir, filename)
 
-            # Use avc1 (H.264) directly — mp4v is not reliably supported in Linux containers
-            fourcc = cv2.VideoWriter_fourcc(*"avc1")
-            writer = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
-            if not writer.isOpened():
-                # Fallback: write raw frames then transcode with ffmpeg
-                fourcc = cv2.VideoWriter_fourcc(*"XVID")
-                out_path_raw = out_path.replace(".mp4", ".avi")
-                writer = cv2.VideoWriter(
-                    out_path_raw, fourcc, fps, (width, height))
-            else:
-                out_path_raw = None
+            effective_fps = float(
+                round(max(1.0, min(60.0, float(fps or 15)))))
+
+            # --- ONE-PASS: pipe buffered frames straight to ffmpeg (no .avi, no transcode) ---
+            # scale=trunc(.../2)*2 → H.264/yuv420p requires even dimensions.
+            ffmpeg_cmd = [
+                "ffmpeg", "-y",
+                "-f", "rawvideo",
+                "-pixel_format", "bgr24",
+                "-video_size", f"{width}x{height}",
+                "-framerate", str(int(effective_fps)),
+                "-i", "pipe:0",
+                "-an",
+                "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+                "-vcodec", "libx264",
+                "-preset", "ultrafast",
+                "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                out_path,
+            ]
+            proc = subprocess.Popen(
+                ffmpeg_cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
 
             logger.info(
                 f"Stitching {len(valid_frames)} buffered frames for clip "
@@ -856,26 +870,46 @@ class ClipRecorder:
                 extra={"event_id": event_id, "output": out_path},
             )
 
+            frames_written = 0
+            pipe_broken = False
             for frame in valid_frames:
                 if mask_faces:
                     frame = self._mask_faces(frame)
-                writer.write(frame)
-            writer.release()
+                # raw header is fixed — skip frames with a different resolution
+                if frame.shape[:2] != (height, width):
+                    continue
+                try:
+                    proc.stdin.write(frame.tobytes())
+                    frames_written += 1
+                except (BrokenPipeError, OSError) as exc:
+                    logger.warning(
+                        f"ffmpeg pipe closed early during stitching: {exc}")
+                    pipe_broken = True
+                    break
 
-            # If we wrote to a raw AVI, transcode it to mp4
-            if out_path_raw and os.path.exists(out_path_raw):
-                if not self._transcode_to_h264(out_path_raw):
-                    return None, ClipError.TRANSCODE
-                os.rename(out_path_raw.replace(".avi", ".avi"), out_path)
+            if not pipe_broken:
+                try:
+                    proc.stdin.close()
+                except OSError:
+                    pass
+            stderr_out = proc.stderr.read()
+            try:
+                proc.wait(timeout=60)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+
+            if frames_written == 0 or proc.returncode != 0:
+                logger.error(
+                    f"ffmpeg pipe encoding failed (exit {proc.returncode}, "
+                    f"frames={frames_written}): {stderr_out.decode(errors='replace')[:500]}")
+                return None, ClipError.TRANSCODE
 
             # Safety: verify the output file actually exists before returning
             if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
                 logger.error(
                     f"Output clip file missing or empty after write: {out_path}")
                 return None, ClipError.INTERNAL
-
-            if not self._transcode_to_h264(out_path) and out_path_raw is None:
-                return None, ClipError.TRANSCODE
 
             return out_path, None
 
@@ -898,7 +932,6 @@ class ClipRecorder:
     ) -> Tuple[Optional[str], Optional[str]]:
         """Record a clip directly from source without persistent background buffer."""
         cap = None
-        writer = None
         try:
             if not camera_source:
                 logger.error(f"Cannot record clip: camera_source is empty")
@@ -935,10 +968,12 @@ class ClipRecorder:
 
             height, width = first_frame.shape[:2]
 
-            # If buffer is off, we can't go back in time, but we should still record the requested total duration
-            total_duration = pre_seconds + post_seconds
+            # Direct recording = no buffer = cannot go back in time.
+            # Pre-seconds is IGNORED here (only meaningful with background buffer).
+            # Clip records post_seconds FORWARD from now.
+            total_duration = post_seconds
             if total_duration <= 0:
-                total_duration = self.config.clip_pre_seconds + self.config.clip_post_seconds
+                total_duration = self.config.clip_post_seconds
                 if total_duration <= 0:
                     total_duration = 10  # Ultimate safety fallback
 
@@ -952,52 +987,97 @@ class ClipRecorder:
             if mask_faces:
                 first_frame = self._mask_faces(first_frame)
 
-            captured_frames = [first_frame]
+            effective_fps = float(
+                round(max(1.0, min(60.0, float(target_fps or self.config.camera_fps or 15)))))
+
+            # --- ONE-PASS: pipe raw frames directly to ffmpeg (no intermediate .avi) ---
+            # scale=trunc(.../2)*2 → H.264/yuv420p requires even dimensions; cameras
+            # can return odd sizes (e.g. 1609x1081) which would otherwise abort encoding.
+            ffmpeg_cmd = [
+                "ffmpeg", "-y",
+                "-f", "rawvideo",
+                "-pixel_format", "bgr24",
+                "-video_size", f"{width}x{height}",
+                "-framerate", str(int(effective_fps)),
+                "-i", "pipe:0",
+                "-an",
+                "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+                "-vcodec", "libx264",
+                "-preset", "ultrafast",
+                "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                out_path,
+            ]
+            proc = subprocess.Popen(
+                ffmpeg_cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
+
+            frames_written = 0
+            pipe_broken = False
+
+            def _feed(img) -> bool:
+                """Write one raw BGR frame to ffmpeg. False = pipe closed early."""
+                nonlocal frames_written, pipe_broken
+                if pipe_broken:
+                    return False
+                try:
+                    proc.stdin.write(img.tobytes())
+                    frames_written += 1
+                    return True
+                except (BrokenPipeError, OSError) as exc:
+                    logger.warning(f"ffmpeg pipe closed early: {exc}")
+                    pipe_broken = True
+                    return False
+
+            # Stream first frame
+            _feed(first_frame)
             start_time = time.time()
-            frames_written = 1
-            # Generous safety timeout for laggy IP cameras
             max_wait_time = total_duration * 1.5 + 15
 
-            # Frame-Based Loop (with safety timeout)
-            while frames_written < total_frames:
+            # Decode + stream remaining frames (no list buffering)
+            while frames_written < total_frames and not pipe_broken:
                 if time.time() - start_time > max_wait_time:
                     logger.warning(
-                        f"Direct recording timed out after {max_wait_time}s. Captured {frames_written}/{total_frames} frames.")
+                        f"Direct recording timed out after {max_wait_time}s. "
+                        f"Captured {frames_written}/{total_frames} frames.")
                     break
-
                 ok, frame = cap.read()
                 if not ok or frame is None:
                     break
                 if mask_faces:
                     frame = self._mask_faces(frame)
-                captured_frames.append(frame)
-                frames_written += 1
+                # Drop frames whose resolution changed mid-stream (raw header is fixed)
+                if frame.shape[:2] != (height, width):
+                    continue
+                _feed(frame)
 
             actual_duration = time.time() - start_time
 
-            # Compute effective framerate so the output video duration still matches real-world time as best as possible
-            # But the primary driver for loop exit was reaching total_frames
-            effective_fps = float(
-                round(max(1.0, min(60.0, float(target_fps or self.config.camera_fps or 15)))))
+            # Close stdin and wait for ffmpeg to finish encoding
+            if not pipe_broken:
+                try:
+                    proc.stdin.close()
+                except OSError:
+                    pass
+            stderr_out = proc.stderr.read()
+            proc.wait(timeout=30)
 
-            # Initialize VideoWriter with the effective FPS
-            # Use avc1 (H.264) directly — mp4v is not reliably supported in Linux containers
-            fourcc = cv2.VideoWriter_fourcc(*"avc1")
-            writer = cv2.VideoWriter(
-                out_path, fourcc, effective_fps, (width, height))
-            if not writer.isOpened():
-                # Fallback to XVID .avi then transcode
-                fourcc = cv2.VideoWriter_fourcc(*"XVID")
-                out_path = out_path.replace(".mp4", ".avi")
-                writer = cv2.VideoWriter(
-                    out_path, fourcc, effective_fps, (width, height))
+            if cap:
+                cap.release()
+                cap = None
 
-            for frame in captured_frames:
-                writer.write(frame)
-            writer.release()
+            if proc.returncode != 0:
+                logger.error(
+                    f"ffmpeg pipe encoding failed (exit {proc.returncode}): "
+                    f"{stderr_out.decode(errors='replace')[:500]}")
+                return None, ClipError.TRANSCODE
 
             logger.info(
-                f"Direct frame-based recording completed (Target: {total_frames} frames, Captured: {frames_written} frames)",
+                f"Direct ffmpeg-pipe recording completed "
+                f"(Target: {total_frames} frames, Captured: {frames_written} frames)",
                 extra={
                     "event_id": event_id,
                     "frames_written": frames_written,
@@ -1008,22 +1088,11 @@ class ClipRecorder:
                 },
             )
 
-            if writer:
-                writer.release()
-                writer = None
-            if cap:
-                cap.release()
-                cap = None
-
-            # Safety: verify the output file actually exists before transcoding
+            # Safety: verify the output file exists and has content
             if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
                 logger.error(
-                    f"Output clip file missing or empty after direct write: {out_path}")
+                    f"Output clip file missing or empty after ffmpeg pipe: {out_path}")
                 return None, ClipError.INTERNAL
-
-            if not self._transcode_to_h264(out_path):
-                # Transcode failed — return None so status becomes 'failed' not 'ready'
-                return None, ClipError.TRANSCODE
 
             return out_path, None
 
@@ -1031,10 +1100,8 @@ class ClipRecorder:
             logger.error(f"Error in direct clip recording: {e}", exc_info=True)
             return None, ClipError.INTERNAL
         finally:
-            if 'captured_frames' in locals() and captured_frames:
-                captured_frames.clear()
-            if writer:
-                writer.release()
+            if 'proc' in locals() and proc.poll() is None:
+                proc.kill()
             if cap:
                 cap.release()
             import gc
