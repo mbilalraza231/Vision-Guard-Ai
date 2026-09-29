@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Header } from '@/components/layout/Header';
 import { useSettings, getCachedSettings } from '@/hooks/useSettings';
@@ -164,6 +164,21 @@ const defaultSettings: SystemSettings = {
   }
 };
 
+/** Stable JSON stringify (object keys sorted at every level) so two equal
+ *  settings objects compare the same regardless of key order. Used to detect
+ *  no-change saves. */
+function stableStringify(value: unknown): string {
+  return JSON.stringify(value, (_key, val) =>
+    val && typeof val === 'object' && !Array.isArray(val)
+      ? Object.fromEntries(
+          Object.keys(val as Record<string, unknown>)
+            .sort()
+            .map((k) => [k, (val as Record<string, unknown>)[k]]),
+        )
+      : val,
+  );
+}
+
 /** Deep-merge API settings into defaults so nested keys (workers/ecs) never go missing. */
 function mergeSettingsFromApi(data: Partial<SystemSettings>): SystemSettings {
   return {
@@ -292,6 +307,9 @@ export default function Settings() {
   const [settings, setSettings] = useState<SystemSettings>(() => getCachedSettings() ? mergeSettingsFromApi(getCachedSettings()!) : defaultSettings);
   const [saveMessage, setSaveMessage] = useState<string>('');
   const [settingsLoading, setSettingsLoading] = useState(true);
+  // Snapshot of the settings last known to be persisted on the server, so a
+  // Save click that changed nothing can skip the write entirely.
+  const lastSavedRef = useRef<SystemSettings | null>(null);
 
   // Clear save messages when changing tabs
   useEffect(() => {
@@ -306,6 +324,7 @@ export default function Settings() {
         const data = await apiService.getData<SystemSettings>('/api/v1/settings');
         if (!cancelled) {
           const merged = mergeSettingsFromApi(data);
+          lastSavedRef.current = merged;
           setSettings((prev: SystemSettings) => ({
             ...merged,
             system: prev.system,
@@ -459,8 +478,27 @@ export default function Settings() {
         payload.systemOverrides = settings.systemOverrides;
       } else return;
 
+      // If the outgoing values match what's already saved, don't hit the
+      // backend at all — just tell the user there was nothing to write.
+      const baseline = lastSavedRef.current;
+      if (baseline) {
+        const p = payload as unknown as Record<string, unknown>;
+        const b = baseline as unknown as Record<string, unknown>;
+        const unchanged =
+          Object.keys(p).length > 0 &&
+          Object.keys(p).every(
+            (k) => stableStringify(p[k]) === stableStringify(b[k]),
+          );
+        if (unchanged) {
+          setSaveMessage('No changes to save');
+          setTimeout(() => setSaveMessage(''), 2500);
+          return;
+        }
+      }
+
       const saved = await apiService.putData<SystemSettings>('/api/v1/settings', payload);
       const merged = mergeSettingsFromApi(saved);
+      lastSavedRef.current = merged;
       setSettings((prev: SystemSettings) => ({
         ...merged,
         system: prev.system,
@@ -472,9 +510,14 @@ export default function Settings() {
       try { localStorage.setItem('vg:settings:cache', JSON.stringify(merged)); } catch {}
     } catch (err) {
       console.error('Failed to save settings', err);
-      setSaveMessage('Failed to save settings');
+      // Surface the real backend reason (401 / 422 / timeout / connection
+      // refused) instead of a generic message, so the cause is visible in the UI.
+      const reason = err instanceof Error && err.message ? err.message : 'unknown error';
+      setSaveMessage(`Failed to save settings — ${reason}`);
     }
-    setTimeout(() => setSaveMessage(''), 2500);
+    // Slightly longer so a bottom-right toast can actually be noticed after a
+    // click that happens while the user is scrolled deep in a long tab.
+    setTimeout(() => setSaveMessage(''), 4000);
   };
 
   const [exportingData, setExportingData] = useState(false);
@@ -557,9 +600,11 @@ export default function Settings() {
         saved = await apiService.putData<SystemSettings>('/api/v1/settings', payload);
       }
       if (!saved) return;
-      
+
+      const mergedReset = mergeSettingsFromApi(saved);
+      lastSavedRef.current = mergedReset;
       setSettings((prev: SystemSettings) => ({
-        ...mergeSettingsFromApi(saved),
+        ...mergedReset,
         system: prev.system,
       }));
       const tabName = activeTab.charAt(0).toUpperCase() + activeTab.slice(1);
@@ -570,9 +615,10 @@ export default function Settings() {
       try { localStorage.setItem('vg:settings:cache', JSON.stringify(saved)); } catch {}
     } catch (err) {
       console.error('Failed to reset settings', err);
-      setSaveMessage('Failed to reset settings');
+      const reason = err instanceof Error && err.message ? err.message : 'unknown error';
+      setSaveMessage(`Failed to reset settings — ${reason}`);
     }
-    setTimeout(() => setSaveMessage(''), 2500);
+    setTimeout(() => setSaveMessage(''), 4000);
   };
 
   const updateGeneral = (patch: Partial<GeneralSettings>) => {
@@ -712,6 +758,25 @@ export default function Settings() {
                 <div className="text-sm text-muted-foreground">
                   {t('settings.syncedMessage', 'Settings are synced with the VisionGuard backend.')}
                 </div>
+                {/* Save/Reset feedback lives inside the sticky header so it is
+                    always on-screen — never clipped by the scrolling panel or a
+                    transform ancestor below it. */}
+                {saveMessage && (
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    className={cn(
+                      'basis-full order-first rounded-md border px-3 py-1.5 text-sm font-medium',
+                      saveMessage.toLowerCase().includes('fail')
+                        ? 'border-destructive/40 bg-destructive/15 text-destructive'
+                        : saveMessage.toLowerCase().includes('no changes')
+                          ? 'border-border bg-secondary text-secondary-foreground'
+                          : 'border-primary/40 bg-primary/15 text-primary',
+                    )}
+                  >
+                    {saveMessage}
+                  </div>
+                )}
                 <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
@@ -732,11 +797,6 @@ export default function Settings() {
               </div>
 
               <div className="px-6 pb-6">
-                {saveMessage && (
-                  <div className="mt-4 mb-4 rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 text-sm text-primary">
-                    {saveMessage}
-                  </div>
-                )}
 
               {activeTab === 'system' && (
                 <div className="animate-fade-in">

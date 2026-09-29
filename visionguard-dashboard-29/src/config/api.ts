@@ -2,11 +2,13 @@
 // Backend URL: FastAPI at localhost:8000
 
 export const API_CONFIG = {
-  // Base URL for the REST API - direct to FastAPI backend
-  baseUrl: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+  // Base URL for the REST API - direct to FastAPI backend.
+  // Prefer the IPv4 loopback literal over "localhost" (Docker Desktop/WSL2 can
+  // make the browser resolve localhost to ::1 and stall the connection).
+  baseUrl: import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000',
 
   // WebSocket URL derived from the same backend origin
-  wsUrl: import.meta.env.VITE_WS_URL || 'ws://localhost:8000',
+  wsUrl: import.meta.env.VITE_WS_URL || 'ws://127.0.0.1:8000',
 
   // Request timeout in milliseconds
   timeout: 30000,
