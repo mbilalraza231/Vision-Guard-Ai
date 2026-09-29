@@ -8,6 +8,7 @@ PUT  /api/v1/settings          → upsert settings JSON
 All routes require an admin JWT.
 """
 
+import asyncio
 import copy
 import json
 import logging
@@ -74,7 +75,8 @@ async def sync_settings_to_redis() -> Dict[str, Any]:
         payload = json.dumps(current)
         r_client.set("vg:system_settings", payload)
         r_client.publish("vg:settings:updates", payload)
-        logger.info("Successfully synchronized system settings to Redis cache and published updates")
+        logger.info(
+            "Successfully synchronized system settings to Redis cache and published updates")
         return current
     except Exception as e:
         logger.warning(f"Failed to sync settings to Redis: {e}")
@@ -82,8 +84,36 @@ async def sync_settings_to_redis() -> Dict[str, Any]:
 
 
 # ------------------------------------------------------------------ #
+# On-demand cleanup hook                                              #
+# ------------------------------------------------------------------ #
+
+def _spawn_storage_cleaner_if_enabled(current: Dict[str, Any]) -> None:
+    """Kick a cleanup pass right after a settings save, if cleanup is enabled.
+
+    StorageCleaner only ticks once an hour, so saving 'Scheduled Cleanup = on'
+    (or lowering Max Clips / Max Secured Snapshots) would otherwise leave the
+    files already on disk untouched for up to 60 minutes. It runs as a task,
+    not awaited, so the settings request stays fast even with thousands of files.
+    """
+    storage = (current or {}).get("storage", {}) or {}
+    privacy = (current or {}).get("privacy", {}) or {}
+    if not (storage.get("autoDelete") or privacy.get("gdprCompliant")):
+        return
+    try:
+        from ..workers.storage_cleaner import get_storage_cleaner
+        cleaner = get_storage_cleaner()
+        asyncio.create_task(
+            cleaner.trigger_now(), name="storage-cleaner-on-save")
+        logger.info("Storage settings saved with cleanup enabled — "
+                    "triggered an immediate cleanup pass")
+    except Exception as e:
+        logger.warning(f"Could not trigger StorageCleaner after save: {e}")
+
+
+# ------------------------------------------------------------------ #
 # Pydantic model for the PUT body                                    #
 # ------------------------------------------------------------------ #
+
 
 class ResetSectionsPayload(BaseModel):
     sections: list[str]
@@ -136,27 +166,27 @@ async def export_gdpr_data(_user=Depends(admin_jwt_required)):
     try:
         # 1. Fetch system settings
         settings_data = await _read_settings()
-        
+
         # 2. Fetch alert contacts
         contacts_rows = await db.fetch_all("SELECT * FROM alert_contacts ORDER BY created_at DESC")
         contacts = [dict(row) for row in contacts_rows]
-        
+
         # 3. Fetch cameras
         cameras_rows = await db.fetch_all("SELECT * FROM cameras ORDER BY created_at DESC")
         cameras = [dict(row) for row in cameras_rows]
-        
+
         # 4. Fetch last 500 events
         events_rows = await db.fetch_all("SELECT * FROM events ORDER BY created_at DESC LIMIT 500")
         events = [dict(row) for row in events_rows]
-        
+
         # 5. Fetch last 500 event evidence rows
         evidence_rows = await db.fetch_all("SELECT * FROM event_evidence ORDER BY created_at DESC LIMIT 500")
         evidence = [dict(row) for row in evidence_rows]
-        
+
         # 6. Fetch last 500 alerts
         alerts_rows = await db.fetch_all("SELECT * FROM alerts ORDER BY created_at DESC LIMIT 500")
         alerts = [dict(row) for row in alerts_rows]
-        
+
         # 7. Merge and return as a portable JSON document
         return {
             "version": "1.0",
@@ -171,7 +201,8 @@ async def export_gdpr_data(_user=Depends(admin_jwt_required)):
         }
     except Exception as e:
         logger.error(f"GDPR Export failed: {e}")
-        raise HTTPException(status_code=500, detail="Failed to compile GDPR data export")
+        raise HTTPException(
+            status_code=500, detail="Failed to compile GDPR data export")
 
 
 @router.put("")
@@ -186,7 +217,8 @@ async def update_settings(
         stored = await _read_stored_settings()
         stored = _deep_merge(stored, incoming)
         await _write_settings(stored)
-        await sync_settings_to_redis()
+        synced = await sync_settings_to_redis()
+        _spawn_storage_cleaner_if_enabled(synced)
         return _deep_merge(_load_default_settings(), stored)
     except Exception as e:
         logger.error(f"Failed to save settings: {e}")
@@ -236,7 +268,8 @@ async def reset_settings_sections(
         stored = await _read_stored_settings()
         for section in payload.sections:
             if section not in _RESET_ALLOWED_SECTIONS:
-                raise HTTPException(status_code=400, detail=f"Unknown section: {section}")
+                raise HTTPException(
+                    status_code=400, detail=f"Unknown section: {section}")
             stored[section] = copy.deepcopy(defaults.get(section, {}))
         await _write_settings(stored)
         await sync_settings_to_redis()
@@ -245,7 +278,8 @@ async def reset_settings_sections(
         raise
     except Exception as e:
         logger.error(f"Failed to reset sections {payload.sections}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to reset settings sections")
+        raise HTTPException(
+            status_code=500, detail="Failed to reset settings sections")
 
 
 @router.post("/reset/{section}")
@@ -257,7 +291,8 @@ async def reset_settings_section(section: str, _user=Depends(admin_jwt_required)
     dashboard's per-tab Reset always returns to .env defaults.
     """
     if section not in _RESET_ALLOWED_SECTIONS:
-        raise HTTPException(status_code=400, detail=f"Unknown section: {section}")
+        raise HTTPException(
+            status_code=400, detail=f"Unknown section: {section}")
 
     try:
         defaults = _load_default_settings()
@@ -268,5 +303,5 @@ async def reset_settings_section(section: str, _user=Depends(admin_jwt_required)
         return _deep_merge(defaults, stored)
     except Exception as e:
         logger.error(f"Failed to reset section {section}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to reset settings section")
-
+        raise HTTPException(
+            status_code=500, detail="Failed to reset settings section")

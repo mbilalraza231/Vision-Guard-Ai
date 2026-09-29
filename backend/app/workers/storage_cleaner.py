@@ -39,6 +39,9 @@ class StorageCleaner:
 
         self._stop_event = asyncio.Event()
         self._task: asyncio.Task = None
+        # Guards against a scheduled tick and a manual "run now" overlapping,
+        # which would make both walk (and delete) the same file list.
+        self._cycle_lock = asyncio.Lock()
 
         # Configure Cloudinary if credentials exist
         self.cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME", "")
@@ -79,6 +82,23 @@ class StorageCleaner:
                 self._task.cancel()
         logger.info("StorageCleaner stopped")
 
+    async def trigger_now(self) -> Dict[str, Any]:
+        """Run one cleanup cycle immediately, on demand.
+
+        Needed because the loop only ticks hourly: without this, enabling
+        'Scheduled Cleanup' (or lowering the Max Clips / Secured Snapshot caps)
+        appears to do nothing for up to an hour, and files already on disk are
+        left untouched until the next tick or the next backend restart.
+        """
+        async with self._cycle_lock:
+            try:
+                await self._run_cycle()
+                return {"ran": True}
+            except Exception as exc:
+                logger.error(
+                    "StorageCleaner on-demand cycle failed: %s", exc, exc_info=True)
+                return {"ran": False, "error": str(exc)}
+
     # ------------------------------------------------------------------ #
     # Main Loop                                                            #
     # ------------------------------------------------------------------ #
@@ -88,7 +108,8 @@ class StorageCleaner:
         # Run once immediately on start, then on interval
         while not self._stop_event.is_set():
             try:
-                await self._run_cycle()
+                async with self._cycle_lock:
+                    await self._run_cycle()
             except Exception as exc:
                 logger.error("StorageCleaner cycle failed: %s",
                              exc, exc_info=True)
