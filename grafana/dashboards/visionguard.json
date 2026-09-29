@@ -11,7 +11,7 @@
   "panels": [
     {
       "id": 1,
-      "title": "AI Worker - CPU Usage %",
+      "title": "CPU % per service (camera = ALL forked processes)",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -21,15 +21,21 @@
       },
       "targets": [
         {
-          "expr": "rate(process_cpu_seconds_total[1m]) * 100",
+          "expr": "sum by (job) (rate(process_cpu_seconds_total{job!=\"vg-camera\"}[1m])) * 100",
           "legendFormat": "{{job}}",
           "refId": "A"
+        },
+        {
+          "expr": "rate(vg_container_cpu_seconds_total[1m]) * 100",
+          "legendFormat": "vg-camera (parent + children)",
+          "refId": "B"
         }
-      ]
+      ],
+      "description": "100% = one core. Services that fork (camera) do not report child CPU via process_* metrics, so vg_container_cpu_seconds_total sums /proc for every process in that container."
     },
     {
       "id": 2,
-      "title": "AI Worker - Memory (MB)",
+      "title": "Memory per service (MB)",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -39,11 +45,17 @@
       },
       "targets": [
         {
-          "expr": "process_resident_memory_bytes / 1024 / 1024",
-          "legendFormat": "{{job}}",
+          "expr": "process_resident_memory_bytes{job!=\"vg-camera\"} / 1024 / 1024",
+          "legendFormat": "{{job}} (RSS)",
           "refId": "A"
+        },
+        {
+          "expr": "vg_container_memory_bytes / 1024 / 1024",
+          "legendFormat": "vg-camera (PSS, parent + children)",
+          "refId": "B"
         }
-      ]
+      ],
+      "description": "Camera uses PSS (proportional set size): parent and children share the interpreter, OpenCV and the shared-frame buffers, so plain RSS would be double counted."
     },
     {
       "id": 3,
@@ -162,6 +174,83 @@
           }
         }
       }
+    },
+    {
+      "id": 102,
+      "title": "P95 Clip Recording & Cloud Upload (s)",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(vg_clip_recording_duration_seconds_bucket[5m]))) or vector(0)",
+          "legendFormat": "P95 clip recording (capture + encode)",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(vg_clip_upload_duration_seconds_bucket[5m]))) or vector(0)",
+          "legendFormat": "P95 Cloudinary upload",
+          "refId": "B"
+        }
+      ],
+      "description": "Recording duration tracks clip length (post_seconds) and queue concurrency — it is the CPU cost of the encode pipeline.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 15
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 103,
+      "title": "Clip Throughput & Pending Work",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(vg_clip_recording_duration_seconds_count[5m])) or vector(0)",
+          "legendFormat": "clips recorded /s",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(vg_clip_upload_duration_seconds_count[5m])) or vector(0)",
+          "legendFormat": "clips uploaded /s",
+          "refId": "B"
+        },
+        {
+          "expr": "vg_clip_pending_count or vector(0)",
+          "legendFormat": "pending recordings",
+          "refId": "C"
+        }
+      ],
+      "description": "recorded/s below incoming event rate means the recorder is falling behind.",
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 15
+          }
+        }
+      }
     }
   ],
   "schemaVersion": 38,
@@ -176,5 +265,5 @@
   "timepicker": {},
   "timezone": "",
   "title": "VisionGuard AI - System Overview",
-  "version": 1
+  "version": 3
 }

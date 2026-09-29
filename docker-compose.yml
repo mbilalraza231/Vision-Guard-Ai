@@ -33,6 +33,11 @@ volumes:
     name: vg-logs
   vg-frames:
     name: vg-shared-frames
+  # Monitoring storage (pre-existing named volumes — reused, never recreated)
+  vg-prometheus-data:
+    name: vg-prometheus-data
+  vg-grafana-data:
+    name: vg-grafana-data
 
 services:
   # ============================================================
@@ -546,5 +551,96 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  # ============================================================
+  # MONITORING STACK
+  # ============================================================
+  # NOTE: these services ran for a long time without ever being defined here
+  # (they were started from an ad-hoc compose file that is no longer in the
+  # repo). Defining them makes `docker compose up -d` able to recreate the
+  # whole observability layer. Container names are unchanged, so the existing
+  # Prometheus TSDB and Grafana data are reused as-is.
+  #
+  # WHY THERE IS NO CADVISOR: cAdvisor cannot report per-container CPU/RAM on
+  # Docker Desktop (WSL2 backend). It resolves each container's overlay layer at
+  # /var/lib/docker/image/overlayfs/layerdb/mounts/<id>/mount-id, and that store
+  # lives on the separate docker-desktop-data distro — inside the engine VM the
+  # path simply does not exist. Result: "Failed to create existing container"
+  # for every container, and only machine-level (id="/") series get exported.
+  # Verified with v0.49.1 both with and without /var/run/docker.sock, and with
+  # filesystem metrics disabled. Per-container CPU/RAM for the forking camera
+  # service instead comes from vg_container_cpu_seconds_total /
+  # vg_container_memory_bytes, sampled from /proc inside the container
+  # (see camera_capture/prom_metrics.py).
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: vg-prometheus
+    restart: unless-stopped
+    networks:
+      - visionguard
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # Alerting rules referenced by rule_files: in prometheus.yml. Without this
+      # mount the rules never load (they were silently inactive before).
+      - ./alerts.yml:/etc/prometheus/alerts.yml:ro
+      - vg-prometheus-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: vg-grafana
+    restart: unless-stopped
+    networks:
+      - visionguard
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-http://localhost:3000}
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-visionguard}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+      - vg-grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.58.0
+    container_name: vg-redis-exporter
+    restart: unless-stopped
+    networks:
+      - visionguard
+    environment:
+      - REDIS_ADDR=redis:6379
+    ports:
+      - "9121:9121"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: vg-postgres-exporter
+    restart: unless-stopped
+    networks:
+      - visionguard
+    environment:
+      - DATA_SOURCE_NAME=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-visionguard}?sslmode=disable
+    ports:
+      - "9187:9187"
+    depends_on:
       postgres:
         condition: service_healthy

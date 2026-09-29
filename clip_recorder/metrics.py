@@ -3,6 +3,8 @@ Clip Recorder Prometheus Metrics
 Port: 8007
 """
 import logging
+import shutil
+
 from prometheus_client import start_http_server, Counter, Histogram, Gauge
 
 logger = logging.getLogger(__name__)
@@ -47,9 +49,33 @@ LAST_UPLOAD_TIMESTAMP = Gauge(
     'Unix timestamp of the last successful video clip upload'
 )
 
+# 7 & 8. MEDIA VOLUME CAPACITY
+# node-exporter cannot read real filesystem stats under Docker Desktop/WSL2
+# (every ext4 and 9p mount reports node_filesystem_device_error=1), but the
+# container itself sees the truth, so the recorder publishes it.
+MEDIA_DISK_TOTAL_BYTES = Gauge(
+    'vg_media_disk_total_bytes',
+    'Total size of the mounted media volume (/data/visionguard) in bytes'
+)
+
+MEDIA_DISK_FREE_BYTES = Gauge(
+    'vg_media_disk_free_bytes',
+    'Free space remaining on the mounted media volume (/data/visionguard) in bytes'
+)
+
+
+def sample_media_disk(path: str) -> None:
+    """Refresh the media-volume capacity gauges from a mounted path."""
+    usage = shutil.disk_usage(path)
+    MEDIA_DISK_TOTAL_BYTES.set(usage.total)
+    MEDIA_DISK_FREE_BYTES.set(usage.free)
+
+
 def start_metrics_server(port: int = 8007):
     try:
         start_http_server(port)
-        logger.info(f"Prometheus metrics server started for Clip Recorder on port {port}")
+        logger.info(
+            f"Prometheus metrics server started for Clip Recorder on port {port}")
     except Exception as e:
-        logger.error(f"Failed to start Clip Recorder Prometheus metrics server on port {port}: {e}")
+        logger.error(
+            f"Failed to start Clip Recorder Prometheus metrics server on port {port}: {e}")

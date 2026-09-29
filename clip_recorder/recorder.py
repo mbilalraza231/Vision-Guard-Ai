@@ -23,6 +23,7 @@ import subprocess
 import redis
 
 from .config import ClipConfig
+from .metrics import CLIPS_RECORDED_TOTAL, PENDING_CLIPS, RECORDING_DURATION
 from .uploader import CloudinaryUploader
 from .database import Database
 
@@ -462,12 +463,18 @@ class ClipRecorder:
         # so many events can be in flight for the FAST snapshot path without the
         # SLOW clip path saturating CPU.
         async with self._clip_semaphore:
+            record_started = time.perf_counter()
             clip_path, error_msg = await asyncio.to_thread(
                 self._record_clip, event_id, event_type, camera_source, detection_ts, pre_seconds, post_seconds, use_buffer, target_fps
             )
+            # Observe only the capture+encode work, not the queue wait behind
+            # the semaphore — otherwise the panel measures congestion, not speed.
+            RECORDING_DURATION.observe(time.perf_counter() - record_started)
         result["clip_local"] = clip_path
 
         if clip_path:
+            CLIPS_RECORDED_TOTAL.labels(
+                camera_id=camera_id, event_type=event_type, status="success").inc()
             logger.info(f"Clip recorded: {clip_path}")
             # WRITE CLIP TO DB IMMEDIATELY (Available before Cloud upload)
             try:
@@ -479,6 +486,8 @@ class ClipRecorder:
         else:
             # Use the intuitive error message from the recording attempt
             error_msg = error_msg or "Unknown Error"
+            CLIPS_RECORDED_TOTAL.labels(
+                camera_id=camera_id, event_type=event_type, status="failed").inc()
             result["clip_error"] = error_msg
             await self._update_clip_status(event_id, "failed", error_msg)
             logger.warning(
@@ -487,6 +496,9 @@ class ClipRecorder:
         # Step 3 — Start background task for Cloudinary upload
         if self.config.cloudinary_configured:
             # We use an async task instead of a thread
+            # Counted as pending the moment it is queued, so the gauge shows the
+            # real upload backlog (queued + in flight), not just active uploads.
+            PENDING_CLIPS.inc()
             asyncio.create_task(self._upload_and_update_task(
                 event_id, event_type, result))
             logger.info(f"Started background upload task for event {event_id}")
@@ -560,6 +572,8 @@ class ClipRecorder:
         except Exception as e:
             logger.error(
                 f"Error in background upload task for event {event_id}: {e}")
+        finally:
+            PENDING_CLIPS.dec()
 
     # ------------------------------------------------------------------
     # Private helpers

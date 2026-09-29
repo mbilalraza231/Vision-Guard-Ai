@@ -6,10 +6,14 @@ All methods are non-blocking on failure — errors are logged, never raised.
 """
 
 import logging
+import time
 from typing import Optional
 
 import cloudinary
 import cloudinary.uploader
+
+from .metrics import (CLOUDINARY_UPLOADS_TOTAL, LAST_UPLOAD_TIMESTAMP,
+                      UPLOAD_LATENCY)
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +101,7 @@ class CloudinaryUploader:
         Returns:
             secure_url string on success, None on failure
         """
+        started = time.perf_counter()
         try:
             result = cloudinary.uploader.upload(
                 file_path,
@@ -106,12 +111,18 @@ class CloudinaryUploader:
                 overwrite=True,
             )
             url: str = result["secure_url"]
+            elapsed = time.perf_counter() - started
+            CLOUDINARY_UPLOADS_TOTAL.labels(status="success").inc()
+            UPLOAD_LATENCY.observe(elapsed)
+            LAST_UPLOAD_TIMESTAMP.set(time.time())
             logger.info(
                 "Clip uploaded to Cloudinary",
                 extra={"event_id": event_id, "url": url},
             )
             return url
         except Exception as e:  # noqa: BLE001
+            CLOUDINARY_UPLOADS_TOTAL.labels(status="failed").inc()
+            UPLOAD_LATENCY.observe(time.perf_counter() - started)
             logger.error(
                 f"Clip upload failed for event {event_id}: {e}",
                 extra={"event_id": event_id, "file_path": file_path},

@@ -45,8 +45,10 @@ def setup_logging(level_str: str) -> None:
 
 
 class MetricsReporter:
-    def __init__(self, r, name):
+    def __init__(self, r, name, media_path=None):
         self.r, self.name = r, name
+        self.media_path = media_path or os.getenv(
+            "CLIP_DIR", "/data/visionguard")
         self.pid = os.getpid()
         self.host = socket.gethostname()
         self.key = f"vg:metrics:{name}:{self.host}"
@@ -73,6 +75,15 @@ class MetricsReporter:
                         cpu += c.cpu_percent(interval=None)
                     except Exception:
                         pass
+
+                # Media volume capacity — node-exporter cannot report this under
+                # Docker Desktop/WSL2, so the container publishes what it sees.
+                try:
+                    from .metrics import sample_media_disk
+                    sample_media_disk(self.media_path)
+                except Exception as e:
+                    logging.getLogger("clip_recorder.metrics").debug(
+                        f"Disk metrics error: {e}")
 
                 await self.r.setex(self.key, 15, json.dumps({
                     "cpu_percent": round(cpu, 2),
@@ -142,7 +153,8 @@ async def main() -> None:
         log.warning(f"Could not start Prometheus metrics server: {e}")
 
     # --- Start metrics reporter ---
-    reporter = MetricsReporter(redis_client, "clip-recorder")
+    reporter = MetricsReporter(redis_client, "clip-recorder",
+                               media_path=config.clip_dir)
     await reporter.start()
     log.info("Metrics heartbeat started")
 
