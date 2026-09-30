@@ -24,7 +24,6 @@ Usage:
 
 import sys
 import os
-import time
 
 # Add project root and backend to path for imports
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -33,10 +32,9 @@ BACKEND_ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, PROJECT_ROOT)
 sys.path.insert(0, BACKEND_ROOT)
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
-from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.core.config import get_settings
 from app.core.lifecycle import lifespan
@@ -49,39 +47,7 @@ settings = get_settings()
 setup_logging(level=settings.log_level, format_type="text")
 logger = get_logger(__name__)
 
-# Prometheus Metrics
-HTTP_REQUESTS_TOTAL = Counter(
-    "http_requests_total",
-    "Total HTTP requests processed by endpoint and status code",
-    ["method", "handler", "status"]
-)
-HTTP_REQUEST_DURATION_SECONDS = Histogram(
-    "http_request_duration_seconds",
-    "HTTP request latency in seconds",
-    ["method", "handler"],
-    buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)
-)
-
-class PrometheusMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        path = request.url.path
-        if path in ["/metrics", "/health"]:
-            return await call_next(request)
-            
-        start_time = time.time()
-        status_code = 500
-        try:
-            response = await call_next(request)
-            status_code = response.status_code
-            return response
-        except Exception:
-            raise
-        finally:
-            duration = time.time() - start_time
-            # Determine handler label safely
-            handler = path
-            HTTP_REQUESTS_TOTAL.labels(method=request.method, handler=handler, status=str(status_code)).inc()
-            HTTP_REQUEST_DURATION_SECONDS.labels(method=request.method, handler=handler).observe(duration)
+# Prometheus metrics are auto-instrumented in create_app() via the FastAPI instrumentator.
 
 
 # ==================== APPLICATION FACTORY ====================
@@ -119,8 +85,7 @@ This backend supervises external services - it does NOT perform:
         openapi_url="/openapi.json"
     )
     
-    # Add Prometheus metrics middleware
-    app.add_middleware(PrometheusMiddleware)
+    # (Prometheus metrics wired via Instrumentator() after routes are registered)
     
     # Add CORS middleware
     app.add_middleware(
@@ -142,10 +107,10 @@ This backend supervises external services - it does NOT perform:
     app.include_router(settings_router)
     app.include_router(zones.router)
 
-    # Expose Prometheus /metrics
-    @app.get("/metrics", tags=["System"], include_in_schema=False)
-    def metrics():
-        return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+    # Expose Prometheus metrics — auto-instrumented by prometheus-fastapi-instrumentator.
+    # Labels use the route TEMPLATE (e.g. /events/{event_id}), not the raw path, so
+    # per-id URLs do not explode metric cardinality.
+    Instrumentator().instrument(app).expose(app)
     
     return app
 
