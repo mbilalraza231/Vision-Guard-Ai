@@ -139,7 +139,7 @@ class CameraProcess:
         )
 
         self.logger.info(
-            f"Camera process starting",
+            "Camera process starting",
             extra={"camera_id": self.camera_config.camera_id}
         )
 
@@ -245,7 +245,7 @@ class CameraProcess:
         consecutive_loop_errors = 0
         frames_processed = 0
         last_heartbeat = time.time()
-        heartbeat_interval_sec = 30.0
+        heartbeat_interval_sec = 5.0
         reconnect_attempts = 0
         reconnect_backoff = self.retry_config.initial_backoff_seconds
 
@@ -375,9 +375,9 @@ class CameraProcess:
                 # Mark frame as captured
                 self.frame_grabber.mark_captured()
 
-                # Report real FPS to Redis every 5 seconds (must be before motion detection continue)
+                # Report real FPS to Redis every heartbeat_interval_sec (must be before motion detection continue)
                 now = time.time()
-                if now - last_heartbeat >= 5.0:
+                if now - last_heartbeat >= heartbeat_interval_sec:
                     stats = self.frame_grabber.get_stats()
                     actual_fps = stats.get("actual_fps", 0.0)
 
@@ -621,7 +621,7 @@ class CameraProcess:
                 self.redis_producer.enqueue(task)
 
             self.logger.debug(
-                f"Frame processed and enqueued to all queues",
+                "Frame processed and enqueued to all queues",
                 extra={
                     "frame_id": frame_id,
                     "shared_memory_key": shared_memory_key
