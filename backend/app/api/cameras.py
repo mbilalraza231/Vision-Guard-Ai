@@ -182,6 +182,10 @@ async def register_camera(
             motion_threshold=request.motion_threshold
         )
 
+        # Mirror the DB to cameras.json so the file the camera container may fall
+        # back to never drifts from the source of truth (survives restarts).
+        await camera_manager.sync_db_to_json()
+
         return CameraResponse(
             success=True,
             message=f"Camera {request.camera_id} registered successfully",
@@ -223,6 +227,9 @@ async def unregister_camera(
 
         # Also unregister in-memory
         camera_manager.unregister(camera_id)
+
+        # Keep cameras.json aligned with the DB after deletion.
+        await camera_manager.sync_db_to_json()
 
         return CameraResponse(
             success=True,
@@ -302,7 +309,8 @@ async def stop_camera(
             r.hdel("vg:camera:sources", camera_id)
             r.close()
         except Exception as redis_err:
-            logger.warning(f"Failed to remove camera from Redis sources: {redis_err}")
+            logger.warning(
+                f"Failed to remove camera from Redis sources: {redis_err}")
 
         # Publish instant reload signal to vg-camera container (replaces file-write)
         await camera_manager.publish_camera_reload(action="stop", camera_id=camera_id)

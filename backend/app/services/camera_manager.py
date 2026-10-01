@@ -5,6 +5,9 @@ Manages camera capture pipelines from the backend.
 Provides registration, start/stop, and status APIs.
 """
 
+from ..utils.logging import get_logger
+from ..core.database import db
+from ..core.config import get_settings
 import sys
 import os
 from typing import Optional, Dict, Any, List
@@ -12,11 +15,9 @@ from datetime import datetime
 from dataclasses import dataclass, field
 
 # Add project root to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
-from ..core.config import get_settings
-from ..core.database import db
-from ..utils.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -37,7 +38,7 @@ class CameraInfo:
     frames_captured: int = 0
     frames_with_motion: int = 0
     last_error: Optional[str] = None
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for API responses."""
         return {
@@ -60,46 +61,46 @@ class CameraInfo:
 class CameraManager:
     """
     Manages camera capture pipelines.
-    
+
     Responsibilities:
     - Register camera configurations
     - Start/stop camera capture processes
     - Monitor camera health
     - Provide status information
-    
+
     Integrates with camera_capture module when cameras are started.
     """
-    
+
     _instance: Optional['CameraManager'] = None
-    
+
     def __new__(cls):
         """Singleton pattern."""
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance._initialized = False
         return cls._instance
-    
+
     def __init__(self):
         if self._initialized:
             return
-        
+
         self._cameras: Dict[str, CameraInfo] = {}
         self._process_manager = None  # Will hold camera_capture ProcessManager
         self.logger = get_logger(__name__)
-        
+
         # Load from config if available (especially for Docker mode status reporting)
         self.load_from_config()
-        
+
         from .camera_orchestrator import get_orchestrator
         self.orchestrator = get_orchestrator()
-        
+
         self._initialized = True
 
     def load_from_config(self) -> None:
         """Load cameras from cameras.json if it exists."""
         import json
         config_path = os.environ.get("CAMERA_CONFIG_PATH", "cameras.json")
-        
+
         # In docker, the directory is often /app/backend but cameras.json is at /app/cameras.json
         if not os.path.exists(config_path):
             alt_path = os.path.join("..", config_path)
@@ -111,7 +112,8 @@ class CameraManager:
                     from ..core.config import get_settings
                     settings = get_settings()
                     # Check in project root
-                    root_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "cameras.json")
+                    root_path = os.path.join(os.path.dirname(os.path.dirname(
+                        os.path.dirname(os.path.abspath(__file__)))), "cameras.json")
                     if os.path.exists(root_path):
                         config_path = root_path
                 except:
@@ -120,39 +122,94 @@ class CameraManager:
         if not os.path.exists(config_path):
             self.logger.debug(f"Camera config not found at {config_path}")
             return
-            
+
         try:
             with open(config_path, 'r') as f:
                 data = json.load(f)
                 cameras_data = data.get("cameras", [])
-                
+
                 for cam_data in cameras_data:
                     camera_id = cam_data.get("id")
                     if not camera_id:
                         continue
-                        
+
                     camera = CameraInfo(
                         camera_id=camera_id,
                         rtsp_url=cam_data.get("source", ""),
                         fps=cam_data.get("fps", 5),
-                        motion_threshold=cam_data.get("motion_threshold", 0.02),
+                        motion_threshold=cam_data.get(
+                            "motion_threshold", 0.02),
                         enabled=cam_data.get("enabled", True),
                         process_mode=cam_data.get("process_mode", "live")
                     )
                     # For status reporting, we assume it might be running if enabled in docker
                     # Real running status should ideally be verified via Redis heartbeats
                     self._cameras[camera_id] = camera
-                    
-            self.logger.info(f"Loaded {len(self._cameras)} cameras from {config_path}")
+
+            self.logger.info(
+                f"Loaded {len(self._cameras)} cameras from {config_path}")
         except Exception as e:
             self.logger.error(f"Failed to load camera config: {e}")
+
+    async def _register_camera_from_db(self, camera_id: str) -> bool:
+        """Load a single camera row from PostgreSQL into the in-memory registry.
+
+        ``_cameras`` is seeded from cameras.json at startup, but the database is
+        the real source of truth. After a restart, cameras added via the UI are
+        missing from cameras.json (hence from memory), causing
+        "Camera <id> not found". This pulls the row back from the DB on demand.
+        """
+        row = await db.fetch_one(
+            "SELECT id, source, fps, motion_threshold, enabled, "
+            "COALESCE(process_mode, 'live') AS process_mode "
+            "FROM cameras WHERE id = $1",
+            camera_id,
+        )
+        if not row:
+            return False
+        self._cameras[camera_id] = CameraInfo(
+            camera_id=row["id"],
+            rtsp_url=row["source"] or "",
+            fps=row["fps"] or 5,
+            motion_threshold=row["motion_threshold"] if row["motion_threshold"] is not None else 0.02,
+            enabled=bool(row["enabled"]),
+            process_mode=row["process_mode"],
+        )
+        self.logger.info(
+            f"Recovered camera '{camera_id}' from PostgreSQL into in-memory registry")
+        return True
+
+    async def load_from_database(self) -> int:
+        """Rebuild the in-memory camera registry entirely from PostgreSQL.
+
+        Called once on startup so the registry always matches the source of
+        truth (the DB), not the possibly-stale cameras.json.
+        """
+        rows = await db.fetch_all(
+            "SELECT id, source, fps, motion_threshold, enabled, "
+            "COALESCE(process_mode, 'live') AS process_mode FROM cameras"
+        )
+        rebuilt: Dict[str, CameraInfo] = {}
+        for r in rows:
+            rebuilt[r["id"]] = CameraInfo(
+                camera_id=r["id"],
+                rtsp_url=r["source"] or "",
+                fps=r["fps"] or 5,
+                motion_threshold=r["motion_threshold"] if r["motion_threshold"] is not None else 0.02,
+                enabled=bool(r["enabled"]),
+                process_mode=r["process_mode"],
+            )
+        self._cameras = rebuilt
+        self.logger.info(
+            f"Loaded {len(self._cameras)} cameras from PostgreSQL (in-memory registry refreshed)")
+        return len(self._cameras)
 
     def _runtime_block_message(self) -> str:
         return (
             "Camera process lifecycle control is disabled in docker runtime mode. "
             "Manage camera service lifecycle via docker compose and cameras.json."
         )
-    
+
     def register(
         self,
         camera_id: str,
@@ -162,46 +219,46 @@ class CameraManager:
     ) -> Dict[str, Any]:
         """
         Register a new camera.
-        
+
         Args:
             camera_id: Unique camera identifier
             rtsp_url: RTSP stream URL
             fps: Frames per second (optional, uses default)
             motion_threshold: Motion detection threshold (optional)
-            
+
         Returns:
             Registration result
         """
         settings = get_settings()
-        
+
         if camera_id in self._cameras:
             return {
                 "success": False,
                 "message": f"Camera {camera_id} already registered",
                 "camera": self._cameras[camera_id].to_dict()
             }
-        
+
         camera = CameraInfo(
             camera_id=camera_id,
             rtsp_url=rtsp_url,
             fps=fps or settings.default_camera_fps,
             motion_threshold=motion_threshold or settings.default_motion_threshold
         )
-        
+
         self._cameras[camera_id] = camera
-        
+
         self.logger.info(f"Registered camera: {camera_id}")
-        
+
         return {
             "success": True,
             "message": f"Camera {camera_id} registered",
             "camera": camera.to_dict()
         }
-    
+
     def unregister(self, camera_id: str) -> Dict[str, Any]:
         """
         Unregister a camera.
-        
+
         Camera must be stopped before unregistering.
         """
         if camera_id not in self._cameras:
@@ -209,118 +266,125 @@ class CameraManager:
                 "success": False,
                 "message": f"Camera {camera_id} not found"
             }
-        
+
         camera = self._cameras[camera_id]
         if camera.is_running:
             return {
                 "success": False,
                 "message": f"Camera {camera_id} is running, stop it first"
             }
-        
+
         del self._cameras[camera_id]
-        
+
         self.logger.info(f"Unregistered camera: {camera_id}")
-        
+
         return {
             "success": True,
             "message": f"Camera {camera_id} unregistered"
         }
-    
+
     async def start_camera(self, camera_id: str) -> Dict[str, Any]:
         """
         Start a registered camera.
-        
+
         Args:
             camera_id: Camera to start
-            
+
         Returns:
             Start result
         """
+        if camera_id not in self._cameras:
+            # DB is the source of truth; a UI-added camera may be absent from the
+            # cameras.json-seeded in-memory registry after a restart. Recover it.
+            await self._register_camera_from_db(camera_id)
+
         if camera_id not in self._cameras:
             return {
                 "success": False,
                 "message": f"Camera {camera_id} not found"
             }
 
-
         camera = self._cameras[camera_id]
-        
+
         if camera.is_running:
             return {
                 "success": True,
                 "message": f"Camera {camera_id} already running",
                 "camera": camera.to_dict()
             }
-        
+
         # Delegate start execution to the appropriate environment orchestrator
         return await self.orchestrator.start_camera(self, camera)
-    
+
     async def stop_camera(self, camera_id: str) -> Dict[str, Any]:
         """
         Stop a running camera.
-        
+
         Args:
             camera_id: Camera to stop
-            
+
         Returns:
             Stop result
         """
+        if camera_id not in self._cameras:
+            # See start_camera: recover UI-added cameras missing after a restart.
+            await self._register_camera_from_db(camera_id)
+
         if camera_id not in self._cameras:
             return {
                 "success": False,
                 "message": f"Camera {camera_id} not found"
             }
 
-
         camera = self._cameras[camera_id]
-        
+
         if not camera.is_running:
             return {
                 "success": True,
                 "message": f"Camera {camera_id} already stopped",
                 "camera": camera.to_dict()
             }
-        
+
         # Delegate stop execution to the appropriate environment orchestrator
         return await self.orchestrator.stop_camera(self, camera)
-    
+
     async def start_all(self) -> Dict[str, Any]:
         """Start all registered cameras."""
         results = {}
         for camera_id in self._cameras:
             results[camera_id] = await self.start_camera(camera_id)
-        
+
         success_count = sum(1 for r in results.values() if r["success"])
-        
+
         return {
             "success": success_count == len(self._cameras),
             "message": f"Started {success_count}/{len(self._cameras)} cameras",
             "results": results
         }
-    
+
     async def stop_all(self) -> Dict[str, Any]:
         """Stop all running cameras."""
         results = {}
         for camera_id in self._cameras:
             if self._cameras[camera_id].is_running:
                 results[camera_id] = await self.stop_camera(camera_id)
-        
+
         return {
             "success": True,
             "message": f"Stopped {len(results)} cameras",
             "results": results
         }
-    
+
     def get_camera_status(self, camera_id: str) -> Optional[Dict[str, Any]]:
         """Get status of a specific camera."""
         if camera_id not in self._cameras:
             return None
         return self._cameras[camera_id].to_dict()
-    
+
     def get_all_status(self) -> Dict[str, Any]:
         """Get status of all cameras."""
         settings = get_settings()
-        
+
         # In docker mode, we check Redis heartbeat for the camera service
         is_service_alive = False
         if settings.is_docker_runtime:
@@ -328,7 +392,7 @@ class CameraManager:
                 from ..core.config import get_redis_config
                 from ..utils.metrics_utils import check_service_liveness
                 import redis
-                
+
                 r_config = get_redis_config()
                 r_client = redis.Redis(**r_config)
                 is_service_alive = check_service_liveness(r_client, "camera")
@@ -338,10 +402,10 @@ class CameraManager:
 
         cameras = {}
         running_count = 0
-        
+
         for cid, cam in self._cameras.items():
             cam_dict = cam.to_dict()
-            
+
             # In Docker runtime: treat a camera as "running" only when it has a
             # recent per-camera FPS heartbeat in Redis (setex ~15s). This avoids
             # the UI showing "Initializing…" forever when the camera service is up
@@ -371,9 +435,9 @@ class CameraManager:
                     running_count += 1
             elif cam.is_running:
                 running_count += 1
-                
+
             cameras[cid] = cam_dict
-        
+
         return {
             "total": len(self._cameras),
             "running": running_count,
@@ -381,11 +445,11 @@ class CameraManager:
             "cameras": cameras,
             "service_alive": is_service_alive if settings.is_docker_runtime else None
         }
-    
+
     async def publish_camera_reload(self, action: str = "reload", camera_id: str = None) -> None:
         """
         Publish a reload signal to the vg-camera container via Redis pub/sub.
-        
+
         The camera container subscribes to 'vg:config:cameras' and immediately
         re-queries GET /cameras from the backend API when it receives this signal.
         This replaces the old sync_db_to_json() file-write approach, eliminating
@@ -400,7 +464,8 @@ class CameraManager:
             payload = json.dumps({"action": action, "camera_id": camera_id})
             r_client.publish("vg:config:cameras", payload)
             r_client.close()
-            self.logger.info(f"Published camera reload signal: action={action}, camera_id={camera_id}")
+            self.logger.info(
+                f"Published camera reload signal: action={action}, camera_id={camera_id}")
         except Exception as e:
             self.logger.warning(f"Failed to publish camera reload signal: {e}")
 
@@ -409,8 +474,9 @@ class CameraManager:
         import json
         config_path = os.environ.get("CAMERA_CONFIG_PATH", "cameras.json")
         if not os.path.isabs(config_path):
-            config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), config_path)
-            
+            config_path = os.path.join(os.path.dirname(os.path.dirname(
+                os.path.dirname(os.path.abspath(__file__)))), config_path)
+
         try:
             # Fetch all cameras from database
             rows = await db.fetch_all("SELECT id, name, source, fps, motion_threshold, priority, enabled, COALESCE(loop_video, TRUE) as loop_video FROM cameras ORDER BY id ASC")
@@ -426,11 +492,13 @@ class CameraManager:
                     "enabled": r["enabled"],
                     "loop_video": r["loop_video"]
                 })
-            
+
             # Read current cameras.json to preserve global and ip_camera sections
-            global_conf = {"motion_detection": True, "default_fps": 5, "reconnect_delay_sec": 5}
-            ip_camera_conf = {"username": "YOUR_USERNAME", "password": "YOUR_PASSWORD", "ip_address": "192.168.X.X", "port": 554}
-            
+            global_conf = {"motion_detection": True,
+                           "default_fps": 5, "reconnect_delay_sec": 5}
+            ip_camera_conf = {"username": "YOUR_USERNAME",
+                              "password": "YOUR_PASSWORD", "ip_address": "192.168.X.X", "port": 554}
+
             if os.path.exists(config_path):
                 try:
                     with open(config_path, "r") as f:
@@ -441,13 +509,13 @@ class CameraManager:
                             ip_camera_conf = curr["ip_camera"]
                 except Exception:
                     pass
-                    
+
             output_data = {
                 "cameras": cameras_list,
                 "global": global_conf,
                 "ip_camera": ip_camera_conf
             }
-            
+
             with open(config_path, "w") as f:
                 json.dump(output_data, f, indent=4)
             self.logger.info(f"Synchronized database cameras to {config_path}")
@@ -462,19 +530,21 @@ class CameraManager:
             import time
             config_path = os.environ.get("CAMERA_CONFIG_PATH", "cameras.json")
             if not os.path.isabs(config_path):
-                config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), config_path)
-                
+                config_path = os.path.join(os.path.dirname(os.path.dirname(
+                    os.path.dirname(os.path.abspath(__file__)))), config_path)
+
             if os.path.exists(config_path):
                 # Check if actually empty
                 existing = await db.fetch_all("SELECT id FROM cameras LIMIT 1")
                 if existing:
                     return
-                    
-                self.logger.info(f"Seeding cameras table from {config_path}...")
+
+                self.logger.info(
+                    f"Seeding cameras table from {config_path}...")
                 with open(config_path, "r") as f:
                     data = json.load(f)
                     cameras_data = data.get("cameras", [])
-                        
+
                     for c in cameras_data:
                         cid = c.get("id") or c.get("camera_id")
                         if not cid:
@@ -497,7 +567,8 @@ class CameraManager:
                         )
                 self.logger.info("Database seeding completed.")
         except Exception as e:
-            self.logger.error(f"Failed to seed database from cameras.json: {e}")
+            self.logger.error(
+                f"Failed to seed database from cameras.json: {e}")
 
     def list_cameras(self) -> List[str]:
         """Get list of registered camera IDs."""

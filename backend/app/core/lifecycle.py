@@ -27,31 +27,31 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     Application lifespan context manager.
-    
+
     Handles:
     - Startup: Initialize logging, validate config, warm up services
     - Shutdown: Stop ECS, stop cameras, cleanup resources
-    
+
     Does NOT auto-start ECS or cameras - that's done via API calls.
     """
     settings = get_settings()
-    
+
     # ========== STARTUP ==========
     logger.info("="*60)
     logger.info(f"Starting {settings.app_name} v{settings.app_version}")
     logger.info(f"Environment: {settings.environment}")
     logger.info("="*60)
-    
+
     # Initialize logging
     setup_logging(
         level=settings.log_level,
         format_type=settings.log_format
     )
-    
+
     # Initialize service managers (lazy - don't start anything)
     ecs_manager = get_ecs_manager()
     camera_manager = get_camera_manager()
-    
+
     # Initialize metrics reporter
     try:
         redis_config = get_redis_config()
@@ -115,6 +115,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         """)
         logger.info("cameras table loop_video column verified")
 
+        # PostgreSQL is the single source of truth for cameras. Refresh the
+        # in-memory registry from it so cameras added via the UI survive backend
+        # restarts (fixes "Camera <id> not found" after a restart), then mirror
+        # the DB back to cameras.json for the camera container's fallback path.
+        await camera_manager.load_from_database()
+        await camera_manager.sync_db_to_json()
+
         # Sync system settings to Redis on boot
         try:
             from ..api.settings import sync_settings_to_redis
@@ -132,29 +139,30 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     logger.info("Service managers initialized")
     logger.info(f"Backend ready at http://{settings.host}:{settings.port}")
-    
+
     # Yield control to application
     yield
-    
+
     # ========== SHUTDOWN ==========
     logger.info("Shutting down application...")
 
     if not settings.allow_local_process_control:
-        logger.info("Docker runtime mode detected; skipping local process shutdown hooks")
+        logger.info(
+            "Docker runtime mode detected; skipping local process shutdown hooks")
         logger.info("Shutdown complete")
         return
-    
+
     # Stop ECS if running
     if ecs_manager.is_running():
         logger.info("Stopping ECS...")
         await ecs_manager.stop()
-    
+
     # Stop all cameras
     camera_status = camera_manager.get_all_status()
     if camera_status["running"] > 0:
         logger.info(f"Stopping {camera_status['running']} cameras...")
         await camera_manager.stop_all()
-    
+
     # Stop metrics reporter
     if hasattr(app.state, "metrics_reporter"):
         app.state.metrics_reporter.stop()
@@ -170,14 +178,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 async def check_dependencies() -> dict:
     """
     Check all external dependencies.
-    
+
     Returns dict with status of each dependency.
     """
     import redis
     from .config import get_redis_config
-    
+
     results = {"redis": False, "ecs_module": False, "camera_module": False}
-    
+
     # Check Redis
     try:
         config = get_redis_config()
@@ -187,19 +195,19 @@ async def check_dependencies() -> dict:
         results["redis"] = True
     except Exception as e:
         logger.warning(f"Redis not available: {e}")
-    
+
     # Check ECS module
     try:
         from event_classification import ECSConfig
         results["ecs_module"] = True
     except ImportError:
         logger.warning("ECS module not available")
-    
+
     # Check camera module
     try:
         from camera_capture import CaptureConfig
         results["camera_module"] = True
     except ImportError:
         logger.warning("Camera module not available")
-    
+
     return results
